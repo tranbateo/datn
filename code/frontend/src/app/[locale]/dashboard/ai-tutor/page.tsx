@@ -1,0 +1,250 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { Search, Edit, Paperclip, Send, Mic, ChevronLeft, Bot, User } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { fetchApi } from "@/lib/api-client";
+import ReactMarkdown from "react-markdown";
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt?: string;
+}
+
+export default function AITutorPage() {
+  const [showHistory, setShowHistory] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputText, setInputText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const t = useTranslations("User.AITutor");
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
+
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || loading) return;
+
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: inputText.trim()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputText("");
+    setLoading(true);
+
+    try {
+      let currentSessionId = sessionId;
+
+      // Create a session if one doesn't exist
+      if (!currentSessionId) {
+        const session = await fetchApi('/chat/session', {
+          method: 'POST',
+          body: JSON.stringify({ 
+            title: userMessage.content.substring(0, 50) + "..."
+          }),
+        });
+        currentSessionId = session.id;
+        setSessionId(session.id);
+      }
+
+      // Send the message to the backend
+      const response = await fetchApi(`/chat/session/${currentSessionId}/message`, {
+        method: 'POST',
+        body: JSON.stringify({
+          content: userMessage.content,
+          role: 'user'
+        }),
+      });
+
+      if (response && response.aiMsg) {
+        setMessages(prev => [...prev, {
+          id: response.aiMsg.id,
+          role: 'assistant',
+          content: response.aiMsg.content,
+        }]);
+      }
+    } catch (error) {
+      console.error("Chat error:", error);
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: "Xin lỗi, đã xảy ra lỗi trong quá trình kết nối với AI. Vui lòng thử lại sau.",
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  return (
+    <div className="h-[calc(100vh-theme(spacing.16))] md:h-screen flex flex-col md:flex-row bg-gray-50 dark:bg-[#0f111a]">
+      
+      {/* Mobile Header for switching views */}
+      <div className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-card-bg border-b border-gray-100 dark:border-gray-800">
+        <button 
+          onClick={() => setShowHistory(!showHistory)}
+          className="flex items-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-300"
+        >
+          {showHistory ? <ChevronLeft className="w-4 h-4" /> : null}
+          {showHistory ? t('backToChat') : t('chatHistory')}
+        </button>
+      </div>
+
+      <div className="flex w-full h-full overflow-hidden">
+        
+        {/* --- LEFT COLUMN: HISTORY SIDEBAR --- */}
+        <div className={`${showHistory ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-72 lg:w-80 flex-shrink-0 bg-white dark:bg-card-bg border-r border-gray-200 dark:border-gray-800 transition-all z-20`}>
+          <div className="p-4 flex justify-between items-center">
+            <button 
+              onClick={() => {
+                setSessionId(null);
+                setMessages([]);
+                setShowHistory(false);
+              }}
+              className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-colors"
+            >
+              <Edit className="w-4 h-4" /> {t('newChat', { fallback: 'Cuộc trò chuyện mới' })}
+            </button>
+          </div>
+          
+          <div className="px-4 pb-2">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder={t('searchHistory')} 
+                className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800/50 border border-transparent focus:border-blue-500 rounded-lg text-sm outline-none transition-colors dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {/* Hardcoded History for UI */}
+            <div className="p-3 bg-gray-100 dark:bg-gray-800/80 rounded-lg cursor-pointer text-sm font-medium text-gray-900 dark:text-white truncate">
+              Chào Gia sư, giúp mình...
+            </div>
+            <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg cursor-pointer text-sm text-gray-600 dark:text-gray-400 transition-colors truncate">
+              Đạo hàm hàm lượng giác
+            </div>
+            <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg cursor-pointer text-sm text-gray-600 dark:text-gray-400 transition-colors truncate">
+              Luyện thi IELTS Speaking
+            </div>
+          </div>
+        </div>
+
+        {/* --- MAIN CHAT AREA --- */}
+        <div className={`${showHistory ? 'hidden' : 'flex'} md:flex flex-col flex-1 bg-white dark:bg-[#0f111a]`}>
+          
+          {/* Chat Messages */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+              
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full mt-32 text-center px-4">
+                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mb-6 shadow-sm">
+                    <Bot className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Tôi có thể giúp gì cho bạn?</h2>
+                  <p className="text-gray-500 dark:text-gray-400 max-w-md">Hãy đặt câu hỏi về bài giảng, bài tập hoặc bất kỳ kiến thức nào bạn đang thắc mắc.</p>
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  {messages.map((msg, idx) => (
+                    <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {msg.role === 'assistant' && (
+                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 mt-1">
+                          <Bot className="w-5 h-5 text-white" />
+                        </div>
+                      )}
+                      
+                      <div className={`max-w-[85%] sm:max-w-[75%] px-5 py-3.5 rounded-2xl text-[15px] leading-relaxed shadow-sm ${
+                        msg.role === 'user' 
+                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-tr-sm' 
+                          : 'bg-white dark:bg-[#1a1d2d] border border-gray-100 dark:border-gray-800 text-gray-800 dark:text-gray-200 rounded-tl-sm'
+                      }`}>
+                        {msg.role === 'assistant' ? (
+                          <div className="prose prose-sm dark:prose-invert max-w-none">
+                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                        )}
+                      </div>
+
+                      {msg.role === 'user' && (
+                        <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 mt-1">
+                          <User className="w-5 h-5 text-gray-500 dark:text-gray-300" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  
+                  {loading && (
+                    <div className="flex gap-4 justify-start">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 mt-1">
+                        <Bot className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="bg-white dark:bg-[#1a1d2d] border border-gray-100 dark:border-gray-800 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-2">
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Fixed Input Area at bottom of flex container */}
+          <div className="w-full bg-white dark:bg-[#0f111a] border-t border-gray-100 dark:border-gray-800 pt-4 pb-4 px-4 flex-shrink-0">
+            <div className="max-w-3xl mx-auto">
+              <div className="flex items-end gap-2 bg-gray-50 dark:bg-[#1a1d2d] border border-gray-200 dark:border-gray-700 rounded-3xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
+                <button className="p-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors flex-shrink-0">
+                  <Paperclip className="w-5 h-5" />
+                </button>
+                <textarea 
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                  placeholder={t('askQuestion', { fallback: 'Hỏi gia sư AI bất cứ điều gì...' })} 
+                  className="w-full max-h-32 bg-transparent border-none focus:ring-0 resize-none py-3 text-[15px] text-gray-900 dark:text-white placeholder-gray-400 overflow-y-auto"
+                  style={{ minHeight: '48px' }}
+                />
+                <button 
+                  onClick={handleSendMessage}
+                  disabled={!inputText.trim() || loading}
+                  className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed m-1"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-center text-xs text-gray-400 mt-2">{t('aiWarning', { fallback: 'AI có thể mắc sai lầm. Vui lòng kiểm tra lại thông tin quan trọng.' })}</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
