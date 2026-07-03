@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// -----------------------------------------------------------------------
+// 1. User & Authentication
+// -----------------------------------------------------------------------
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+}
+
+model User {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String   @unique
+  fullName  String?
+  avatarUrl String?
+  role      Role     @default(STUDENT)
+  tier      SubscriptionTier @default(FREE)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  gamificationProfile GamificationProfile?
+  chatSessions        ChatSession[]
+  quizAttempts        QuizAttempt[]
+  courses             Course[]       @relation("TeacherCourses")
+}
+
+// -----------------------------------------------------------------------
+// 1.5 Courses & Lessons
+// -----------------------------------------------------------------------
+model Course {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String
+  description String?
+  teacherId   String   @db.Uuid
+  teacher     User     @relation("TeacherCourses", fields: [teacherId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lessons     Lesson[]
+}
+
+model Lesson {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId    String   @db.Uuid
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  videoUrl    String?
+  content     String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// -----------------------------------------------------------------------
+// 2. Gamification System
+// -----------------------------------------------------------------------
+model GamificationProfile {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @unique @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xp           Int      @default(0)
+  level        Int      @default(1)
+  currentStreak Int     @default(0)
+  longestStreak Int     @default(0)
+  lastActiveAt DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relationships
+  badges UserBadge[]
+}
+
+model Badge {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique // e.g. "FIRST_CHAT", "100_XP"
+  name        String
+  description String?
+  iconUrl     String?
+  createdAt   DateTime @default(now())
+
+  // Relationships
+  users UserBadge[]
+}
+
+model UserBadge {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId String   @db.Uuid
+  profile   GamificationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  badgeId   String   @db.Uuid
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  earnedAt  DateTime @default(now())
+
+  @@unique([profileId, badgeId])
+}
+
+// -----------------------------------------------------------------------
+// 3. AI Chat & RAG
+// -----------------------------------------------------------------------
+model ChatSession {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId     String   @db.Uuid
+  session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role          String   // "user" | "assistant" | "system"
+  content       String
+  isAudio       Boolean  @default(false)
+  audioUrl      String?
+  citations     Json?    // Array of sources used by AI
+  createdAt     DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------
+// 4. Quizzes & Practice
+// -----------------------------------------------------------------------
+model Quiz {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String
+  description String?
+  subject     String?
+  duration    Int?     // in minutes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions   QuizQuestion[]
+  attempts    QuizAttempt[]
+}
+
+model QuizQuestion {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quizId        String   @db.Uuid
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  content       String
+  options       Json     // Array of options
+  correctOption String
+  explanation   String?
+}
+
+model QuizAttempt {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quizId      String   @db.Uuid
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score       Int      @default(0)
+  totalQuestions Int   @default(0)
+  answers     Json     // User's answers
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+}
