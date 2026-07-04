@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+} from '@nestjs/common';
 import { CoursesService } from './courses.service';
 import { Prisma, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -28,7 +37,10 @@ export class CoursesController {
 
   @Patch(':id')
   @Roles(Role.TEACHER, Role.ADMIN)
-  update(@Param('id') id: string, @Body() updateCourseDto: Prisma.CourseUpdateInput) {
+  update(
+    @Param('id') id: string,
+    @Body() updateCourseDto: Prisma.CourseUpdateInput,
+  ) {
     return this.coursesService.update(id, updateCourseDto);
   }
 

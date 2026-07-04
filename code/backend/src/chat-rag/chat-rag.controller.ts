@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { ChatRagService } from './chat-rag.service';
 import { Prisma, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -18,7 +26,10 @@ export class ChatRagController {
   }
 
   @Post('session/:id/message')
-  sendMessage(@Param('id') sessionId: string, @Body() data: Prisma.ChatMessageUncheckedCreateInput) {
+  sendMessage(
+    @Param('id') sessionId: string,
+    @Body() data: Prisma.ChatMessageUncheckedCreateInput,
+  ) {
     return this.chatRagService.sendMessage(sessionId, data);
   }
 

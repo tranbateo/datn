@@ -15,9 +15,9 @@ export class UsersService {
           email,
           role,
           gamificationProfile: {
-            create: {} // creates default profile
-          }
-        }
+            create: {}, // creates default profile
+          },
+        },
       });
     }
     return user;
@@ -29,13 +29,13 @@ export class UsersService {
 
   async findAll() {
     return this.prisma.user.findMany({
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
   }
 
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
-      where: { id }
+      where: { id },
     });
     if (!user) throw new NotFoundException('User not found');
     return user;
@@ -44,13 +44,13 @@ export class UsersService {
   async update(id: string, data: Prisma.UserUpdateInput) {
     return this.prisma.user.update({
       where: { id },
-      data
+      data,
     });
   }
 
   async remove(id: string) {
     return this.prisma.user.delete({
-      where: { id }
+      where: { id },
     });
   }
 }

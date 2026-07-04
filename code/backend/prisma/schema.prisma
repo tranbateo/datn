@@ -38,6 +38,7 @@ model User {
   chatSessions        ChatSession[]
   quizAttempts        QuizAttempt[]
   courses             Course[]       @relation("TeacherCourses")
+  calendarEvents      CalendarEvent[]
 }
 
 // -----------------------------------------------------------------------
@@ -171,4 +172,23 @@ model QuizAttempt {
   answers     Json     // User's answers
   startedAt   DateTime @default(now())
   completedAt DateTime?
+}
+
+// -----------------------------------------------------------------------
+// 5. Calendar & Schedule (OCR & Manual)
+// -----------------------------------------------------------------------
+model CalendarEvent {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  type        String   // "CLASS", "EXAM", "ASSIGNMENT", "MEETING"
+  startTime   DateTime
+  endTime     DateTime
+  locationUrl String?
+  isCompleted Boolean  @default(false)
+  color       String?  // For frontend UI e.g., "border-blue-500"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

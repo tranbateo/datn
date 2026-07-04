@@ -1,6 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase';
 import { createClient } from '@supabase/supabase-js';
@@ -12,29 +12,31 @@ export class DocumentsService {
   constructor() {
     const client = createClient(
       process.env.SUPABASE_URL || '',
-      process.env.SUPABASE_PRIVATE_KEY || ''
+      process.env.SUPABASE_PRIVATE_KEY || '',
     );
-    
+
     const embeddings = new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GEMINI_API_KEY,
     });
 
     this.vectorStore = new SupabaseVectorStore(embeddings, {
       client,
-      tableName: "documents",
-      queryName: "match_documents",
+      tableName: 'documents',
+      queryName: 'match_documents',
     });
   }
 
   async processAndIngestDocument(file: Express.Multer.File, courseId: string) {
     try {
       // 1. Parse PDF using Blob
-      const blob = new Blob([new Uint8Array(file.buffer)], { type: 'application/pdf' });
+      const blob = new Blob([new Uint8Array(file.buffer)], {
+        type: 'application/pdf',
+      });
       const loader = new PDFLoader(blob);
       const rawDocs = await loader.load();
 
       // 2. Add metadata (courseId and filename)
-      const docsWithMetadata = rawDocs.map(doc => {
+      const docsWithMetadata = rawDocs.map((doc) => {
         doc.metadata = {
           ...doc.metadata,
           courseId,

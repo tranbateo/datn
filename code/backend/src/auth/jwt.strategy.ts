@@ -6,7 +6,8 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private configService: ConfigService) {
-    const secret = configService.get<string>('SUPABASE_JWT_SECRET') || 'defaultSecretForDev';
+    const secret =
+      configService.get<string>('SUPABASE_JWT_SECRET') || 'defaultSecretForDev';
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -16,18 +17,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    console.log("=== JWT VALIDATION ===");
-    console.log("Payload:", payload);
-    
+    console.log('=== JWT VALIDATION ===');
+    console.log('Payload:', payload);
+
     if (!payload.sub) {
-      console.error("Invalid payload:", payload);
+      console.error('Invalid payload:', payload);
       throw new UnauthorizedException('Invalid token payload');
     }
-    
-    return { 
-      userId: payload.sub, 
-      email: payload.email, 
-      role: payload.user_role || 'STUDENT'
+
+    return {
+      userId: payload.sub,
+      email: payload.email,
+      role: payload.user_role || 'STUDENT',
     };
   }
 }
