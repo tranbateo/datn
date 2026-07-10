@@ -4,7 +4,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Search, Edit, Paperclip, Send, Mic, ChevronLeft, Bot, User } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { fetchApi } from "@/lib/api-client";
+import { fetchApi, fetchApiStream } from "@/lib/api-client";
 import ReactMarkdown from "react-markdown";
 
 interface ChatMessage {
@@ -12,6 +12,37 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt?: string;
+}
+
+// Minimal types for SpeechRecognition
+interface SpeechRecognitionEvent {
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+interface SpeechRecognitionErrorEvent {
+  error: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => void) | null;
+  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => void) | null;
+  onend: ((this: SpeechRecognition, ev: Event) => void) | null;
+}
+
+interface WindowWithSpeech extends Window {
+  SpeechRecognition?: new () => SpeechRecognition;
+  webkitSpeechRecognition?: new () => SpeechRecognition;
 }
 
 export default function AITutorPage() {
@@ -32,9 +63,53 @@ export default function AITutorPage() {
     scrollToBottom();
   }, [messages, loading]);
 
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  useEffect(() => {
+    // Initialize SpeechRecognition if available
+    if (typeof window !== 'undefined') {
+      const windowWithSpeech = window as unknown as WindowWithSpeech;
+      const SpeechRecognitionConstructor = windowWithSpeech.SpeechRecognition || windowWithSpeech.webkitSpeechRecognition;
+      if (SpeechRecognitionConstructor) {
+        recognitionRef.current = new SpeechRecognitionConstructor();
+        recognitionRef.current.continuous = false;
+        recognitionRef.current.interimResults = false;
+        recognitionRef.current.lang = 'vi-VN'; // Vietnamese
+
+        recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+          const transcript = event.results[0][0].transcript;
+          setInputText(prev => prev ? prev + ' ' + transcript : transcript);
+        };
+
+        recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
+          console.error("Speech recognition error", event.error);
+          setIsRecording(false);
+        };
+
+        recognitionRef.current.onend = () => {
+          setIsRecording(false);
+        };
+      }
+    }
+  }, []);
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop();
+    } else {
+      try {
+        recognitionRef.current?.start();
+        setIsRecording(true);
+      } catch (e) {
+        console.error("Failed to start recording", e);
+      }
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!inputText.trim() || loading) return;
-
+// ... (rest of handleSendMessage remains unchanged)
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -44,6 +119,15 @@ export default function AITutorPage() {
     setMessages(prev => [...prev, userMessage]);
     setInputText("");
     setLoading(true);
+
+    const aiMsgId = (Date.now() + 1).toString();
+
+    // Add empty AI message that will be filled by stream
+    setMessages(prev => [...prev, {
+      id: aiMsgId,
+      role: 'assistant',
+      content: "",
+    }]);
 
     try {
       let currentSessionId = sessionId;
@@ -60,8 +144,8 @@ export default function AITutorPage() {
         setSessionId(session.id);
       }
 
-      // Send the message to the backend
-      const response = await fetchApi(`/chat/session/${currentSessionId}/message`, {
+      // Fetch the stream
+      const response = await fetchApiStream(`/chat/session/${currentSessionId}/message-stream`, {
         method: 'POST',
         body: JSON.stringify({
           content: userMessage.content,
@@ -69,20 +153,48 @@ export default function AITutorPage() {
         }),
       });
 
-      if (response && response.aiMsg) {
-        setMessages(prev => [...prev, {
-          id: response.aiMsg.id,
-          role: 'assistant',
-          content: response.aiMsg.content,
-        }]);
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder("utf-8");
+
+      if (!reader) throw new Error("No reader available");
+
+      let done = false;
+      let aiText = "";
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.content) {
+                  aiText += data.content;
+                  setMessages(prev => 
+                    prev.map(msg => 
+                      msg.id === aiMsgId ? { ...msg, content: aiText } : msg
+                    )
+                  );
+                }
+              } catch (e) {
+                // Ignore parse errors for partial chunks
+              }
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: "Xin lỗi, đã xảy ra lỗi trong quá trình kết nối với AI. Vui lòng thử lại sau.",
-      }]);
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === aiMsgId ? { ...msg, content: "Xin lỗi, đã xảy ra lỗi trong quá trình kết nối với AI. Vui lòng thử lại sau." } : msg
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -220,15 +332,22 @@ export default function AITutorPage() {
           <div className="w-full bg-white dark:bg-[#0f111a] border-t border-gray-100 dark:border-gray-800 pt-4 pb-4 px-4 flex-shrink-0">
             <div className="max-w-3xl mx-auto">
               <div className="flex items-end gap-2 bg-gray-50 dark:bg-[#1a1d2d] border border-gray-200 dark:border-gray-700 rounded-3xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
-                <button className="p-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors flex-shrink-0">
-                  <Paperclip className="w-5 h-5" />
+                <button 
+                  onClick={toggleRecording}
+                  className={`p-3 rounded-full flex-shrink-0 transition-colors ${
+                    isRecording 
+                      ? 'bg-rose-100 text-rose-500 dark:bg-rose-900/30' 
+                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <Mic className={`w-5 h-5 ${isRecording ? 'animate-pulse' : ''}`} />
                 </button>
                 <textarea 
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={handleKeyDown}
                   rows={1}
-                  placeholder={t('askQuestion', { fallback: 'Hỏi gia sư AI bất cứ điều gì...' })} 
+                  placeholder={isRecording ? 'Đang nghe...' : t('askQuestion', { fallback: 'Hỏi gia sư AI bất cứ điều gì...' })} 
                   className="w-full max-h-32 bg-transparent border-none focus:ring-0 resize-none py-3 text-[15px] text-gray-900 dark:text-white placeholder-gray-400 overflow-y-auto"
                   style={{ minHeight: '48px' }}
                 />

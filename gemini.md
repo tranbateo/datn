@@ -56,6 +56,7 @@ Tài liệu này chứa bối cảnh và hướng dẫn dành cho AI (Gemini) kh
   2. **Code chất lượng cao**: Viết code sạch, dễ đọc, tuân thủ nguyên tắc SOLID, DRY. Luôn chú trọng xử lý ngoại lệ (Error Handling), bảo mật dữ liệu và tối ưu hiệu năng (đặc biệt là tốc độ phản hồi của AI và OCR).
   3. **Tích hợp AI linh hoạt**: Khi xử lý RAG và Chat, luôn thiết kế hệ thống linh hoạt qua LangChain để có thể dễ dàng cấu hình và chuyển đổi giữa các LLM (OpenAI, Gemini, Claude, DeepSeek).
   4. **Chủ động đưa ra giải pháp**: Khi nhận yêu cầu, hãy tự phân tích, đề xuất kế hoạch triển khai (Implementation Plan) rõ ràng trước khi thực hiện, và chủ động cài đặt các dependencies cần thiết.
+  5. **Tuân thủ ESLint & Husky**: Dự án đã được cấu hình ESLint và Husky. Khi viết code, hãy đảm bảo mã nguồn tuân thủ các quy tắc của ESLint và vượt qua được các pre-commit hooks của Husky. Luôn chủ động kiểm tra và sửa lỗi linter trước khi hoàn thành.
 
 ---
 **Ghi chú**: Hãy luôn đọc và đối chiếu với file `gemini.md` này như một kim chỉ nam (System Context) cho mọi tác vụ lập trình và thiết kế trong dự án.
