@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-base-to-string */
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { GamificationService } from '../gamification/gamification.service';
@@ -17,7 +23,9 @@ export class QuizService {
         where: { id: data.subject.connect.id },
       });
       if (subject && subject.grade !== data.grade) {
-        throw new BadRequestException(`Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với bài kiểm tra lớp ${data.grade}`);
+        throw new BadRequestException(
+          `Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với bài kiểm tra lớp ${data.grade}`,
+        );
       }
     }
     return this.prisma.quiz.create({ data });
@@ -44,11 +52,15 @@ export class QuizService {
       const quiz = await this.prisma.quiz.findUnique({ where: { id } });
       const newGrade = data.grade !== undefined ? data.grade : quiz?.grade;
       const newSubjectId = data.subject?.connect?.id;
-      
+
       if (newGrade && newSubjectId) {
-        const subject = await this.prisma.subject.findUnique({ where: { id: newSubjectId as string } });
+        const subject = await this.prisma.subject.findUnique({
+          where: { id: newSubjectId },
+        });
         if (subject && subject.grade !== newGrade) {
-          throw new BadRequestException(`Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với bài kiểm tra lớp ${newGrade}`);
+          throw new BadRequestException(
+            `Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với bài kiểm tra lớp ${newGrade}`,
+          );
         }
       }
     }

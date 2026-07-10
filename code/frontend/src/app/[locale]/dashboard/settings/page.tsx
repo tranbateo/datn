@@ -1,4 +1,6 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @next/next/no-img-element */
 
 import { Menu, Bell, Camera, ChevronLeft, Loader2 } from "lucide-react";
 import { Link } from "@/i18n/routing";

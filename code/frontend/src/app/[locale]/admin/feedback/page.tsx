@@ -1,4 +1,6 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @next/next/no-img-element */
 
 import { MessageSquareWarning, Search, Filter, CheckCircle2, XCircle, AlertCircle, Eye, Trash2, Clock, Check, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";

@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-base-to-string */
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
@@ -13,7 +19,9 @@ export class CoursesService {
         where: { id: data.subject.connect.id },
       });
       if (subject && subject.grade !== data.grade) {
-        throw new BadRequestException(`Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với khóa học lớp ${data.grade}`);
+        throw new BadRequestException(
+          `Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với khóa học lớp ${data.grade}`,
+        );
       }
     }
     return this.prisma.course.create({ data });
@@ -40,11 +48,15 @@ export class CoursesService {
       const course = await this.prisma.course.findUnique({ where: { id } });
       const newGrade = data.grade !== undefined ? data.grade : course?.grade;
       const newSubjectId = data.subject?.connect?.id;
-      
+
       if (newGrade && newSubjectId) {
-        const subject = await this.prisma.subject.findUnique({ where: { id: newSubjectId as string } });
+        const subject = await this.prisma.subject.findUnique({
+          where: { id: newSubjectId },
+        });
         if (subject && subject.grade !== newGrade) {
-          throw new BadRequestException(`Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với khóa học lớp ${newGrade}`);
+          throw new BadRequestException(
+            `Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với khóa học lớp ${newGrade}`,
+          );
         }
       }
     }

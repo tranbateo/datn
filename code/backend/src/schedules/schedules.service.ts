@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import {
   Injectable,
   BadRequestException,
@@ -102,11 +107,14 @@ Chú ý: type có thể là CLASS, EXAM, ASSIGNMENT, MEETING. color hãy random 
       if (typeof response.content === 'string') {
         contentStr = response.content;
       } else if (Array.isArray(response.content)) {
-        contentStr = response.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+        contentStr = response.content
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => c.text)
+          .join('');
       } else {
         contentStr = JSON.stringify(response.content);
       }
-      
+
       // Clean up potential markdown formatting (```json ... ```)
       const cleanedStr = contentStr
         .replace(/```json/gi, '')

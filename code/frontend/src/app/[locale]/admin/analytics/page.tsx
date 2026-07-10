@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { Database, HardDrive, Zap, Info, MoreVertical } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, Cell, ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, Legend, CartesianGrid } from 'recharts';

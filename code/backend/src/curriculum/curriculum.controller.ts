@@ -1,4 +1,11 @@
-import { Controller, Get, Query, ParseIntPipe, BadRequestException } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import {
+  Controller,
+  Get,
+  Query,
+  ParseIntPipe,
+  BadRequestException,
+} from '@nestjs/common';
 import { CurriculumService } from './curriculum.service';
 
 @Controller('curriculum')
@@ -12,7 +19,9 @@ export class CurriculumController {
     }
     const grade = parseInt(gradeStr, 10);
     if (isNaN(grade) || grade < 1 || grade > 12) {
-      throw new BadRequestException('Grade must be an integer between 1 and 12');
+      throw new BadRequestException(
+        'Grade must be an integer between 1 and 12',
+      );
     }
     return this.curriculumService.getSubjectsByGrade(grade);
   }

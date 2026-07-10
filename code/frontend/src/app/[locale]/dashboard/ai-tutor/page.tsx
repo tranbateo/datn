@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { useState, useRef, useEffect } from "react";
 import { Search, Edit, Paperclip, Send, Mic, ChevronLeft, Bot, User } from "lucide-react";

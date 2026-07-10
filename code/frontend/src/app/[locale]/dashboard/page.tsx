@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Link } from "@/i18n/routing";

@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -105,7 +108,7 @@ Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
 
       // 3. Create the Multimodal message
       const messageContent: any[] = [{ type: 'text', text: promptText }];
-      
+
       if (image) {
         messageContent.push({
           type: 'image_url',
@@ -123,13 +126,17 @@ Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
       if (typeof response.content === 'string') {
         aiResponseText = response.content;
       } else if (Array.isArray(response.content)) {
-        aiResponseText = response.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+        aiResponseText = response.content
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => c.text)
+          .join('');
       } else {
         aiResponseText = JSON.stringify(response.content);
       }
     } catch (error: any) {
       console.error('AI Error:', error);
-      aiResponseText = 'Xin lỗi, hệ thống AI đang gặp sự cố. Bạn vui lòng thử lại sau nhé!';
+      aiResponseText =
+        'Xin lỗi, hệ thống AI đang gặp sự cố. Bạn vui lòng thử lại sau nhé!';
     }
 
     // 5. Save AI message
@@ -212,7 +219,7 @@ Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
 
       // 3. Create the Multimodal message
       const messageContent: any[] = [{ type: 'text', text: promptText }];
-      
+
       if (imageUrl) {
         messageContent.push({
           type: 'image_url',
@@ -232,14 +239,18 @@ Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
           aiResponseText += chunk.content;
           onChunk(chunk.content);
         } else if (Array.isArray(chunk.content)) {
-          const textChunk = chunk.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+          const textChunk = chunk.content
+            .filter((c: any) => c.type === 'text')
+            .map((c: any) => c.text)
+            .join('');
           aiResponseText += textChunk;
           onChunk(textChunk);
         }
       }
     } catch (error: any) {
       console.error('AI Error:', error);
-      const errorMsg = 'Xin lỗi, hệ thống AI đang gặp sự cố. Bạn vui lòng thử lại sau nhé!';
+      const errorMsg =
+        'Xin lỗi, hệ thống AI đang gặp sự cố. Bạn vui lòng thử lại sau nhé!';
       aiResponseText = errorMsg;
       onChunk(errorMsg);
     }

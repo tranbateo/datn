@@ -15,7 +15,10 @@ export class NotificationsService {
         });
         this.logger.log('Firebase Admin initialized');
       } catch (error) {
-        this.logger.warn('Failed to initialize Firebase Admin. Push notifications will not work without proper credentials.', error);
+        this.logger.warn(
+          'Failed to initialize Firebase Admin. Push notifications will not work without proper credentials.',
+          error,
+        );
       }
     }
   }
@@ -29,7 +32,9 @@ export class NotificationsService {
     // 2. Fetch user's device token
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.deviceToken) {
-      this.logger.debug(`User ${userId} has no device token. Notification saved to DB only.`);
+      this.logger.debug(
+        `User ${userId} has no device token. Notification saved to DB only.`,
+      );
       return;
     }
 
@@ -64,7 +69,9 @@ export class NotificationsService {
     });
 
     if (upcomingEvents.length > 0) {
-      this.logger.log(`Found ${upcomingEvents.length} upcoming events. Sending notifications...`);
+      this.logger.log(
+        `Found ${upcomingEvents.length} upcoming events. Sending notifications...`,
+      );
     }
 
     for (const event of upcomingEvents) {

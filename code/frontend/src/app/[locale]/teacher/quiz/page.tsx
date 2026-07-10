@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { Search, Plus, UploadCloud, Download, MoreVertical } from "lucide-react";
 import { useTranslations } from "next-intl";

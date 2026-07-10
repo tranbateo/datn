@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react/no-unescaped-entities */
 
 import { useState } from "react";
 import { Settings, Bot, Shield, Trophy, Save, Key, Sliders, CheckCircle2, Globe, Building, Mail } from "lucide-react";

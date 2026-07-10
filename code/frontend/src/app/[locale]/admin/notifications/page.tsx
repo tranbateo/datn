@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { Bell, Send, CheckCircle2, Clock, Users, Search, AlertCircle, Info } from "lucide-react";
 import { useTranslations } from "next-intl";

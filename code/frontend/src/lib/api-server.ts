@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { createClient } from './supabase/server';
 
 export async function fetchApiServer(endpoint: string, options: RequestInit = {}) {

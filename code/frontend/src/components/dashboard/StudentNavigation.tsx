@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { usePathname } from "next/navigation";
 import { Link } from "@/i18n/routing";

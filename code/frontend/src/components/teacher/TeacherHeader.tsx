@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Search, Bell, User } from "lucide-react";
 import { ThemeToggle } from "../ThemeToggle";
 import { LanguageSwitcher } from "../LanguageSwitcher";

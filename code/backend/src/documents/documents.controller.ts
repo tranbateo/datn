@@ -36,7 +36,7 @@ export class DocumentsController {
     }
 
     const fileBase64 = file.buffer.toString('base64');
-    
+
     await this.documentQueue.add('process-document', {
       fileBase64,
       originalname: file.originalname,
@@ -44,6 +44,9 @@ export class DocumentsController {
       courseId,
     });
 
-    throw new HttpException('Document uploaded and is being processed in the background.', HttpStatus.ACCEPTED);
+    throw new HttpException(
+      'Document uploaded and is being processed in the background.',
+      HttpStatus.ACCEPTED,
+    );
   }
 }

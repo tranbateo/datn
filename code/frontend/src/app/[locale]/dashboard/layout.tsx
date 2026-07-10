@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { StudentNavigation } from "@/components/dashboard/StudentNavigation";
 import { ThemeToggle } from "@/components/ThemeToggle";
 

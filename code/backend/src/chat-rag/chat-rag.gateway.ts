@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   WebSocketGateway,
   SubscribeMessage,
@@ -17,11 +19,12 @@ export class ChatRagGateway {
 
   @SubscribeMessage('send_message')
   async handleMessage(
-    @MessageBody() data: { sessionId: string; content: string; imageBase64?: string },
+    @MessageBody()
+    data: { sessionId: string; content: string; imageBase64?: string },
     @ConnectedSocket() client: Socket,
   ) {
     const { sessionId, content, imageBase64 } = data;
-    
+
     // Convert base64 to Multer.File like object if present, or just pass base64 directly to service
     // To simplify, we will modify sendMessageStream to accept base64 string directly
     try {

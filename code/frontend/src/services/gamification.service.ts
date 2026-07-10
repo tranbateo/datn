@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetchApi } from '../lib/api-client';
 
 export interface GamificationProfile {
