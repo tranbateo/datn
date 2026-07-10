@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useState } from "react";
 import { Link } from "@/i18n/routing";
 import { GraduationCap, ArrowRight, Bot, Sparkles, ScanLine, Trophy } from "lucide-react";
@@ -46,7 +47,7 @@ export default function WelcomePage() {
         
         {/* Header / Skip */}
         <div className="flex items-center justify-between p-6 z-10 relative">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Link href={APP_ROUTES.HOME} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <GraduationCap className="w-6 h-6 text-primary" />
             <span className="font-bold text-gray-900 dark:text-white">AI Tutor</span>
           </Link>
@@ -92,11 +93,11 @@ export default function WelcomePage() {
               </p>
               
               <div className="w-full space-y-3">
-                <Link href="/register" className="flex items-center justify-center w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 group">
+                <Link href={APP_ROUTES.REGISTER} className="flex items-center justify-center w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 group">
                   {t('register')}
                   <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                 </Link>
-                <Link href="/login" className="flex items-center justify-center w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 py-3.5 rounded-2xl font-bold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                <Link href={APP_ROUTES.LOGIN} className="flex items-center justify-center w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 py-3.5 rounded-2xl font-bold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   {t('login')}
                 </Link>
               </div>

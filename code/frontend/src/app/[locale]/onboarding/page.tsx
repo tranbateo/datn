@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useState } from "react";
 import { Link, useRouter } from "@/i18n/routing";
 import { Camera, User, ArrowRight, ArrowLeft } from "lucide-react";
@@ -19,7 +20,7 @@ export default function OnboardingPage() {
       setStep(2);
     } else {
       // Complete onboarding and go to dashboard
-      router.push("/dashboard");
+      router.push(APP_ROUTES.DASHBOARD);
     }
   };
 
@@ -60,7 +61,7 @@ export default function OnboardingPage() {
         {step === 1 ? (
           // STEP 1: Basic Info
           <div className="flex-1 flex flex-col p-8 animate-in slide-in-from-right-8 duration-500 relative">
-            <Link href="/dashboard" className="absolute top-8 left-8 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+            <Link href={APP_ROUTES.DASHBOARD} className="absolute top-8 left-8 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <div className="text-center mb-8">

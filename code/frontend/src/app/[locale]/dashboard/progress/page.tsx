@@ -69,7 +69,7 @@ export default function ProgressPage() {
             
             <div>
               <div className="flex justify-between items-end mb-2 text-sm font-bold">
-                <span>{profile?.xp || 0} XP</span>
+                <span>{profile?.currentXp || 0} XP</span>
                 <span className="text-indigo-200">
                   {/* Fake next level logic just for UI display if backend didn't send */}
                   {Math.pow(profile?.level || 1, 2) * 100} XP
@@ -78,7 +78,7 @@ export default function ProgressPage() {
               <div className="w-full h-4 bg-black/20 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-gradient-to-r from-yellow-300 to-yellow-500 rounded-full"
-                  style={{ width: `${Math.min(100, ((profile?.xp || 0) / (Math.pow(profile?.level || 1, 2) * 100)) * 100)}%` }}
+                  style={{ width: `${Math.min(100, ((profile?.currentXp || 0) / (Math.pow(profile?.level || 1, 2) * 100)) * 100)}%` }}
                 />
               </div>
             </div>
@@ -90,10 +90,10 @@ export default function ProgressPage() {
           <div className="w-20 h-20 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center mb-4">
             <Flame className="w-10 h-10 text-orange-500 fill-orange-500 animate-pulse" />
           </div>
-          <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{profile?.currentStreak || 0}</h3>
+          <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{profile?.streakDays || 0}</h3>
           <p className="text-gray-500 dark:text-gray-400 font-medium mb-3">Ngày học liên tiếp</p>
           <div className="text-sm bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 px-3 py-1 rounded-full font-bold">
-            Kỷ lục: {profile?.longestStreak || 0} ngày
+            Kỷ lục: {profile?.streakDays || 0} ngày
           </div>
         </div>
       </div>
@@ -109,7 +109,7 @@ export default function ProgressPage() {
         
         <div className="space-y-3">
           {leaderboard.map((entry, index) => {
-            const isCurrentUser = entry.userId === profile?.userId;
+            const isCurrentUser = false; // We don't have userId on GamificationProfile
             
             return (
               <div 

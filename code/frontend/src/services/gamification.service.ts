@@ -1,3 +1,4 @@
+import { API_ENDPOINTS } from '@/constants/api';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetchApi } from '../lib/api-client';
 
@@ -22,11 +23,11 @@ export const gamificationService = {
     currentStreak: number;
     user: { fullName: string; avatarUrl: string; email: string };
   }[]> {
-    return fetchApi(`/gamification/leaderboard?limit=${limit}`);
+    return fetchApi(API_ENDPOINTS.GAMIFICATION.LEADERBOARD(limit));
   },
   
   addXp: (amount: number, reason: string): Promise<any> => {
-    return fetchApi('/gamification/add-xp', {
+    return fetchApi(API_ENDPOINTS.GAMIFICATION.ADD_XP, {
       method: 'POST',
       body: JSON.stringify({ amount, reason }),
     });

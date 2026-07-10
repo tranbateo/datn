@@ -1,4 +1,6 @@
 "use client";
+
+import { APP_ROUTES } from '@/constants/routes';
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { useState, use } from 'react';
@@ -24,7 +26,7 @@ export default function QuizPage({ params }: { params: Promise<{ id: string }> }
   };
 
   const handleClose = () => {
-    router.push('/dashboard/practice');
+    router.push(APP_ROUTES.PRACTICE);
   };
 
   return (

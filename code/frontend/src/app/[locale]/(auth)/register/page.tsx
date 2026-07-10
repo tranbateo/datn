@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/routing';
@@ -72,7 +73,7 @@ export default function RegisterPage() {
         <p className="text-gray-500 dark:text-gray-400 mb-8">
           Tài khoản của bạn đã được kích hoạt thành công. Vui lòng đăng nhập lại để sử dụng hệ thống.
         </p>
-        <Link href="/login" className="w-full flex justify-center bg-primary hover:bg-primary-hover text-white py-3 rounded-xl text-sm font-semibold transition-colors">
+        <Link href={APP_ROUTES.LOGIN} className="w-full flex justify-center bg-primary hover:bg-primary-hover text-white py-3 rounded-xl text-sm font-semibold transition-colors">
           Đến trang Đăng nhập
         </Link>
       </div>
@@ -93,7 +94,7 @@ export default function RegisterPage() {
             Vui lòng kiểm tra hộp thư đến (hoặc Spam) và click vào link để đăng nhập.
           </p>
         </div>
-        <Link href="/login" className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 py-3 rounded-xl text-sm font-semibold transition-colors mt-4">
+        <Link href={APP_ROUTES.LOGIN} className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 py-3 rounded-xl text-sm font-semibold transition-colors mt-4">
           <ArrowRight className="w-4 h-4" /> Quay lại đăng nhập
         </Link>
       </div>
@@ -274,7 +275,7 @@ export default function RegisterPage() {
 
       <p className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
         {t('alreadyAccount')} {' '}
-        <Link href="/login" className="font-semibold text-primary hover:text-primary-hover transition-colors">
+        <Link href={APP_ROUTES.LOGIN} className="font-semibold text-primary hover:text-primary-hover transition-colors">
           {t('login')}
         </Link>
       </p>

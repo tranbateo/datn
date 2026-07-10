@@ -42,12 +42,12 @@ export default function PracticeScreen() {
 
         <ThemedView style={styles.placeholderContainer}>
           <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="defaultSemiBold">Toán học (Lớp 12)</ThemedText>
+            <ThemedText type="smallBold">Bài kiểm tra Toán học</ThemedText>
             <ThemedText type="small" style={{ marginTop: Spacing.two }}>2 bài kiểm tra</ThemedText>
           </ThemedView>
           
           <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="defaultSemiBold">Vật lý (Lớp 12)</ThemedText>
+            <ThemedText type="smallBold">Vật lý (Lớp 12)</ThemedText>
             <ThemedText type="small" style={{ marginTop: Spacing.two }}>1 bài kiểm tra</ThemedText>
           </ThemedView>
         </ThemedView>

@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { quizService, Quiz } from "@/services/quiz.service";
@@ -86,7 +87,7 @@ export default function TakeQuizPage() {
     return (
       <div className="p-8 text-center">
         <h1 className="text-2xl font-bold">Không tìm thấy bài kiểm tra</h1>
-        <Link href="/dashboard/practice" className="text-indigo-600 mt-4 inline-block hover:underline">Quay lại</Link>
+        <Link href={APP_ROUTES.PRACTICE} className="text-indigo-600 mt-4 inline-block hover:underline">Quay lại</Link>
       </div>
     );
   }
@@ -102,7 +103,7 @@ export default function TakeQuizPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 bg-white dark:bg-gray-900 p-4 sm:p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 sticky top-4 z-10">
         <div>
-          <Link href="/dashboard/practice" className="inline-flex items-center text-sm text-gray-500 hover:text-indigo-600 mb-2 transition-colors">
+          <Link href={APP_ROUTES.PRACTICE} className="inline-flex items-center text-sm text-gray-500 hover:text-indigo-600 mb-2 transition-colors">
             <ArrowLeft className="w-4 h-4 mr-1" /> Trở lại danh sách
           </Link>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{quiz.title}</h1>

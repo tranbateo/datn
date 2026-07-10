@@ -4,6 +4,8 @@ import { ThemedView } from '@/components/themed-view';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, useEffect } from 'react';
 
+import { API_ENDPOINTS } from '@/constants/api';
+
 const API_URL = 'http://192.168.100.36:3001';
 
 export default function ScheduleScreen() {
@@ -13,7 +15,7 @@ export default function ScheduleScreen() {
 
   const fetchEvents = async () => {
     try {
-      const response = await fetch(`${API_URL}/calendar`);
+      const response = await fetch(`${API_URL}${API_ENDPOINTS.CALENDAR.LIST}`);
       if (response.ok) {
         const data = await response.json();
         setEvents(data);
@@ -56,7 +58,7 @@ export default function ScheduleScreen() {
         type,
       } as any);
 
-      const res = await fetch(`${API_URL}/calendar/ocr`, {
+      const res = await fetch(`${API_URL}${API_ENDPOINTS.CALENDAR.OCR}`, {
         method: 'POST',
         body: formData,
         headers: {
@@ -71,7 +73,7 @@ export default function ScheduleScreen() {
       if (parsedEvents && parsedEvents.length > 0) {
         // Save them sequentially for simplicity
         for (const ev of parsedEvents) {
-          await fetch(`${API_URL}/calendar`, {
+          await fetch(`${API_URL}${API_ENDPOINTS.CALENDAR.LIST}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ev)

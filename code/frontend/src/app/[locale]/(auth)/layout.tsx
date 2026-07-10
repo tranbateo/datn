@@ -1,3 +1,4 @@
+import { APP_ROUTES } from '@/constants/routes';
 import { Link } from "@/i18n/routing";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -13,7 +14,7 @@ export default function AuthLayout({
       <div className="flex flex-col justify-between p-8 md:p-12 lg:p-24">
         {/* Header (Logo + Controls) */}
         <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
+          <Link href={APP_ROUTES.HOME} className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-lg">E</span>
             </div>

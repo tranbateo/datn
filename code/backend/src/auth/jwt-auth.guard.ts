@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable, ExecutionContext } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -18,7 +19,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return {
         id: 'user-mock-id', // Sẽ map với một user có thật sau, hoặc chỉ dùng để pass guard
         userId: 'student1@test.com', // Dùng email tạm để query hoặc có thể để trống tuỳ logic
-        role: 'STUDENT',
+        role: Role.STUDENT,
       };
     }
     return user;

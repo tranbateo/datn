@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/routing';
@@ -103,7 +104,7 @@ export default function LoginPage() {
             <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20 bg-white dark:bg-gray-800 dark:border-gray-600" />
             <span className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-300 transition-colors">{t('rememberMe')}</span>
           </label>
-          <Link href="/forgot-password" className="text-sm font-medium text-primary hover:text-primary-hover transition-colors">
+          <Link href={APP_ROUTES.FORGOT_PASSWORD} className="text-sm font-medium text-primary hover:text-primary-hover transition-colors">
             {t('forgotPassword')}
           </Link>
         </div>
@@ -123,7 +124,7 @@ export default function LoginPage() {
 
       <p className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
         {t('noAccount')} {' '}
-        <Link href="/register" className="font-semibold text-primary hover:text-primary-hover transition-colors">
+        <Link href={APP_ROUTES.REGISTER} className="font-semibold text-primary hover:text-primary-hover transition-colors">
           {t('signup')}
         </Link>
       </p>

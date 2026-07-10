@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { Check } from 'lucide-react';
@@ -9,7 +10,7 @@ export default function AuthSuccessPage() {
   const router = useRouter();
 
   const handleContinue = () => {
-    router.push('/dashboard');
+    router.push(APP_ROUTES.DASHBOARD);
   };
 
   return (

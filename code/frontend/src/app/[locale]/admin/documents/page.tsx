@@ -1,5 +1,6 @@
 "use client";
 
+import { API_ENDPOINTS } from '@/constants/api';
 import { Search, Upload, FolderSearch, FileText, File as FileIcon, Trash2, RefreshCw, CheckCircle2, Loader2, AlertCircle, Clock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
@@ -15,7 +16,7 @@ export default function ResourceLibrary() {
   const loadDocs = async () => {
     try {
       const { fetchApi } = await import('@/lib/api-client');
-      const data = await fetchApi('/documents');
+      const data = await fetchApi(API_ENDPOINTS.DOCUMENTS.LIST);
       setDocuments(data);
     } catch (e) {
       console.error(e);
@@ -37,7 +38,7 @@ export default function ResourceLibrary() {
       setUploading(true);
       const { fetchApi } = await import('@/lib/api-client');
       // Fetch course or use placeholder
-      const courses = await fetchApi('/courses');
+      const courses = await fetchApi(API_ENDPOINTS.COURSES.LIST);
       let courseId = '';
       if (courses && courses.length > 0) {
         courseId = courses[0].id;
@@ -49,7 +50,7 @@ export default function ResourceLibrary() {
       const formData = new FormData();
       formData.append('file', file);
       
-      await fetchApi(`/documents/upload/${courseId}`, {
+      await fetchApi(API_ENDPOINTS.DOCUMENTS.UPLOAD(courseId), {
         method: 'POST',
         body: formData,
       });

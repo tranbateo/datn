@@ -58,7 +58,7 @@ export default function ProgressScreen() {
             </View>
           </ThemedView>
 
-          <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Bảng xếp hạng (Sắp tới)</ThemedText>
+          <ThemedText type="smallBold" style={styles.sectionTitle}>Bảng xếp hạng (Sắp tới)</ThemedText>
           <ThemedView type="backgroundElement" style={styles.card}>
             <ThemedText type="small" themeColor="textSecondary">
               Chức năng bảng xếp hạng trên mobile đang được phát triển...

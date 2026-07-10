@@ -1,4 +1,6 @@
 "use client";
+
+import { API_ENDPOINTS } from '@/constants/api';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState } from "react";
@@ -65,7 +67,7 @@ export default function TeacherCourseManagement() {
   useEffect(() => {
     async function loadCourses() {
       try {
-        const data = await fetchApi('/courses');
+        const data = await fetchApi(API_ENDPOINTS.COURSES.LIST);
         if (data && data.length > 0) {
           const formatted = data.map((c: any) => ({
             id: c.id,
@@ -236,7 +238,7 @@ function CourseRow({ course }: { course: any }) {
       const formData = new FormData();
       formData.append('file', file);
       
-      await fetchApi(`/documents/upload/${course.id}`, {
+      await fetchApi(API_ENDPOINTS.DOCUMENTS.UPLOAD(course.id), {
         method: 'POST',
         body: formData,
       });

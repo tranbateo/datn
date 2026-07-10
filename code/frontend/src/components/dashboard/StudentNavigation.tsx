@@ -1,4 +1,6 @@
 "use client";
+
+import { APP_ROUTES } from '@/constants/routes';
 /* eslint-disable @next/next/no-img-element */
 
 import { usePathname } from "next/navigation";
@@ -61,7 +63,7 @@ export function StudentNavigation() {
           {showProfileMenu && (
             <div className="absolute top-12 left-0 w-48 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden py-2 animate-in fade-in zoom-in-95 duration-200">
               <Link 
-                href="/onboarding" 
+                href={APP_ROUTES.ONBOARDING} 
                 onClick={() => setShowProfileMenu(false)}
                 className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
@@ -119,7 +121,7 @@ export function StudentNavigation() {
 
       {/* --- DESKTOP / TABLET SIDEBAR --- */}
       <aside className="hidden md:flex flex-col w-64 h-screen fixed left-0 top-0 z-50 bg-white dark:bg-card-bg border-r border-gray-100 dark:border-card-border overflow-y-auto">
-        <Link href="/" className="p-6 flex items-center gap-3 hover:opacity-80 transition-opacity">
+        <Link href={APP_ROUTES.HOME} className="p-6 flex items-center gap-3 hover:opacity-80 transition-opacity">
           <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white">
             <Bot className="w-6 h-6" />
           </div>
@@ -151,7 +153,7 @@ export function StudentNavigation() {
 
         {/* User Profile Snippet in Sidebar */}
         <div className="p-4 mt-auto border-t border-gray-100 dark:border-gray-800">
-          <Link href="/onboarding" className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors border border-transparent dark:border-gray-800">
+          <Link href={APP_ROUTES.ONBOARDING} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors border border-transparent dark:border-gray-800">
             <img
               src="https://api.dicebear.com/7.x/avataaars/svg?seed=Minh"
               alt="Avatar"

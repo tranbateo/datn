@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useState } from 'react';
 import { Link } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
@@ -89,7 +90,7 @@ export default function AdminLoginPage() {
         </form>
         
         <div className="mt-8 text-center">
-          <Link href="/" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+          <Link href={APP_ROUTES.HOME} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
             {t('returnPublic')}
           </Link>
         </div>

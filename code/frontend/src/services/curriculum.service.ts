@@ -1,3 +1,4 @@
+import { API_ENDPOINTS } from '@/constants/api';
 import { fetchApi } from '../lib/api-client';
 
 export interface Subject {
@@ -9,6 +10,6 @@ export interface Subject {
 
 export const curriculumService = {
   getSubjectsByGrade: (grade: number): Promise<Subject[]> => {
-    return fetchApi(`/curriculum/subjects?grade=${grade}`);
+    return fetchApi(API_ENDPOINTS.CURRICULUM.SUBJECTS(grade));
   }
 };

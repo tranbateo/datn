@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { ChatRagService } from './chat-rag.service';
 import { Server, Socket } from 'socket.io';
+import { ChatEvent } from './chat-events.enum';
 
 @WebSocketGateway({ cors: true })
 export class ChatRagGateway {
@@ -17,7 +18,7 @@ export class ChatRagGateway {
 
   constructor(private readonly chatRagService: ChatRagService) {}
 
-  @SubscribeMessage('send_message')
+  @SubscribeMessage(ChatEvent.SEND_MESSAGE)
   async handleMessage(
     @MessageBody()
     data: { sessionId: string; content: string; imageBase64?: string },
@@ -33,12 +34,12 @@ export class ChatRagGateway {
         content,
         imageBase64,
         (chunk) => {
-          client.emit('message_chunk', { sessionId, chunk });
+          client.emit(ChatEvent.MESSAGE_CHUNK, { sessionId, chunk });
         },
       );
-      client.emit('message_complete', { sessionId });
+      client.emit(ChatEvent.MESSAGE_COMPLETE, { sessionId });
     } catch (e: any) {
-      client.emit('message_error', { sessionId, error: e.message });
+      client.emit(ChatEvent.MESSAGE_ERROR, { sessionId, error: e.message });
     }
   }
 }

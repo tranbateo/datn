@@ -1,4 +1,6 @@
 "use client";
+
+import { APP_ROUTES } from '@/constants/routes';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @next/next/no-img-element */
 
@@ -48,7 +50,7 @@ export default function SettingsPage() {
       {/* Mobile Top Header */}
       <div className="bg-white dark:bg-gray-900 px-4 py-4 flex items-center justify-between shadow-sm sticky top-0 z-10 md:hidden">
         <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="p-1 -ml-1 text-indigo-600 dark:text-indigo-400">
+          <Link href={APP_ROUTES.DASHBOARD} className="p-1 -ml-1 text-indigo-600 dark:text-indigo-400">
             <Menu className="w-6 h-6" />
           </Link>
           <span className="font-bold text-indigo-600 dark:text-indigo-400 text-lg">Cài đặt</span>
@@ -62,7 +64,7 @@ export default function SettingsPage() {
         
         {/* Desktop Header */}
         <div className="hidden md:flex items-center gap-4 mb-6">
-           <Link href="/dashboard" className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm hover:bg-gray-50 transition-colors">
+           <Link href={APP_ROUTES.DASHBOARD} className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm hover:bg-gray-50 transition-colors">
              <ChevronLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" />
            </Link>
            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Cài đặt chi tiết</h1>

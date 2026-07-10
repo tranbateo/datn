@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { Home, FileText, CheckCircle2, XCircle, Clock, Star } from 'lucide-react';
@@ -104,7 +105,7 @@ export default function QuizResultPage() {
             <FileText className="w-4 h-4" /> {t('reviewAnswers')}
           </button>
           <button 
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push(APP_ROUTES.DASHBOARD)}
             className="w-full flex items-center justify-center gap-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 py-3.5 rounded-2xl text-sm font-bold transition-colors border border-gray-200 dark:border-gray-700"
           >
             <Home className="w-4 h-4" /> {t('backToHome')}

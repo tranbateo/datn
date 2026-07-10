@@ -1,3 +1,4 @@
+import { APP_ROUTES } from '@/constants/routes';
 import {
   Tabs,
   TabList,
@@ -21,19 +22,19 @@ export default function AppTabs() {
       <TabSlot style={{ height: '100%' }} />
       <TabList asChild>
         <CustomTabList>
-          <TabTrigger name="home" href="/" asChild>
+          <TabTrigger name="home" href={APP_ROUTES.HOME} asChild>
             <TabButton>Home</TabButton>
           </TabTrigger>
-          <TabTrigger name="explore" href="/explore" asChild>
+          <TabTrigger name="explore" href={APP_ROUTES.EXPLORE} asChild>
             <TabButton>Explore</TabButton>
           </TabTrigger>
-          <TabTrigger name="practice" href="/practice" asChild>
+          <TabTrigger name="practice" href={APP_ROUTES.PRACTICE} asChild>
             <TabButton>Practice</TabButton>
           </TabTrigger>
-          <TabTrigger name="schedule" href="/schedule" asChild>
+          <TabTrigger name="schedule" href={APP_ROUTES.SCHEDULE} asChild>
             <TabButton>Schedule</TabButton>
           </TabTrigger>
-          <TabTrigger name="progress" href="/progress" asChild>
+          <TabTrigger name="progress" href={APP_ROUTES.PROGRESS} asChild>
             <TabButton>Progress</TabButton>
           </TabTrigger>
         </CustomTabList>

@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/routing';
 import { Mail, ArrowLeft, ArrowRight, RotateCcw } from 'lucide-react';
@@ -21,7 +22,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="w-full">
-      <Link href="/login" className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors mb-8">
+      <Link href={APP_ROUTES.LOGIN} className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors mb-8">
         <ArrowLeft className="w-4 h-4" />
         {t('backToLogin')}
       </Link>

@@ -1,5 +1,6 @@
 "use client";
 
+import { API_ENDPOINTS } from '@/constants/api';
 import { Calendar as CalendarIcon, Clock, MoreVertical, Plus, ChevronLeft, ChevronRight, CheckCircle2, Video, X, FileText, Link as LinkIcon, User } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
@@ -19,7 +20,7 @@ export default function SchedulePage() {
       setLoading(true);
       // Giả sử API trả về mảng các sự kiện
       const { fetchApi } = await import('@/lib/api-client');
-      const data = await fetchApi('/calendar');
+      const data = await fetchApi(API_ENDPOINTS.CALENDAR.LIST);
       setEvents(data);
     } catch (error) {
       console.error(error);
@@ -41,13 +42,13 @@ export default function SchedulePage() {
       const formData = new FormData();
       formData.append('file', file);
       const { fetchApi } = await import('@/lib/api-client');
-      const response = await fetchApi('/calendar/ocr', {
+      const response = await fetchApi(API_ENDPOINTS.CALENDAR.OCR, {
         method: 'POST',
         body: formData,
       });
       if (response && response.length > 0) {
         for (const ev of response) {
-          await fetchApi('/calendar', {
+          await fetchApi(API_ENDPOINTS.CALENDAR.LIST, {
             method: 'POST',
             body: JSON.stringify(ev),
           });

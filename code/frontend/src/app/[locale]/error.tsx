@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_ROUTES } from '@/constants/routes';
 import { useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
@@ -42,7 +43,7 @@ export default function ErrorPage({
             Thử lại
           </button>
           <Link 
-            href="/" 
+            href={APP_ROUTES.HOME} 
             className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-md"
           >
             <Home className="w-5 h-5" />

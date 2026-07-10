@@ -1,4 +1,6 @@
 "use client";
+
+import { APP_ROUTES } from '@/constants/routes';
 /* eslint-disable @next/next/no-img-element */
 
 import { useTranslations } from 'next-intl';
@@ -17,7 +19,7 @@ export default function OCRScanPage() {
       setIsScanning(false);
       // Automatically go back or show result after "scan" completes
       setTimeout(() => {
-        router.push('/dashboard/schedule');
+        router.push(APP_ROUTES.SCHEDULE);
       }, 1500);
     }, 4000);
     return () => clearTimeout(timer);
@@ -29,7 +31,7 @@ export default function OCRScanPage() {
       {/* Header */}
       <div className="absolute top-0 inset-x-0 p-4 sm:p-6 flex justify-between items-center z-10 bg-gradient-to-b from-black/60 to-transparent">
         <button 
-          onClick={() => router.push('/dashboard/schedule')}
+          onClick={() => router.push(APP_ROUTES.SCHEDULE)}
           className="p-3 text-white/90 hover:text-white bg-black/20 hover:bg-black/40 rounded-full backdrop-blur-md transition-colors"
         >
           <X className="w-5 h-5" />

@@ -1,3 +1,4 @@
+import { API_ENDPOINTS } from '@/constants/api';
 import { fetchApi } from "@/lib/api-client";
 
 export interface Question {
@@ -29,15 +30,15 @@ export interface QuizAttemptResponse {
 
 export const quizService = {
   async getQuizzesBySubject(subjectId: string): Promise<Quiz[]> {
-    return fetchApi(`/quiz/subject/${subjectId}`);
+    return fetchApi(API_ENDPOINTS.QUIZ.BY_SUBJECT(subjectId));
   },
 
   async getQuizById(quizId: string): Promise<Quiz> {
-    return fetchApi(`/quiz/${quizId}`);
+    return fetchApi(API_ENDPOINTS.QUIZ.DETAIL(quizId));
   },
 
   async submitQuiz(quizId: string, answers: { questionId: string; selectedOption: string }[]): Promise<QuizAttemptResponse> {
-    return fetchApi(`/quiz/${quizId}/submit`, {
+    return fetchApi(API_ENDPOINTS.QUIZ.SUBMIT(quizId), {
       method: "POST",
       body: JSON.stringify({ answers }),
     });

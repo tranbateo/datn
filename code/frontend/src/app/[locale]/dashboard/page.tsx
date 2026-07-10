@@ -1,4 +1,6 @@
 "use client";
+
+import { APP_ROUTES } from '@/constants/routes';
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -110,7 +112,7 @@ export default function StudentDashboard() {
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('upNext')}</h2>
-          <Link href="/dashboard/schedule" className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
+          <Link href={APP_ROUTES.SCHEDULE} className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
             {t('viewAll')}
           </Link>
         </div>

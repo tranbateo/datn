@@ -1,4 +1,6 @@
 "use client";
+
+import { API_ENDPOINTS } from '@/constants/api';
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { useState, useRef, useEffect } from "react";
@@ -134,7 +136,7 @@ export default function AITutorPage() {
 
       // Create a session if one doesn't exist
       if (!currentSessionId) {
-        const session = await fetchApi('/chat/session', {
+        const session = await fetchApi(API_ENDPOINTS.CHAT.SESSION, {
           method: 'POST',
           body: JSON.stringify({ 
             title: userMessage.content.substring(0, 50) + "..."

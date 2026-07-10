@@ -1,3 +1,4 @@
+import { API_ENDPOINTS } from '@/constants/api';
 import { fetchApi } from '../lib/api-client';
 
 export interface UserProfile {
@@ -11,11 +12,11 @@ export interface UserProfile {
 
 export const usersService = {
   getProfile: (): Promise<UserProfile> => {
-    return fetchApi('/users/profile');
+    return fetchApi(API_ENDPOINTS.USERS.PROFILE);
   },
   
   updateProfile: (data: Partial<UserProfile>): Promise<UserProfile> => {
-    return fetchApi('/users/profile', {
+    return fetchApi(API_ENDPOINTS.USERS.PROFILE, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
