@@ -15,6 +15,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { CurriculumModule } from './curriculum/curriculum.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bull';
+import { CalendarModule } from './calendar/calendar.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { BullModule } from '@nestjs/bull';
     GamificationModule,
     NotificationsModule,
     CurriculumModule,
+    CalendarModule,
   ],
   controllers: [AppController],
   providers: [AppService],

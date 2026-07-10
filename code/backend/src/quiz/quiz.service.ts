@@ -38,6 +38,14 @@ export class QuizService {
     });
   }
 
+  async findBySubject(subjectId: string) {
+    return this.prisma.quiz.findMany({
+      where: { subjectId },
+      include: { questions: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async findOne(id: string) {
     const quiz = await this.prisma.quiz.findUnique({
       where: { id },

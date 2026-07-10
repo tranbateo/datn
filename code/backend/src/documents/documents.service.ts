@@ -4,12 +4,13 @@ import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase';
 import { createClient } from '@supabase/supabase-js';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class DocumentsService {
   private vectorStore: SupabaseVectorStore;
 
-  constructor() {
+  constructor(private readonly prisma: PrismaService) {
     const client = createClient(
       process.env.SUPABASE_URL || '',
       process.env.SUPABASE_PRIVATE_KEY || '',
@@ -63,5 +64,42 @@ export class DocumentsService {
       console.error('Error ingesting document:', error);
       throw new InternalServerErrorException('Failed to process document');
     }
+  }
+
+  async createDocumentRecord(
+    courseId: string,
+    fileName: string,
+    type: string,
+    size: string,
+  ) {
+    return this.prisma.document.create({
+      data: {
+        courseId,
+        fileName,
+        type,
+        size,
+        status: 'Pending',
+      },
+    });
+  }
+
+  async updateDocumentStatus(documentId: string, status: string) {
+    return this.prisma.document.update({
+      where: { id: documentId },
+      data: { status },
+    });
+  }
+
+  async findByCourseId(courseId: string) {
+    return this.prisma.document.findMany({
+      where: { courseId },
+      orderBy: { uploadedAt: 'desc' },
+    });
+  }
+
+  async findAll() {
+    return this.prisma.document.findMany({
+      orderBy: { uploadedAt: 'desc' },
+    });
   }
 }

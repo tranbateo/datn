@@ -16,7 +16,13 @@ export class DocumentProcessor {
   async handleProcessDocument(job: Job) {
     this.logger.log(`Processing document for course ${job.data.courseId}...`);
     try {
-      const { fileBase64, originalname, mimetype, courseId } = job.data;
+      const { documentId, fileBase64, originalname, mimetype, courseId } =
+        job.data;
+
+      await this.documentsService.updateDocumentStatus(
+        documentId,
+        'Processing',
+      );
 
       const buffer = Buffer.from(fileBase64, 'base64');
       const file = {
@@ -30,11 +36,19 @@ export class DocumentProcessor {
         courseId,
       );
 
+      await this.documentsService.updateDocumentStatus(documentId, 'Embedded');
+
       this.logger.log(
         `Successfully ingested document. Chunks: ${result.chunks}`,
       );
       return result;
     } catch (error: any) {
+      if (job.data.documentId) {
+        await this.documentsService.updateDocumentStatus(
+          job.data.documentId,
+          'Failed',
+        );
+      }
       this.logger.error(
         `Failed to process document: ${error.message}`,
         error.stack,

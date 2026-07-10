@@ -2,68 +2,68 @@
 
 import { Search, Upload, FolderSearch, FileText, File as FileIcon, Trash2, RefreshCw, CheckCircle2, Loader2, AlertCircle, Clock } from "lucide-react";
 import { useTranslations } from "next-intl";
-
-const documents = [
-  {
-    id: 1,
-    name: "Intro_to_Machine_Learning_Syllabus_2024.pdf",
-    type: "PDF",
-    size: "2.4 MB",
-    uploaded: "Oct 12, 10:30 AM",
-    status: "Embedded",
-    iconColor: "text-red-500",
-    bgColor: "bg-red-50 dark:bg-red-900/20",
-    selected: false,
-  },
-  {
-    id: 2,
-    name: "Chapter_4_Neural_Networks_Draft.docx",
-    type: "DOCX",
-    size: "1.1 MB",
-    uploaded: "Today, 08:15 AM",
-    status: "Processing",
-    iconColor: "text-blue-500",
-    bgColor: "bg-blue-50 dark:bg-blue-900/20",
-    selected: true,
-  },
-  {
-    id: 3,
-    name: "knowledge_base_export_v2.md",
-    type: "Markdown",
-    size: "845 KB",
-    uploaded: "Today, 08:14 AM",
-    status: "Pending",
-    iconColor: "text-gray-700 dark:text-gray-300",
-    bgColor: "bg-gray-100 dark:bg-gray-800",
-    selected: true,
-  },
-  {
-    id: 4,
-    name: "Scanned_Handwritten_Notes_Lec1.pdf",
-    type: "PDF",
-    size: "14.2 MB",
-    uploaded: "Oct 10, 14:20 PM",
-    status: "Failed",
-    iconColor: "text-red-500",
-    bgColor: "bg-red-50 dark:bg-red-900/20",
-    selected: false,
-    highlight: true,
-  },
-  {
-    id: 5,
-    name: "FAQ_Student_Policies_2024.md",
-    type: "Markdown",
-    size: "120 KB",
-    uploaded: "Oct 05, 09:00 AM",
-    status: "Embedded",
-    iconColor: "text-gray-700 dark:text-gray-300",
-    bgColor: "bg-gray-100 dark:bg-gray-800",
-    selected: false,
-  },
-];
+import { useState, useEffect } from "react";
 
 export default function ResourceLibrary() {
   const t = useTranslations("Admin.Documents");
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  const loadDocs = async () => {
+    try {
+      const { fetchApi } = await import('@/lib/api-client');
+      const data = await fetchApi('/documents');
+      setDocuments(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadDocs();
+  }, []);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+      const { fetchApi } = await import('@/lib/api-client');
+      // Fetch course or use placeholder
+      const courses = await fetchApi('/courses');
+      let courseId = '';
+      if (courses && courses.length > 0) {
+        courseId = courses[0].id;
+      } else {
+        alert('Vui lòng tạo khóa học trước khi upload tài liệu.');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      await fetchApi(`/documents/upload/${courseId}`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      alert('Tài liệu đã được tải lên và đang được xử lý trong nền.');
+      loadDocs();
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi khi tải tài liệu');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -90,9 +90,11 @@ export default function ResourceLibrary() {
               <button className="flex items-center gap-2 bg-white dark:bg-card-bg border border-blue-200 dark:border-blue-900/50 text-blue-700 dark:text-blue-400 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors shadow-sm">
                 <FolderSearch className="w-4 h-4" /> {t('browseRepo')}
               </button>
-              <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm">
-                <Upload className="w-4 h-4" /> {t('uploadFiles')}
-              </button>
+              <label className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm cursor-pointer">
+                <Upload className="w-4 h-4" /> 
+                {uploading ? 'Đang tải lên...' : t('uploadFiles')}
+                <input type="file" className="hidden" accept=".pdf,.doc,.docx,.md,.txt" onChange={handleUpload} disabled={uploading} />
+              </label>
             </div>
           </div>
 
@@ -133,27 +135,35 @@ export default function ResourceLibrary() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+                  {loading && (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-gray-500">Đang tải tài liệu...</td>
+                    </tr>
+                  )}
+                  {documents.length === 0 && !loading && (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-gray-500">Chưa có tài liệu nào.</td>
+                    </tr>
+                  )}
                   {documents.map((doc) => (
-                    <tr key={doc.id} className={`${doc.highlight ? 'bg-red-50/30 dark:bg-red-900/10' : 'hover:bg-gray-50/50 dark:hover:bg-gray-800/30'} transition-colors`}>
+                    <tr key={doc.id} className={`${doc.status === 'Failed' ? 'bg-red-50/30 dark:bg-red-900/10' : 'hover:bg-gray-50/50 dark:hover:bg-gray-800/30'} transition-colors`}>
                       <td className="px-6 py-4">
                         <input 
                           type="checkbox" 
-                          checked={doc.selected}
-                          readOnly
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" 
                         />
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded ${doc.bgColor} flex items-center justify-center`}>
-                            {doc.type === 'PDF' ? (
-                              <FileText className={`w-4 h-4 ${doc.iconColor}`} />
+                          <div className={`w-8 h-8 rounded bg-gray-100 dark:bg-gray-800 flex items-center justify-center`}>
+                            {doc.type.includes('pdf') ? (
+                              <FileText className={`w-4 h-4 text-red-500`} />
                             ) : (
-                              <FileIcon className={`w-4 h-4 ${doc.iconColor}`} />
+                              <FileIcon className={`w-4 h-4 text-blue-500`} />
                             )}
                           </div>
-                          <span className={`font-medium ${doc.selected ? 'text-blue-900 dark:text-blue-100' : 'text-gray-700 dark:text-gray-300'}`}>
-                            {doc.name}
+                          <span className={`font-medium text-gray-700 dark:text-gray-300`}>
+                            {doc.fileName}
                           </span>
                         </div>
                       </td>
@@ -161,7 +171,7 @@ export default function ResourceLibrary() {
                         {doc.type}
                       </td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-400 font-medium">
-                        {doc.size}
+                        {(Number(doc.size) / 1024 / 1024).toFixed(2)} MB
                       </td>
                       <td className="px-6 py-4">
                         {doc.status === 'Embedded' && (
@@ -186,7 +196,7 @@ export default function ResourceLibrary() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
-                        {doc.uploaded}
+                        {new Date(doc.uploadedAt).toLocaleString()}
                       </td>
                     </tr>
                   ))}

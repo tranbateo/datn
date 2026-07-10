@@ -10,8 +10,19 @@ export interface GamificationProfile {
 }
 
 export const gamificationService = {
-  getProfile: (): Promise<GamificationProfile> => {
-    return fetchApi('/gamification/profile');
+  async getProfile(): Promise<GamificationProfile> {
+    return fetchApi("/gamification/profile");
+  },
+
+  async getLeaderboard(limit: number = 10): Promise<{
+    id: string;
+    userId: string;
+    xp: number;
+    level: number;
+    currentStreak: number;
+    user: { fullName: string; avatarUrl: string; email: string };
+  }[]> {
+    return fetchApi(`/gamification/leaderboard?limit=${limit}`);
   },
   
   addXp: (amount: number, reason: string): Promise<any> => {

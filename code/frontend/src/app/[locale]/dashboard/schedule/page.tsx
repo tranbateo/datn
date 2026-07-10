@@ -1,7 +1,7 @@
 "use client";
 
 import { Calendar as CalendarIcon, Clock, MoreVertical, Plus, ChevronLeft, ChevronRight, CheckCircle2, Video, X, FileText, Link as LinkIcon, User } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 
 export default function SchedulePage() {
@@ -9,45 +9,64 @@ export default function SchedulePage() {
   const tModal = useTranslations("User.EventModal");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
 
-  const scheduleItems = [
-    {
-      time: "08:00",
-      meridiem: t('meridiemAM'),
-      title: t('class1'),
-      type: t('type1'),
-      duration: t('duration1'),
-      color: "border-blue-500",
-      bgColor: "bg-blue-50 dark:bg-blue-900/20",
-      icon: Video,
-      iconColor: "text-blue-500",
-      completed: true,
-    },
-    {
-      time: "10:30",
-      meridiem: t('meridiemAM'),
-      title: t('class2'),
-      type: t('type2'),
-      duration: t('duration2'),
-      color: "border-purple-500",
-      bgColor: "bg-purple-50 dark:bg-purple-900/20",
-      icon: CheckCircle2,
-      iconColor: "text-purple-500",
-      completed: false,
-    },
-    {
-      time: "14:00",
-      meridiem: t('meridiemPM'),
-      title: t('class3'),
-      type: t('type3'),
-      duration: t('duration3'),
-      color: "border-rose-500",
-      bgColor: "bg-rose-50 dark:bg-rose-900/20",
-      icon: Clock,
-      iconColor: "text-rose-500",
-      completed: false,
-    },
-  ];
+  const loadEvents = async () => {
+    try {
+      setLoading(true);
+      // Giả sử API trả về mảng các sự kiện
+      const { fetchApi } = await import('@/lib/api-client');
+      const data = await fetchApi('/calendar');
+      setEvents(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadEvents();
+  }, []);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      const { fetchApi } = await import('@/lib/api-client');
+      const response = await fetchApi('/calendar/ocr', {
+        method: 'POST',
+        body: formData,
+      });
+      if (response && response.length > 0) {
+        for (const ev of response) {
+          await fetchApi('/calendar', {
+            method: 'POST',
+            body: JSON.stringify(ev),
+          });
+        }
+        alert(`Đã trích xuất và lưu ${response.length} lịch học!`);
+        loadEvents();
+      } else {
+        alert('Không tìm thấy lịch học nào trong ảnh');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi khi quét ảnh (OCR)');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-6">
@@ -58,10 +77,17 @@ export default function SchedulePage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{t('title')}</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm">{t('subtitle')}</p>
         </div>
-        <button className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-full font-medium hover:bg-blue-700 transition-colors shadow-sm self-start sm:self-auto">
-          <Plus className="w-5 h-5" />
-          {t('addSchedule')}
-        </button>
+        <div className="flex gap-2 self-start sm:self-auto">
+          <label className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-full font-medium hover:bg-purple-700 transition-colors shadow-sm cursor-pointer">
+            <Video className="w-5 h-5" />
+            {uploading ? 'Đang OCR...' : 'Quét Lịch (OCR)'}
+            <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+          </label>
+          <button className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-full font-medium hover:bg-blue-700 transition-colors shadow-sm">
+            <Plus className="w-5 h-5" />
+            {t('addSchedule')}
+          </button>
+        </div>
       </div>
 
       {/* Calendar Strip */}
@@ -93,8 +119,14 @@ export default function SchedulePage() {
 
         <div className="space-y-6 relative before:absolute before:inset-0 before:ml-12 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-gray-700 before:to-transparent">
           
-          {scheduleItems.map((item, idx) => {
-            const Icon = item.icon;
+          {events.length === 0 && !loading && (
+            <p className="text-gray-500 text-center py-8">Chưa có sự kiện nào. Hãy tải ảnh lên!</p>
+          )}
+          {loading && (
+            <p className="text-gray-500 text-center py-8">Đang tải lịch học...</p>
+          )}
+          {events.map((item, idx) => {
+            const Icon = item.icon || Video;
             return (
               <div 
                 key={idx} 
@@ -104,14 +136,14 @@ export default function SchedulePage() {
                 
                 {/* Icon Marker */}
                 <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-card-bg bg-white dark:bg-card-bg shadow absolute left-12 md:left-1/2 -translate-x-1/2 z-10">
-                  <Icon className={`w-4 h-4 ${item.completed ? 'text-emerald-500' : 'text-gray-400'}`} />
+                  <Icon className={`w-4 h-4 text-blue-500`} />
                 </div>
 
                 {/* Content Box */}
-                <div className={`w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] ml-auto md:ml-0 p-4 rounded-2xl border-l-4 ${item.color} ${item.bgColor} shadow-sm group-hover:shadow-md transition-all`}>
+                <div className={`w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] ml-auto md:ml-0 p-4 rounded-2xl border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm group-hover:shadow-md transition-all`}>
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{item.time} {item.meridiem}</span>
+                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{new Date(item.startTime).toLocaleTimeString()}</span>
                       <h3 className="text-base font-bold text-gray-900 dark:text-white mt-1">{item.title}</h3>
                     </div>
                     <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -119,8 +151,8 @@ export default function SchedulePage() {
                     </button>
                   </div>
                   <div className="flex items-center gap-4 text-xs font-medium text-gray-500 dark:text-gray-400">
-                    <span className="flex items-center gap-1"><CheckCircle2 className={`w-3.5 h-3.5 ${item.iconColor}`} /> {item.type}</span>
-                    <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {item.duration}</span>
+                    <span className="flex items-center gap-1"><CheckCircle2 className={`w-3.5 h-3.5 text-blue-500`} /> {item.type}</span>
+                    {item.description && <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Ghi chú: {item.description}</span>}
                   </div>
                 </div>
 

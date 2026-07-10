@@ -87,7 +87,16 @@ export class GamificationService {
       }
     }
 
-    return profile;
+    const rank =
+      (await this.prisma.gamificationProfile.count({
+        where: {
+          xp: {
+            gt: profile.xp,
+          },
+        },
+      })) + 1;
+
+    return { ...profile, rank };
   }
 
   /**

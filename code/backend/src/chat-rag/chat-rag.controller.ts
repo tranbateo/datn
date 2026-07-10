@@ -13,8 +13,8 @@ import {
   UploadedFile,
   Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Response } from 'express';
 import { ChatRagService } from './chat-rag.service';
 import { Prisma, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';

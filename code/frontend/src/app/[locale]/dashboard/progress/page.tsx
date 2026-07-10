@@ -1,227 +1,160 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { Clock, CheckCircle, TrendingUp, Search, Bell, Trophy, Zap, Target } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { useTranslations } from "next-intl";
+import { useState, useEffect } from "react";
+import { gamificationService, GamificationProfile } from "@/services/gamification.service";
+import { Loader2, Flame, Star, Trophy } from "lucide-react";
+import Image from "next/image";
+
+type LeaderboardEntry = {
+  id: string;
+  userId: string;
+  xp: number;
+  level: number;
+  currentStreak: number;
+  user: { fullName: string; avatarUrl: string; email: string };
+};
 
 export default function ProgressPage() {
-  const t = useTranslations("User.Progress");
+  const [profile, setProfile] = useState<GamificationProfile & { rank?: number } | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const lineData = [
-    { name: t('week'), value: 2 },
-    { name: t('week'), value: 4 },
-    { name: t('week'), value: 3 },
-    { name: t('week'), value: 6 },
-    { name: t('week'), value: 5 },
-    { name: t('week'), value: 8 },
-    { name: t('week'), value: 7 },
-  ];
-  // the names should be short, like mon, tue, etc. but I'll leave as T2... actually, I'll translate them
-  const lineDataTranslated = [
-    { name: 'T2', value: 2 },
-    { name: 'T3', value: 4 },
-    { name: 'T4', value: 3 },
-    { name: 'T5', value: 6 },
-    { name: 'T6', value: 5 },
-    { name: 'T7', value: 8 },
-    { name: 'CN', value: 7 },
-  ];
+  useEffect(() => {
+    Promise.all([
+      gamificationService.getProfile(),
+      gamificationService.getLeaderboard(10)
+    ]).then(([p, l]) => {
+      setProfile(p as unknown as GamificationProfile & { rank?: number });
+      setLeaderboard(l);
+      setLoading(false);
+    }).catch(err => {
+      console.error(err);
+      setLoading(false);
+    });
+  }, []);
 
-  const radarData = [
-    { subject: t('logic'), A: 120, fullMark: 150 },
-    { subject: t('algebra'), A: 98, fullMark: 150 },
-    { subject: t('geometry'), A: 86, fullMark: 150 },
-    { subject: t('theory'), A: 99, fullMark: 150 },
-    { subject: t('application'), A: 85, fullMark: 150 },
-    { subject: t('speed'), A: 65, fullMark: 150 },
-  ];
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
-      
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{t('title')}</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">{t('subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative hidden sm:block">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder={t('search')} 
-              className="w-full pl-9 pr-4 py-2 bg-white dark:bg-card-bg border border-gray-100 dark:border-card-border rounded-full text-sm outline-none shadow-sm dark:text-white"
-            />
-          </div>
-          <button className="p-2 bg-white dark:bg-card-bg border border-gray-100 dark:border-card-border rounded-full text-gray-500 shadow-sm relative">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-card-bg"></span>
-          </button>
-        </div>
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 lg:space-y-8 animate-in fade-in duration-500 pb-24 md:pb-8">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Tiến độ & Thành tích</h1>
+        <p className="text-gray-500 dark:text-gray-400 mt-1">Theo dõi quá trình học tập và thi đua cùng bạn bè.</p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-card-bg p-6 rounded-3xl border border-gray-100 dark:border-card-border shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('studyTime')}</span>
-            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl">
-              <Clock className="w-5 h-5" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
+        {/* Level Card */}
+        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-6 shadow-lg text-white relative overflow-hidden md:col-span-2">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 blur-3xl rounded-full"></div>
+          <div className="relative z-10 flex flex-col h-full justify-between">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <div className="text-indigo-100 font-medium mb-1">Cấp độ hiện tại</div>
+                <h2 className="text-4xl font-bold flex items-center gap-2">
+                  <Star className="w-8 h-8 text-yellow-300 fill-yellow-300" /> 
+                  Cấp {profile?.level || 1}
+                </h2>
+              </div>
+              <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-2xl text-center">
+                <div className="text-xs text-indigo-100 uppercase tracking-wider font-bold mb-0.5">Xếp hạng</div>
+                <div className="text-2xl font-bold">#{profile?.rank || '-'}</div>
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="flex items-end gap-2">
-              <span className="text-4xl font-bold text-gray-900 dark:text-white">42</span>
-              <span className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('hours')}</span>
+            
+            <div>
+              <div className="flex justify-between items-end mb-2 text-sm font-bold">
+                <span>{profile?.xp || 0} XP</span>
+                <span className="text-indigo-200">
+                  {/* Fake next level logic just for UI display if backend didn't send */}
+                  {Math.pow(profile?.level || 1, 2) * 100} XP
+                </span>
+              </div>
+              <div className="w-full h-4 bg-black/20 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-yellow-300 to-yellow-500 rounded-full"
+                  style={{ width: `${Math.min(100, ((profile?.xp || 0) / (Math.pow(profile?.level || 1, 2) * 100)) * 100)}%` }}
+                />
+              </div>
             </div>
-            <p className="text-xs font-medium text-emerald-600 flex items-center gap-1 mt-2">
-              <TrendingUp className="w-3 h-3" />
-              {t('upVsLastWeek')}
-            </p>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-card-bg p-6 rounded-3xl border border-gray-100 dark:border-card-border shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('completedExercises')}</span>
-            <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl">
-              <CheckCircle className="w-5 h-5" />
-            </div>
+        {/* Streak Card */}
+        <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-sm border border-orange-100 dark:border-orange-900/30 flex flex-col justify-center items-center text-center">
+          <div className="w-20 h-20 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center mb-4">
+            <Flame className="w-10 h-10 text-orange-500 fill-orange-500 animate-pulse" />
           </div>
-          <div>
-            <div className="flex items-end gap-2">
-              <span className="text-4xl font-bold text-gray-900 dark:text-white">156</span>
-            </div>
-            <p className="text-xs font-medium text-emerald-600 flex items-center gap-1 mt-2">
-              <TrendingUp className="w-3 h-3" />
-              {t('newExercises')}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-card-bg p-6 rounded-3xl border border-gray-100 dark:border-card-border shadow-sm flex items-center gap-6">
-          <div className="relative w-20 h-20 flex-shrink-0">
-            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-              <path
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                fill="none"
-                stroke="#E5E7EB"
-                strokeWidth="3"
-                className="dark:stroke-gray-800"
-              />
-              <path
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                fill="none"
-                stroke="#3B82F6"
-                strokeWidth="3"
-                strokeDasharray="75, 100"
-                className="drop-shadow-sm"
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-lg font-bold text-gray-900 dark:text-white">75%</span>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-bold text-gray-900 dark:text-white">{t('weeklyGoal')}</h3>
-              <span className="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">{t('inProgress')}</span>
-            </div>
-            <p className="text-xs text-gray-500 leading-relaxed">{t('goalDesc')}</p>
+          <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{profile?.currentStreak || 0}</h3>
+          <p className="text-gray-500 dark:text-gray-400 font-medium mb-3">Ngày học liên tiếp</p>
+          <div className="text-sm bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 px-3 py-1 rounded-full font-bold">
+            Kỷ lục: {profile?.longestStreak || 0} ngày
           </div>
         </div>
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Leaderboard */}
+      <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-2xl flex items-center justify-center text-yellow-600">
+            <Trophy className="w-5 h-5" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Bảng xếp hạng</h2>
+        </div>
         
-        {/* Line Chart */}
-        <div className="lg:col-span-2 bg-white dark:bg-card-bg p-6 rounded-3xl border border-gray-100 dark:border-card-border shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('learningTrend')}</h2>
-            <div className="flex gap-1 bg-gray-50 dark:bg-gray-800/50 p-1 rounded-lg">
-              <button className="px-3 py-1 bg-white dark:bg-gray-700 text-blue-600 dark:text-white text-xs font-semibold rounded-md shadow-sm">{t('week')}</button>
-              <button className="px-3 py-1 text-gray-500 dark:text-gray-400 text-xs font-medium hover:text-gray-900 dark:hover:text-white">{t('month')}</button>
-            </div>
-          </div>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineDataTranslated} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6B7280' }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6B7280' }} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  cursor={{ stroke: '#93C5FD', strokeWidth: 2, strokeDasharray: '5 5' }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#3B82F6" 
-                  strokeWidth={4} 
-                  dot={{ r: 6, fill: '#fff', stroke: '#3B82F6', strokeWidth: 2 }} 
-                  activeDot={{ r: 8, fill: '#3B82F6', stroke: '#fff', strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Radar Chart */}
-        <div className="bg-white dark:bg-card-bg p-6 rounded-3xl border border-gray-100 dark:border-card-border shadow-sm flex flex-col">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2 text-center">{t('skillAnalysis')}</h2>
-          <div className="flex-1 min-h-[250px] w-full flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                <PolarGrid stroke="#E5E7EB" />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: '#6B7280', fontSize: 10, fontWeight: 500 }} />
-                <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} axisLine={false} />
-                <Radar name="Kỹ năng" dataKey="A" stroke="#0D9488" strokeWidth={2} fill="#14B8A6" fillOpacity={0.3} />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* Achievements Banner */}
-      <div className="bg-white dark:bg-card-bg p-6 rounded-3xl border border-gray-100 dark:border-card-border shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('recentAchievements')}</h2>
-          <button className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors">{t('viewAll')}</button>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 bg-amber-500 rounded-full flex items-center justify-center text-white shadow-md flex-shrink-0">
-              <Trophy className="w-6 h-6" />
-            </div>
-            <div>
-              <h4 className="font-bold text-gray-900 dark:text-white text-sm">{t('streakTitle')}</h4>
-              <p className="text-xs text-gray-500">{t('streakDesc')}</p>
-            </div>
-          </div>
-          <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center text-white shadow-md flex-shrink-0">
-              <Target className="w-6 h-6" />
-            </div>
-            <div>
-              <h4 className="font-bold text-gray-900 dark:text-white text-sm">{t('masterTitle')}</h4>
-              <p className="text-xs text-gray-500">{t('masterDesc')}</p>
-            </div>
-          </div>
-          <div className="bg-teal-50 dark:bg-teal-900/20 p-4 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 bg-teal-500 rounded-full flex items-center justify-center text-white shadow-md flex-shrink-0">
-              <Zap className="w-6 h-6" />
-            </div>
-            <div>
-              <h4 className="font-bold text-gray-900 dark:text-white text-sm">{t('fastTitle')}</h4>
-              <p className="text-xs text-gray-500">{t('fastDesc')}</p>
-            </div>
-          </div>
+        <div className="space-y-3">
+          {leaderboard.map((entry, index) => {
+            const isCurrentUser = entry.userId === profile?.userId;
+            
+            return (
+              <div 
+                key={entry.id} 
+                className={`flex items-center justify-between p-4 rounded-2xl border ${
+                  isCurrentUser 
+                    ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800/50' 
+                    : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                } transition-colors`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-8 text-center font-bold text-lg ${
+                    index === 0 ? 'text-yellow-500' :
+                    index === 1 ? 'text-gray-400' :
+                    index === 2 ? 'text-amber-600' :
+                    'text-gray-400 dark:text-gray-600'
+                  }`}>
+                    #{index + 1}
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-100 to-purple-100 flex items-center justify-center text-indigo-600 font-bold overflow-hidden">
+                    {entry.user?.avatarUrl ? (
+                      <Image src={entry.user.avatarUrl} alt={entry.user.fullName} width={40} height={40} className="w-full h-full object-cover" />
+                    ) : (
+                      entry.user?.fullName?.charAt(0) || '?'
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      {entry.user?.fullName}
+                      {isCurrentUser && <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full uppercase tracking-wider">Bạn</span>}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-3 mt-0.5">
+                      <span className="flex items-center gap-1"><Star className="w-3 h-3 text-yellow-500 fill-yellow-500" /> Cấp {entry.level}</span>
+                      <span className="flex items-center gap-1"><Flame className="w-3 h-3 text-orange-500 fill-orange-500" /> {entry.currentStreak} ngày</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                  {entry.xp} <span className="text-xs text-gray-400 font-normal">XP</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
-
     </div>
   );
 }

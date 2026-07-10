@@ -1,21 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
-import * as admin from 'firebase-admin';
+import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
   constructor(private prisma: PrismaService) {
-    if (!admin.apps.length) {
+    if (!getApps().length) {
       try {
-        admin.initializeApp({
-          credential: admin.credential.applicationDefault(),
+        initializeApp({
+          credential: applicationDefault(),
         });
         this.logger.log('Firebase Admin initialized');
       } catch (error) {
-        this.logger.warn(
+        this.logger.debug(
           'Failed to initialize Firebase Admin. Push notifications will not work without proper credentials.',
           error,
         );
@@ -40,7 +41,7 @@ export class NotificationsService {
 
     // 3. Send via Firebase
     try {
-      await admin.messaging().send({
+      await getMessaging().send({
         token: user.deviceToken,
         notification: { title, body },
       });
