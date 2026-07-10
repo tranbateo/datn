@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prepare": "husky"
+    "prepare": "husky",
+    "lint": "npm --prefix code/backend run lint && npm --prefix code/frontend run lint"
   },
   "repository": {
     "type": "git",
