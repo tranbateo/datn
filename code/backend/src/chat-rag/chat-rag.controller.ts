@@ -6,7 +6,10 @@ import {
   Param,
   UseGuards,
   Req,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ChatRagService } from './chat-rag.service';
 import { Prisma, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -26,11 +29,13 @@ export class ChatRagController {
   }
 
   @Post('session/:id/message')
+  @UseInterceptors(FileInterceptor('image'))
   sendMessage(
     @Param('id') sessionId: string,
-    @Body() data: Prisma.ChatMessageUncheckedCreateInput,
+    @Body('content') content: string,
+    @UploadedFile() image?: Express.Multer.File,
   ) {
-    return this.chatRagService.sendMessage(sessionId, data);
+    return this.chatRagService.sendMessage(sessionId, content, image);
   }
 
   @Get('session/:id')

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
@@ -7,6 +7,15 @@ export class CoursesService {
   constructor(private prisma: PrismaService) {}
 
   async create(data: Prisma.CourseCreateInput) {
+    // Validate subject and grade match
+    if (data.grade && data.subject?.connect?.id) {
+      const subject = await this.prisma.subject.findUnique({
+        where: { id: data.subject.connect.id },
+      });
+      if (subject && subject.grade !== data.grade) {
+        throw new BadRequestException(`Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với khóa học lớp ${data.grade}`);
+      }
+    }
     return this.prisma.course.create({ data });
   }
 
@@ -27,6 +36,18 @@ export class CoursesService {
   }
 
   async update(id: string, data: Prisma.CourseUpdateInput) {
+    if (data.grade || data.subject?.connect?.id) {
+      const course = await this.prisma.course.findUnique({ where: { id } });
+      const newGrade = data.grade !== undefined ? data.grade : course?.grade;
+      const newSubjectId = data.subject?.connect?.id;
+      
+      if (newGrade && newSubjectId) {
+        const subject = await this.prisma.subject.findUnique({ where: { id: newSubjectId as string } });
+        if (subject && subject.grade !== newGrade) {
+          throw new BadRequestException(`Môn ${subject.name} (lớp ${subject.grade}) không phù hợp với khóa học lớp ${newGrade}`);
+        }
+      }
+    }
     return this.prisma.course.update({
       where: { id },
       data,

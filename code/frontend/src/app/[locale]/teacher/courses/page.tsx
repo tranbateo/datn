@@ -6,7 +6,7 @@ import { fetchApi } from "@/lib/api-client";
 import { Filter, Plus, GraduationCap, Users, CheckCircle2, MoreHorizontal, Upload } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { useTranslations } from "next-intl";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 
 const trendDataUp = [
   { value: 10 }, { value: 15 }, { value: 12 }, { value: 20 }, { value: 25 }, { value: 22 }, { value: 30 }

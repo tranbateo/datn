@@ -11,10 +11,21 @@ import { ChatRagModule } from './chat-rag/chat-rag.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { GamificationModule } from './gamification/gamification.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { CurriculumModule } from './curriculum/curriculum.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
+    BullModule.forRoot({
+      redis: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      },
+    }),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -24,6 +35,8 @@ import { GamificationModule } from './gamification/gamification.module';
     DocumentsModule,
     SchedulesModule,
     GamificationModule,
+    NotificationsModule,
+    CurriculumModule,
   ],
   controllers: [AppController],
   providers: [AppService],

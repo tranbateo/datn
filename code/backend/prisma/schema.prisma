@@ -30,6 +30,8 @@ model User {
   role      Role     @default(STUDENT)
   tier      SubscriptionTier @default(FREE)
   isActive  Boolean  @default(true)
+  deviceToken String? // For Firebase Push Notifications
+  grade     Int?     // 1 to 12
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -39,15 +41,38 @@ model User {
   quizAttempts        QuizAttempt[]
   courses             Course[]       @relation("TeacherCourses")
   calendarEvents      CalendarEvent[]
+  notifications       Notification[]
 }
 
 // -----------------------------------------------------------------------
-// 1.5 Courses & Lessons
+// 1.5 Curriculum & Subjects
+// -----------------------------------------------------------------------
+model Subject {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   // "Toán học", "Ngữ văn", "Hóa học"
+  grade       Int      // 1 to 12
+  description String?
+  
+  // Relations
+  courses     Course[]
+  quizzes     Quiz[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([name, grade])
+}
+
+// -----------------------------------------------------------------------
+// 1.6 Courses & Lessons
 // -----------------------------------------------------------------------
 model Course {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   title       String
   description String?
+  grade       Int?
+  subjectId   String?  @db.Uuid
+  subject     Subject? @relation(fields: [subjectId], references: [id])
   teacherId   String   @db.Uuid
   teacher     User     @relation("TeacherCourses", fields: [teacherId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
@@ -131,6 +156,7 @@ model ChatMessage {
   content       String
   isAudio       Boolean  @default(false)
   audioUrl      String?
+  imageUrl      String?  // For Vision AI
   citations     Json?    // Array of sources used by AI
   createdAt     DateTime @default(now())
 }
@@ -142,7 +168,9 @@ model Quiz {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   title       String
   description String?
-  subject     String?
+  grade       Int?
+  subjectId   String?  @db.Uuid
+  subject     Subject? @relation(fields: [subjectId], references: [id])
   duration    Int?     // in minutes
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -192,3 +220,17 @@ model CalendarEvent {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// -----------------------------------------------------------------------
+// 6. Push Notifications
+// -----------------------------------------------------------------------
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+

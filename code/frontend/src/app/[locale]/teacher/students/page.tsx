@@ -33,7 +33,6 @@ export default function TeacherStudentsPage() {
                 className="pl-9 pr-4 py-2 w-full sm:w-64 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
-            </div>
           </div>
         </div>
 

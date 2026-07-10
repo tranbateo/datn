@@ -58,13 +58,21 @@ export class ChatRagService {
 
   async sendMessage(
     sessionId: string,
-    data: Prisma.ChatMessageUncheckedCreateInput,
+    content: string,
+    image?: Express.Multer.File,
   ) {
+    let imageUrl = null;
+    if (image) {
+      imageUrl = `data:${image.mimetype};base64,${image.buffer.toString('base64')}`;
+    }
+
     // 1. Save user message
     const userMsg = await this.prisma.chatMessage.create({
       data: {
-        ...data,
         sessionId,
+        role: 'user',
+        content,
+        imageUrl: imageUrl ? 'uploaded' : null, // Store a flag or url if you have cloud storage
       },
     });
 
@@ -72,39 +80,168 @@ export class ChatRagService {
 
     try {
       // 2. Retrieve relevant documents using the vector store
-      const retriever = this.vectorStore.asRetriever(4); // Get top 4 results
+      const docs = await this.vectorStore.similaritySearch(content, 4); // Get top 4 results
+      const contextDocs = docs.map((doc) => doc.pageContent).join('\n\n');
 
-      const prompt = PromptTemplate.fromTemplate(`
-Bạn là một gia sư AI thông minh và tận tâm. Dưới đây là các tài liệu liên quan đến khóa học:
-{context}
+      // Retrieve user grade
+      const session = await this.prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        include: { user: true },
+      });
+      const userGrade = session?.user?.grade || 'chưa xác định';
+
+      const promptText = `
+Bạn là một gia sư AI thông minh và tận tâm tại Việt Nam. Học sinh đang học lớp ${userGrade}. 
+Hãy giải thích kiến thức sao cho phù hợp với trình độ học vấn của học sinh lớp ${userGrade} (KHÔNG sử dụng kiến thức vượt lớp trừ khi được yêu cầu).
+
+Dưới đây là các tài liệu liên quan đến khóa học:
+${contextDocs}
 
 Dựa vào tài liệu ở trên, hãy trả lời câu hỏi của học sinh:
-Câu hỏi: {question}
+Câu hỏi: ${content}
 
 Nếu thông tin không có trong tài liệu, hãy nói rõ là bạn không tìm thấy thông tin này trong bài giảng.
-Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.
-      `);
+Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
 
-      // 3. Create the RAG chain
-      const formatDocs = (docs: Document[]) =>
-        docs.map((doc) => doc.pageContent).join('\n\n');
+      // 3. Create the Multimodal message
+      const messageContent: any[] = [{ type: 'text', text: promptText }];
+      
+      if (image) {
+        messageContent.push({
+          type: 'image_url',
+          image_url: { url: imageUrl },
+        });
+      }
 
-      const chain = RunnableSequence.from([
-        {
-          context: retriever.pipe(formatDocs),
-          question: (input: string) => input,
-        },
-        prompt,
-        this.model,
-        new StringOutputParser(),
+      const { HumanMessage } = await import('@langchain/core/messages');
+
+      // 4. Invoke the model directly
+      const response = await this.model.invoke([
+        new HumanMessage({ content: messageContent }),
       ]);
 
-      // 4. Invoke the chain
-      aiResponseText = await chain.invoke(data.content);
+      if (typeof response.content === 'string') {
+        aiResponseText = response.content;
+      } else if (Array.isArray(response.content)) {
+        aiResponseText = response.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+      } else {
+        aiResponseText = JSON.stringify(response.content);
+      }
     } catch (error: any) {
       console.error('AI Error:', error);
-      aiResponseText =
-        'Xin lỗi, hệ thống AI đang gặp sự cố. Bạn vui lòng thử lại sau nhé!';
+      aiResponseText = 'Xin lỗi, hệ thống AI đang gặp sự cố. Bạn vui lòng thử lại sau nhé!';
+    }
+
+    // 5. Save AI message
+    const aiMsg = await this.prisma.chatMessage.create({
+      data: {
+        sessionId,
+        role: 'assistant',
+        content: aiResponseText,
+      },
+    });
+
+    // 6. Add XP for chatting (+2 XP per question)
+    try {
+      const session = await this.prisma.chatSession.findUnique({
+        where: { id: sessionId },
+      });
+      if (session) {
+        await this.gamificationService.addXp(session.userId, 2);
+      }
+    } catch (e) {
+      console.log('Failed to add XP', e);
+    }
+
+    return { userMsg, aiMsg };
+  }
+
+  async sendMessageStream(
+    sessionId: string,
+    content: string,
+    imageBase64: string | undefined,
+    onChunk: (chunk: string) => void,
+  ) {
+    let imageUrl = null;
+    if (imageBase64) {
+      // Ensure the string has data URL format, e.g., "data:image/png;base64,..."
+      // If it's just raw base64, we assume png
+      if (imageBase64.startsWith('data:image')) {
+        imageUrl = imageBase64;
+      } else {
+        imageUrl = `data:image/png;base64,${imageBase64}`;
+      }
+    }
+
+    // 1. Save user message
+    const userMsg = await this.prisma.chatMessage.create({
+      data: {
+        sessionId,
+        role: 'user',
+        content,
+        imageUrl: imageUrl ? 'uploaded' : null,
+      },
+    });
+
+    let aiResponseText = '';
+
+    try {
+      // 2. Retrieve relevant documents using the vector store
+      const docs = await this.vectorStore.similaritySearch(content, 4);
+      const contextDocs = docs.map((doc) => doc.pageContent).join('\n\n');
+
+      // Retrieve user grade
+      const session = await this.prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        include: { user: true },
+      });
+      const userGrade = session?.user?.grade || 'chưa xác định';
+
+      const promptText = `
+Bạn là một gia sư AI thông minh và tận tâm tại Việt Nam. Học sinh đang học lớp ${userGrade}. 
+Hãy giải thích kiến thức sao cho phù hợp với trình độ học vấn của học sinh lớp ${userGrade} (KHÔNG sử dụng kiến thức vượt lớp trừ khi được yêu cầu).
+
+Dưới đây là các tài liệu liên quan đến khóa học:
+${contextDocs}
+
+Dựa vào tài liệu ở trên, hãy trả lời câu hỏi của học sinh:
+Câu hỏi: ${content}
+
+Nếu thông tin không có trong tài liệu, hãy nói rõ là bạn không tìm thấy thông tin này trong bài giảng.
+Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
+
+      // 3. Create the Multimodal message
+      const messageContent: any[] = [{ type: 'text', text: promptText }];
+      
+      if (imageUrl) {
+        messageContent.push({
+          type: 'image_url',
+          image_url: { url: imageUrl },
+        });
+      }
+
+      const { HumanMessage } = await import('@langchain/core/messages');
+
+      // 4. Stream response
+      const stream = await this.model.stream([
+        new HumanMessage({ content: messageContent }),
+      ]);
+
+      for await (const chunk of stream) {
+        if (typeof chunk.content === 'string') {
+          aiResponseText += chunk.content;
+          onChunk(chunk.content);
+        } else if (Array.isArray(chunk.content)) {
+          const textChunk = chunk.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+          aiResponseText += textChunk;
+          onChunk(textChunk);
+        }
+      }
+    } catch (error: any) {
+      console.error('AI Error:', error);
+      const errorMsg = 'Xin lỗi, hệ thống AI đang gặp sự cố. Bạn vui lòng thử lại sau nhé!';
+      aiResponseText = errorMsg;
+      onChunk(errorMsg);
     }
 
     // 5. Save AI message

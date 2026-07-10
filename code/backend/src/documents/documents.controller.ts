@@ -6,18 +6,23 @@ import {
   Param,
   UseGuards,
   BadRequestException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { DocumentsService } from './documents.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bull';
 
 @Controller('documents')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DocumentsController {
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(
+    @InjectQueue('document-ingestion') private readonly documentQueue: Queue,
+  ) {}
 
   @Post('upload/:courseId')
   @Roles(Role.TEACHER, Role.ADMIN)
@@ -29,6 +34,16 @@ export class DocumentsController {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
-    return this.documentsService.processAndIngestDocument(file, courseId);
+
+    const fileBase64 = file.buffer.toString('base64');
+    
+    await this.documentQueue.add('process-document', {
+      fileBase64,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      courseId,
+    });
+
+    throw new HttpException('Document uploaded and is being processed in the background.', HttpStatus.ACCEPTED);
   }
 }

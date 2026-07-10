@@ -44,6 +44,14 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
+  @Patch('profile')
+  updateProfile(
+    @Request() req: any,
+    @Body() updateUserDto: Prisma.UserUpdateInput,
+  ) {
+    return this.usersService.update(req.user.userId, updateUserDto);
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,

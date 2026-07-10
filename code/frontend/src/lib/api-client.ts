@@ -4,8 +4,8 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   const supabase = createClient();
   const { data: { session } } = await supabase.auth.getSession();
   
-  const headers: HeadersInit = {
-    ...options.headers,
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> || {}),
   };
 
   // Only set application/json if body is not FormData

@@ -4,9 +4,9 @@ export async function fetchApiServer(endpoint: string, options: RequestInit = {}
   const supabase = await createClient();
   const { data: { session } } = await supabase.auth.getSession();
   
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(options.headers as Record<string, string> || {}),
   };
 
   if (session?.access_token) {
