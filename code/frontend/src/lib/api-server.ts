@@ -1,17 +1,17 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { createClient } from './supabase/server';
+ 
+import { cookies } from 'next/headers';
 
-export async function fetchApiServer(endpoint: string, options: RequestInit = {}) {
-  const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
+export async function fetchApiServer<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token')?.value;
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
 
-  if (session?.access_token) {
-    headers['Authorization'] = `Bearer ${session.access_token}`;
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -26,14 +26,14 @@ export async function fetchApiServer(endpoint: string, options: RequestInit = {}
     try {
       const errorData = await response.json();
       errorMsg = errorData.message || errorMsg;
-    } catch (e) {
+    } catch {
       // Not JSON
     }
     throw new Error(errorMsg);
   }
 
   if (response.status === 204) {
-    return null;
+    return null as unknown as T;
   }
 
   return response.json();

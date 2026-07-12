@@ -4,7 +4,7 @@ import { fetchApi } from '../lib/api-client';
 export interface UserProfile {
   id: string;
   email: string;
-  name?: string;
+  fullName?: string;
   role: string;
   grade?: number;
   avatarUrl?: string;

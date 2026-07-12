@@ -1,5 +1,5 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
 import { useLocale } from "next-intl";
 import { usePathname, useRouter } from "@/i18n/routing";
@@ -12,9 +12,7 @@ export function LanguageSwitcher() {
 
   const toggleLocale = () => {
     const nextLocale = locale === "en" ? "vi" : "en";
-    const currentPath = window.location.pathname;
-    const newPath = currentPath.replace(`/${locale}`, `/${nextLocale}`);
-    window.location.href = newPath + window.location.search;
+    router.replace(pathname, { locale: nextLocale });
   };
 
   return (

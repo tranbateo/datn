@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-require-imports */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -42,7 +42,13 @@ export class UsersService {
     return user;
   }
 
-  async update(id: string, data: Prisma.UserUpdateInput) {
+  async update(id: string, data: any) {
+    if (data.password) {
+      const bcrypt = require('bcryptjs');
+      data.passwordHash = await bcrypt.hash(data.password, 10);
+      delete data.password;
+    }
+
     return this.prisma.user.update({
       where: { id },
       data,

@@ -16,6 +16,11 @@ import { CurriculumModule } from './curriculum/curriculum.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bull';
 import { CalendarModule } from './calendar/calendar.module';
+import { ParentsModule } from './parents/parents.module';
+import { AdminModule } from './admin/admin.module';
+import { TeacherModule } from './teacher/teacher.module';
+import { MessagesModule } from './messages/messages.module';
+import { ProposalsModule } from './proposals/proposals.module';
 
 @Module({
   imports: [
@@ -39,6 +44,11 @@ import { CalendarModule } from './calendar/calendar.module';
     NotificationsModule,
     CurriculumModule,
     CalendarModule,
+    ParentsModule,
+    AdminModule,
+    TeacherModule,
+    MessagesModule,
+    ProposalsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

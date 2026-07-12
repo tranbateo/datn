@@ -1,17 +1,43 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
-import { Search, Plus, UploadCloud, Download, MoreVertical } from "lucide-react";
+import { Plus, UploadCloud, Download, MoreVertical } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-const questions = [
-  { id: 1, stem: "What is the time complexity of binary searc...", subject: "Computer Science", subjectColor: "bg-blue-100 text-blue-700", type: "Multiple Choice", difficulty: "Medium", diffColor: "text-emerald-500", date: "Oct 24, 2023" },
-  { id: 2, stem: "The derivative of e^x is always e^x,...", subject: "Mathematics", subjectColor: "bg-indigo-100 text-indigo-700", type: "True / False", difficulty: "Easy", diffColor: "text-emerald-500", date: "Oct 22, 2023" },
-  { id: 3, stem: "Explain the significance of the Schrödinger...", subject: "Physics", subjectColor: "bg-purple-100 text-purple-700", type: "Short Answer", difficulty: "Hard", diffColor: "text-red-500", date: "Oct 20, 2023" },
-];
+import { teacherService } from "@/services/teacher.service";
+import { useState, useEffect } from "react";
+
+interface QuestionData {
+  id: string | number;
+  stem: string;
+  subject: string;
+  subjectColor: string;
+  type: string;
+  difficulty: string;
+  diffColor: string;
+  date: string;
+}
 
 export default function TeacherQuestionBankPage() {
   const t = useTranslations("Teacher.Quiz");
+  const [questions, setQuestions] = useState<QuestionData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadQuestions() {
+      try {
+        const data = await teacherService.getQuestions();
+        if (data) {
+          setQuestions(data);
+        }
+      } catch (error) {
+        console.error("Failed to load questions", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadQuestions();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -76,7 +102,19 @@ export default function TeacherQuestionBankPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-card-border">
-              {questions.map((q) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                    Đang tải câu hỏi...
+                  </td>
+                </tr>
+              ) : questions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                    Chưa có câu hỏi nào.
+                  </td>
+                </tr>
+              ) : questions.map((q) => (
                 <tr key={q.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group">
                   <td className="px-6 py-4"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></td>
                   <td className="px-6 py-4">

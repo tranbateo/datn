@@ -1,13 +1,12 @@
 "use client";
 
 import { APP_ROUTES } from '@/constants/routes';
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @next/next/no-img-element */
-
+import Image from "next/image";
 import { Menu, Bell, Camera, ChevronLeft, Loader2 } from "lucide-react";
 import { Link } from "@/i18n/routing";
 import { useState, useEffect } from "react";
 import { usersService, UserProfile } from "@/services/users.service";
+import { parentService } from "@/services/parent.service";
 
 export default function SettingsPage() {
   const [pushEnabled, setPushEnabled] = useState(true);
@@ -19,28 +18,48 @@ export default function SettingsPage() {
   
   const [name, setName] = useState("");
   const [grade, setGrade] = useState<number>(1);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [generatingCode, setGeneratingCode] = useState(false);
 
   useEffect(() => {
-    usersService.getProfile().then(data => {
-      setProfile(data);
-      if (data.name) setName(data.name);
-      if (data.grade) setGrade(data.grade);
-      setLoading(false);
-    }).catch(err => {
-      console.error(err);
-      setLoading(false);
-    });
+    const fetchProfile = async () => {
+      try {
+        const data = await usersService.getProfile();
+        setProfile(data);
+        setName(data.fullName || '');
+        if (data.grade) setGrade(data.grade);
+      } catch (error) {
+        console.error('Failed to fetch profile', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await usersService.updateProfile({ name, grade: Number(grade) });
+      await usersService.updateProfile({ fullName: name, grade: Number(grade) });
       alert("Cập nhật thông tin thành công!");
-    } catch (error: any) {
-      alert("Lỗi: " + error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      alert("Lỗi: " + err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleGenerateLinkCode = async () => {
+    setGeneratingCode(true);
+    try {
+      const res = await parentService.generateLinkCode();
+      setLinkCode(res.linkCode);
+    } catch (error: unknown) {
+      const err = error as Error;
+      alert("Không thể tạo mã liên kết: " + err.message);
+    } finally {
+      setGeneratingCode(false);
     }
   };
 
@@ -81,7 +100,12 @@ export default function SettingsPage() {
               <h2 className="font-bold text-gray-900 dark:text-white mb-4">Hồ sơ cá nhân</h2>
               
               <div className="mb-6 relative w-20 h-20">
-                <img src={profile?.avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=Minh"} alt="Avatar" className="w-full h-full rounded-full border-2 border-indigo-100 dark:border-indigo-900 bg-gray-100" />
+                <Image 
+                  src={profile?.avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=Minh"} 
+                  alt="Avatar" 
+                  fill
+                  className="rounded-full border-2 border-indigo-100 dark:border-indigo-900 bg-gray-100 object-cover" 
+                />
                 <button className="absolute bottom-0 right-0 w-7 h-7 bg-indigo-600 rounded-full flex items-center justify-center text-white border-2 border-white dark:border-gray-900 shadow-sm hover:bg-indigo-700 transition-colors">
                   <Camera className="w-3.5 h-3.5" />
                 </button>
@@ -142,6 +166,27 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* Parent Link Card */}
+            <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+              <h2 className="font-bold text-gray-900 dark:text-white mb-2">Liên kết Phụ huynh</h2>
+              <p className="text-xs text-gray-500 mb-4">Tạo mã liên kết để phụ huynh có thể theo dõi tiến trình học tập của bạn.</p>
+              
+              {linkCode ? (
+                <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl text-center border border-indigo-100 dark:border-indigo-800">
+                  <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mb-1">Mã của bạn là:</p>
+                  <p className="text-3xl font-bold tracking-widest text-indigo-700 dark:text-indigo-300">{linkCode}</p>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleGenerateLinkCode}
+                  disabled={generatingCode}
+                  className="w-full flex justify-center items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-400 font-bold py-3 rounded-xl transition-colors text-sm"
+                >
+                  {generatingCode ? <Loader2 className="w-4 h-4 animate-spin" /> : "Tạo mã liên kết"}
+                </button>
+              )}
             </div>
 
             <button 

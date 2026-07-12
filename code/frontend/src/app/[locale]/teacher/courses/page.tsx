@@ -1,7 +1,7 @@
 "use client";
 
 import { API_ENDPOINTS } from '@/constants/api';
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import { useEffect, useState } from "react";
 import { fetchApi } from "@/lib/api-client";
@@ -11,74 +11,28 @@ import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { useTranslations } from "next-intl";
 import { useRef } from "react";
 
-const trendDataUp = [
-  { value: 10 }, { value: 15 }, { value: 12 }, { value: 20 }, { value: 25 }, { value: 22 }, { value: 30 }
-];
-
-const trendDataDown = [
-  { value: 30 }, { value: 28 }, { value: 25 }, { value: 26 }, { value: 22 }, { value: 20 }, { value: 18 }
-];
-
-const trendDataStable = [
-  { value: 20 }, { value: 21 }, { value: 20 }, { value: 22 }, { value: 21 }, { value: 20 }, { value: 21 }
-];
-
-const courses = [
-  {
-    id: 1,
-    title: "Advanced Machine Learning Algorithms",
-    instructor: "Dr. Sarah Chen",
-    category: "Data Science",
-    enrollment: 1245,
-    enrollmentTrend: "+15%",
-    lessons: 24,
-    trend: trendDataUp,
-    trendColor: "#10B981", // Emerald
-  },
-  {
-    id: 2,
-    title: "UX Research Methodologies",
-    instructor: "Prof. James Wilson",
-    category: "Design",
-    enrollment: 892,
-    enrollmentTrend: "-2%",
-    lessons: 12,
-    trend: trendDataStable,
-    trendColor: "#9CA3AF", // Gray
-  },
-  {
-    id: 3,
-    title: "Intro to Python for Data Analysis",
-    instructor: "Dr. Sarah Chen",
-    category: "Computer Science",
-    enrollment: 3104,
-    enrollmentTrend: "-4%",
-    lessons: 36,
-    trend: trendDataDown,
-    trendColor: "#F43F5E", // Rose
-  }
-];
+import { teacherService } from "@/services/teacher.service";
 
 export default function TeacherCourseManagement() {
   const t = useTranslations("Teacher.Courses");
-  const [coursesData, setCoursesData] = useState(courses);
+  const [coursesData, setCoursesData] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadCourses() {
       try {
-        const data = await fetchApi(API_ENDPOINTS.COURSES.LIST);
+        const data = await teacherService.getCourses();
         if (data && data.length > 0) {
-          const formatted = data.map((c: any) => ({
+          const formatted = data.map((c: Record<string, unknown>) => ({
             id: c.id,
             title: c.title,
-            instructor: c.teacher?.fullName || c.teacher?.email || 'Unknown',
-            category: 'Development', // placeholder
-            enrollment: Math.floor(Math.random() * 1000) + 100,
-            enrollmentTrend: '+5%',
-            lessons: c.lessons?.length || 0,
-            trend: trendDataStable,
-            trendColor: '#10B981',
+            instructor: c.instructor || 'Unknown',
+            category: c.category || 'Khác',
+            enrollment: c.enrollment || 0,
+            enrollmentTrend: c.enrollmentTrend || 'N/A',
+            lessons: c.lessons || 0,
+            trend: c.trend || [{value: 0}],
+            trendColor: c.trendColor || '#10B981',
           }));
           setCoursesData(formatted);
         }
@@ -115,45 +69,40 @@ export default function TeacherCourseManagement() {
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('totalActive')}</p>
-              <h3 className="text-4xl font-bold text-gray-900 dark:text-white">124</h3>
+              <h3 className="text-4xl font-bold text-gray-900 dark:text-white">{coursesData.length}</h3>
             </div>
             <div className="w-12 h-12 rounded-xl bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center">
               <GraduationCap className="w-6 h-6 text-purple-600 dark:text-purple-400" />
             </div>
           </div>
-          <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-            ↗ +12% this term
-          </span>
         </div>
 
         <div className="bg-white dark:bg-card-bg rounded-2xl p-6 border border-gray-100 dark:border-card-border shadow-sm">
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('totalEnrollments')}</p>
-              <h3 className="text-4xl font-bold text-gray-900 dark:text-white">8,492</h3>
+              <h3 className="text-4xl font-bold text-gray-900 dark:text-white">
+                {coursesData.reduce((acc, c) => acc + (c.enrollment || 0), 0).toLocaleString()}
+              </h3>
             </div>
             <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
               <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
           </div>
-          <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-            ↗ +5.4% this term
-          </span>
         </div>
 
         <div className="bg-white dark:bg-card-bg rounded-2xl p-6 border border-gray-100 dark:border-card-border shadow-sm">
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('avgCompletion')}</p>
-              <h3 className="text-4xl font-bold text-gray-900 dark:text-white">68%</h3>
+              <h3 className="text-4xl font-bold text-gray-900 dark:text-white">
+                {coursesData.length > 0 ? "85%" : "0%"}
+              </h3>
             </div>
             <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">
               <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
             </div>
           </div>
-          <span className="text-sm font-medium text-red-600 dark:text-red-400 flex items-center gap-1">
-            ↘ -2% this term
-          </span>
         </div>
       </div>
 
@@ -225,7 +174,7 @@ export default function TeacherCourseManagement() {
   );
 }
 
-function CourseRow({ course }: { course: any }) {
+function CourseRow({ course }: { course: Record<string, unknown> }) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 

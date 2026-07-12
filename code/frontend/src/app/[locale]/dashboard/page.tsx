@@ -1,17 +1,16 @@
 "use client";
 
 import { APP_ROUTES } from '@/constants/routes';
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { Link } from "@/i18n/routing";
-import { Play, Sparkles, BookOpen, Clock, ChevronRight, Star, Bot, Loader2 } from "lucide-react";
-import Image from "next/image";
+import { BookOpen, Clock, ChevronRight, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { gamificationService, GamificationProfile } from "@/services/gamification.service";
 import { usersService, UserProfile } from "@/services/users.service";
 import { curriculumService, Subject } from "@/services/curriculum.service";
+import { calendarService, CalendarEvent } from "@/services/calendar.service";
 
 export default function StudentDashboard() {
   const t = useTranslations("User.Dashboard");
@@ -19,15 +18,24 @@ export default function StudentDashboard() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [gamification, setGamification] = useState<GamificationProfile | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       usersService.getProfile(),
-      gamificationService.getProfile()
-    ]).then(([user, gamif]) => {
+      gamificationService.getProfile(),
+      calendarService.getEvents().catch(() => [])
+    ]).then(([user, gamif, eventsData]) => {
       setProfile(user);
       setGamification(gamif);
+      
+      const now = new Date();
+      const upcoming = eventsData
+        .filter((e) => new Date(e.startTime) > now)
+        .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+        .slice(0, 3);
+      setUpcomingEvents(upcoming);
       if (user.grade) {
         return curriculumService.getSubjectsByGrade(user.grade);
       }
@@ -53,12 +61,13 @@ export default function StudentDashboard() {
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 lg:space-y-8 animate-in fade-in duration-500 pb-24 md:pb-8">
       
       {/* --- DESKTOP/TABLET GREETING (Hidden on mobile as it's in header) --- */}
-      <div className="hidden md:flex justify-between items-end mb-6">
+      <div className="flex justify-between items-center bg-white dark:bg-card-bg p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-card-border">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            Chào mừng trở lại, {profile?.name || "Học viên"}!
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Lớp {profile?.grade || "?"} • {subjects.length} Môn học</p>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            Chào mừng trở lại, {profile?.fullName || 'Học sinh'}! 👋
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400">
+            Bạn đã hoàn thành 80% mục tiêu tuần này. Tiếp tục phát huy nhé!Môn học</p>
         </div>
       </div>
 
@@ -95,7 +104,7 @@ export default function StudentDashboard() {
       <div className="space-y-4">
         <h2 className="text-lg font-bold text-gray-900 dark:text-white">Chương trình học (Lớp {profile?.grade})</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-          {subjects.map((sub, idx) => (
+          {subjects.map((sub) => (
             <div key={sub.id} className="bg-white dark:bg-gray-900 rounded-3xl p-4 shadow-sm border border-gray-100 dark:border-gray-800 flex items-center gap-3 cursor-pointer hover:border-indigo-200 transition-colors">
               <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center text-indigo-600 font-bold">
                 {sub.name.charAt(0)}
@@ -117,26 +126,35 @@ export default function StudentDashboard() {
           </Link>
         </div>
 
-        {/* Main Next Class */}
-        <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 shadow-sm border border-indigo-100 dark:border-indigo-900/30 flex items-center gap-4 relative overflow-hidden group hover:shadow-md transition-shadow cursor-pointer">
-          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
-          
-          <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/50 rounded-2xl flex items-center justify-center text-indigo-600 shrink-0">
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-            </svg>
+        {upcomingEvents.length === 0 ? (
+          <div className="text-center py-6 bg-white dark:bg-gray-900 rounded-3xl border border-dashed border-gray-200 dark:border-gray-800">
+            <p className="text-sm text-gray-500 dark:text-gray-400">Chưa có lịch học nào sắp tới.</p>
           </div>
-          
-          <div className="flex-1">
-            <div className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-1">{t('classTime')}</div>
-            <h3 className="font-bold text-gray-900 dark:text-white mb-0.5">{t('classTitle')}</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{t('classDesc')}</p>
+        ) : (
+          <div className="space-y-3">
+            {upcomingEvents.map((ev) => (
+              <div key={ev.id} className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900 rounded-full flex items-center justify-center">
+                    <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
+                      {profile?.fullName?.charAt(0) || 'U'}
+                    </span>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-gray-900 dark:text-white text-sm">{ev.title}</h4>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(ev.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> {ev.type}</span>
+                    </div>
+                  </div>
+                </div>
+                <Link href={APP_ROUTES.SCHEDULE} className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:border-indigo-200 transition-colors">
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+              </div>
+            ))}
           </div>
-          
-          <button className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center group-hover:bg-indigo-500 group-hover:text-white transition-colors">
-            <Play className="w-4 h-4 ml-0.5" fill="currentColor" />
-          </button>
-        </div>
+        )}
       </div>
       
     </div>

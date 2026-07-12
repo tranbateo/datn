@@ -23,6 +23,12 @@ export const API_ENDPOINTS = {
     MESSAGE: '/chat-rag/message',
     SESSION: '/chat/session',
   },
+  TEACHER: {
+    STUDENTS: '/teacher/students',
+    COURSES: '/teacher/courses',
+    QUESTIONS: '/teacher/questions',
+    DOCUMENTS: '/teacher/documents',
+  },
   COURSES: {
     LIST: '/courses',
   },

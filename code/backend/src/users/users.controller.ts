@@ -27,7 +27,8 @@ export class UsersController {
   @Post('sync')
   syncUser(@Request() req: any) {
     const user = req.user; // from JwtStrategy
-    return this.usersService.syncUser(user.userId, user.email, user.role);
+    const userId = user.id || user.userId;
+    return this.usersService.syncUser(userId, user.email, user.role);
   }
 
   @Post()
@@ -42,6 +43,12 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
+  @Get('profile')
+  getProfile(@Request() req: any) {
+    const userId = req.user.id || req.user.userId;
+    return this.usersService.findOne(userId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
@@ -52,7 +59,8 @@ export class UsersController {
     @Request() req: any,
     @Body() updateUserDto: Prisma.UserUpdateInput,
   ) {
-    return this.usersService.update(req.user.userId, updateUserDto);
+    const userId = req.user.id || req.user.userId;
+    return this.usersService.update(userId, updateUserDto);
   }
 
   @Patch(':id')

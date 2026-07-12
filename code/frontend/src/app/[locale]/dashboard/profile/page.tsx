@@ -1,9 +1,8 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @next/next/no-img-element */
-/* eslint-disable jsx-a11y/alt-text */
+ 
+ 
 
-import { Trophy, Medal, Star, Flame, Target, Lock, Crown, CheckSquare } from "lucide-react";
+import { Star, Flame, Target, Lock, Crown, CheckSquare } from "lucide-react";
 import Image from "next/image";
 
 export default function LeaderboardProfile() {
@@ -28,7 +27,7 @@ export default function LeaderboardProfile() {
         {/* Top 2 */}
         <div className="flex flex-col items-center">
           <div className="relative mb-2">
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=LanAnh" className="w-12 h-12 rounded-full border-2 border-gray-200" />
+            <Image src="https://api.dicebear.com/7.x/avataaars/svg?seed=LanAnh" alt="avatar" width={48} height={48} className="w-12 h-12 rounded-full border-2 border-gray-200" />
             <div className="absolute -top-2 -left-2 w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-600 shadow-sm border border-white">2</div>
           </div>
           <div className="text-[10px] font-bold text-gray-900 dark:text-white">Lan Anh</div>
@@ -40,7 +39,7 @@ export default function LeaderboardProfile() {
         <div className="flex flex-col items-center">
           <div className="relative mb-2">
             <Crown className="w-6 h-6 text-amber-500 absolute -top-5 left-1/2 -translate-x-1/2 z-10" fill="currentColor" />
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Quan" className="w-14 h-14 rounded-full border-2 border-amber-400 ring-2 ring-amber-100" />
+            <Image src="https://api.dicebear.com/7.x/avataaars/svg?seed=Quan" alt="avatar" width={56} height={56} className="w-14 h-14 rounded-full border-2 border-amber-400 ring-2 ring-amber-100" />
             <div className="absolute -top-2 -right-2 w-6 h-6 bg-amber-400 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm border border-white">1</div>
           </div>
           <div className="text-[10px] font-bold text-gray-900 dark:text-white">Minh Quân</div>
@@ -51,7 +50,7 @@ export default function LeaderboardProfile() {
         {/* Top 3 */}
         <div className="flex flex-col items-center">
           <div className="relative mb-2">
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=BaoNam" className="w-12 h-12 rounded-full border-2 border-amber-700/50" />
+            <Image src="https://api.dicebear.com/7.x/avataaars/svg?seed=BaoNam" alt="avatar" width={48} height={48} className="w-12 h-12 rounded-full border-2 border-amber-700/50" />
             <div className="absolute -top-2 -right-2 w-6 h-6 bg-amber-700/50 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm border border-white">3</div>
           </div>
           <div className="text-[10px] font-bold text-gray-900 dark:text-white">Bảo Nam</div>
@@ -71,7 +70,7 @@ export default function LeaderboardProfile() {
           {/* Rank 4 */}
           <div className="flex items-center gap-3">
             <div className="w-4 text-center text-xs font-bold text-gray-500">4</div>
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Ha" className="w-8 h-8 rounded-full bg-gray-100" />
+            <Image src="https://api.dicebear.com/7.x/avataaars/svg?seed=Ha" alt="avatar" width={32} height={32} className="w-8 h-8 rounded-full bg-gray-100" />
             <div className="flex-1">
               <div className="text-xs font-bold text-gray-900 dark:text-white">Thu Hà</div>
               <div className="text-[10px] text-gray-500">Hạng Kim Cương • 14 ngày chuỗi</div>
@@ -83,7 +82,7 @@ export default function LeaderboardProfile() {
           <div className="flex items-center gap-3 bg-blue-50 dark:bg-blue-900/20 p-2 -mx-2 rounded-xl border border-blue-100 dark:border-blue-900/50">
             <div className="w-4 text-center text-xs font-bold text-blue-600">5</div>
             <div className="relative">
-               <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Minh" className="w-8 h-8 rounded-full border-2 border-blue-500" />
+               <Image src="https://api.dicebear.com/7.x/avataaars/svg?seed=Minh" alt="avatar" width={32} height={32} className="w-8 h-8 rounded-full border-2 border-blue-500" />
             </div>
             <div className="flex-1">
               <div className="text-xs font-bold text-blue-700 dark:text-blue-400">Minh Nguyen (Bạn)</div>
@@ -95,7 +94,7 @@ export default function LeaderboardProfile() {
           {/* Rank 6 */}
           <div className="flex items-center gap-3">
             <div className="w-4 text-center text-xs font-bold text-gray-500">6</div>
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Phat" className="w-8 h-8 rounded-full bg-gray-100" />
+            <Image src="https://api.dicebear.com/7.x/avataaars/svg?seed=Phat" alt="avatar" width={32} height={32} className="w-8 h-8 rounded-full bg-gray-100" />
             <div className="flex-1">
               <div className="text-xs font-bold text-gray-900 dark:text-white">Đức Phát</div>
               <div className="text-[10px] text-gray-500">Hạng Vàng • 3 ngày chuỗi</div>

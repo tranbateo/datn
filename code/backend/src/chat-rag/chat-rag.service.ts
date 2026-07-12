@@ -155,9 +155,17 @@ Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
       });
       if (session) {
         await this.gamificationService.addXp(session.userId, 2);
+
+        // INCREMENT QUOTA
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        await this.prisma.aiTokenUsage.updateMany({
+          where: { userId: session.userId, date: today },
+          data: { messageCount: { increment: 1 } },
+        });
       }
     } catch (e) {
-      console.log('Failed to add XP', e);
+      console.log('Failed to add XP or Quota', e);
     }
 
     return { userMsg, aiMsg };
@@ -271,9 +279,17 @@ Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
       });
       if (session) {
         await this.gamificationService.addXp(session.userId, 2);
+
+        // INCREMENT QUOTA
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        await this.prisma.aiTokenUsage.updateMany({
+          where: { userId: session.userId, date: today },
+          data: { messageCount: { increment: 1 } },
+        });
       }
     } catch (e) {
-      console.log('Failed to add XP', e);
+      console.log('Failed to add XP or Quota', e);
     }
 
     return { userMsg, aiMsg };

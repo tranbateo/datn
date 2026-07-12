@@ -1,287 +1,356 @@
-Tài Liệu Đặc Tả Yêu Cầu Phần Mềm (SRS) - AI Tutor
-PHẦN 1: GIỚI THIỆU (INTRODUCTION)
-1.1 Mục đích (Purpose)
-Tài liệu Đặc tả Yêu cầu Phần mềm (SRS) này được lập ra nhằm mục đích xác định rõ ràng, chi tiết và đầy đủ các yêu cầu chức năng và phi chức năng của hệ thống AI Tutor. Tài liệu là cơ sở cốt lõi để đội ngũ phát triển (Development), kiểm thử (QA/QC), và khách hàng (Stakeholders) thống nhất về phạm vi công việc, thiết kế, triển khai và nghiệm thu dự án.
-1.2 Tổng quan ứng dụng (Application Overview)
-Hệ thống là một nền tảng giáo dục thông minh (AI Tutor) dành cho học sinh Việt Nam, bám sát chương trình của Bộ Giáo dục và Đào tạo.
-Mục đích chính: Cung cấp giải pháp học tập cá nhân hóa thông qua gia sư AI đa mô hình, kết hợp với các yếu tố trò chơi hóa (gamification) để tăng tương tác và hiệu quả học tập.
-Tính năng cốt lõi: Trò chuyện trực tiếp với AI (RAG system), quản lý lịch học (OCR từ ảnh), luyện tập và làm bài trắc nghiệm, hệ thống điểm thưởng (XP/Leaderboard), báo cáo học tập, và một trang quản trị (Admin Dashboard) toàn diện cho giáo viên/ban quản trị.
-1.3 Đối tượng đọc tài liệu (Intended Audience)
-Đội ngũ Phát triển (Developers): Kỹ sư Backend (NestJS), Frontend (Next.js), Mobile (React Native) để hiểu và lập trình hệ thống.
-Đội ngũ Kiểm thử (QA/QC): Để xây dựng các kịch bản kiểm thử (Test Cases) dựa trên các Use Case và Acceptance Criteria.
-Quản lý dự án (PM/PO) và Khách hàng: Theo dõi, đánh giá tiến độ và nghiệm thu tính năng.
-1.4 Chữ viết tắt (Abbreviations)
-SRS: Software Requirements Specification
-AI: Artificial Intelligence
-RAG: Retrieval-Augmented Generation
-OCR: Optical Character Recognition
-RBAC: Role-Based Access Control
-XP: Experience Points
-1.5 Tài liệu tham khảo (References)
-Tài liệu Tổng quan Hệ thống AI Tutor (SYSTEM_REVIEW.md)
+# TÀI LIỆU ĐẶC TẢ KỸ THUẬT PHẦN MỀM (SRS) - AI TUTOR
 
-PHẦN 2: YÊU CẦU MỨC TỔNG THỂ (HIGH LEVEL REQUIREMENT)
-2.1 Biểu đồ quan hệ đối tượng (Object Relationship Diagram)
-Biểu đồ mô tả cấu trúc tĩnh của hệ thống và các thực thể chính.
-erDiagram
-    User {
-        uuid id PK
-        string email "Unique"
-        string passwordHash
-        string fullName
-        datetime dateOfBirth
-        string gender "MALE | FEMALE | OTHER"
-        string role "STUDENT | ADMIN"
-        boolean isActive
-        timestamptz createdAt
-        timestamptz updatedAt
-    }
+## 1. GIỚI THIỆU VÀ KIẾN TRÚC TỔNG THỂ
 
-    Student {
-        uuid id PK
-        uuid userId FK
-        string studentCode "Unique"
-        string gradeLevel
-        string className
-        string schoolName
-        string phoneNumber
-        string email
-        string address
-        int totalXP
-        int currentLevel
-        int currentStreak
-        int longestStreak
-        timestamptz lastActivityDate
-        jsonb studyPreferences
-    }
+### 1.1 Tổng quan (Overview)
+AI Tutor là nền tảng giáo dục thông minh đa nền tảng. Hệ thống được thiết kế để kết nối 4 đối tượng người dùng: **Học sinh** (Người học chính), **Giáo viên** (Người tạo nội dung), **Phụ huynh** (Người giám sát), và **Admin** (Người quản trị hệ thống).
 
-    Schedule {
-        uuid id PK
-        uuid studentId FK
-        string subjectCode "TOAN | LY | HOA | ANH..."
-        int dayOfWeek "1 = Monday... 7 = Sunday"
-        int orderIndex "Tiết học số"
-        string session "Morning | Afternoon"
-        string notes
-        timestamptz createdAt
-    }
+### 1.2 Kiến trúc Hệ thống (System Architecture)
+Hệ thống sử dụng kiến trúc Client-Server dựa trên API tập trung:
+- **Backend**: NestJS (REST API, GraphQL, WebSockets qua Socket.IO).
+- **Frontend (Web)**: Next.js (App Router) phục vụ cho Web Admin, Web Teacher và Web Parent.
+- **Frontend (Mobile)**: React Native phục vụ cho App Student và App Parent.
+- **Database & Caching**: PostgreSQL (Dữ liệu quan hệ), `pgvector` (Vector Database phục vụ AI RAG), Redis (Caching session, Rate limiting, Pub/Sub WebSockets).
+- **Tích hợp bên ngoài**: 
+  - LLM Models: OpenAI, Gemini, Claude (qua LangChain).
+  - Push Notification: Firebase Cloud Messaging (FCM).
+  - Storage: AWS S3 hoặc Google Cloud Storage (Lưu trữ PDF, Image).
 
-    CalendarEvent {
-        uuid id PK
-        uuid studentId FK
-        string title
-        text description
-        timestamptz startDateTime
-        timestamptz endDateTime
-        string type "Event | Exam | Quiz | Assignment..."
-        string location
-        boolean hasReminder
-        int reminderMinutesBefore
-        timestamptz createdAt
-    }
+---
 
-    ChatSession {
-        uuid id PK
-        uuid studentId FK
-        string subject
-        string title
-        string status "OPEN | CLOSED"
-        timestamptz createdAt
-        timestamptz lastMessageAt
-    }
+## 2. THIẾT KẾ CƠ SỞ DỮ LIỆU (DATABASE SCHEMA)
 
-    ChatMessage {
-        uuid id PK
-        uuid chatSessionId FK
-        string senderType "STUDENT | AI"
-        text content
-        string audioUrl
-        string intent
-        jsonb citationLinks
-        timestamptz createdAt
-    }
+Dữ liệu được tổ chức chặt chẽ trên PostgreSQL. Dưới đây là cấu trúc các bảng cốt lõi:
 
-    Quiz {
-        uuid id PK
-        string title
-        text description
-        string subject
-        string gradeLevel
-        string difficulty "EASY | MEDIUM | HARD"
-        int timeLimit "Phút"
-        boolean isAiGenerated
-        uuid createdById FK
-        boolean isActive
-        timestamptz createdAt
-    }
+### 2.1 Nhóm Bảng Người dùng & Auth (Users & Security)
+- **`users`**: Bảng gốc chứa thông tin đăng nhập.
+  - `id` (UUID, PK), `email` (VARCHAR, Unique), `password_hash` (VARCHAR), `full_name` (VARCHAR), `role` (Enum: STUDENT, TEACHER, PARENT, ADMIN), `is_active` (BOOLEAN, default: true), `created_at` (TIMESTAMP).
+- **`user_sessions`**: Quản lý thiết bị đăng nhập (Bảo mật JWT).
+  - `id` (UUID, PK), `user_id` (UUID, FK -> users), `refresh_token` (VARCHAR), `device_ip` (VARCHAR), `user_agent` (VARCHAR), `expires_at` (TIMESTAMP), `is_revoked` (BOOLEAN).
+- **`user_devices`**: Lưu trữ thiết bị nhận Cảnh báo bảo mật & Push Notification.
+  - `id` (UUID, PK), `user_id` (UUID, FK), `fcm_token` (VARCHAR), `device_type` (Enum: IOS, ANDROID, WEB), `last_active` (TIMESTAMP).
+- **`students`**: Kế thừa `users`.
+  - `id` (UUID, PK), `user_id` (UUID, FK), `total_xp` (INT), `current_level` (INT), `current_grade` (INT, Khối lớp hiện tại, VD: 1), `streak` (INT).
+- **`teachers`**: Kế thừa `users`.
+  - `id` (UUID, PK), `user_id` (UUID, FK), `subject_id` (UUID, FK), `education_level` (Enum: PRIMARY, MIDDLE, HIGH), `school_name` (VARCHAR), `is_verified` (BOOLEAN).
+- **`parents`**: Kế thừa `users`.
+  - `id` (UUID, PK), `user_id` (UUID, FK), `phone_number` (VARCHAR).
+- **`parent_student_links`**: Bảng trung gian n-n.
+  - `parent_id` (UUID, FK), `student_id` (UUID, FK), `linked_at` (TIMESTAMP).
 
-    QuizAttempt {
-        uuid id PK
-        uuid quizId FK
-        uuid studentId FK
-        float score
-        int xpEarned
-        int durationSeconds
-        timestamptz submittedAt
-    }
+### 2.2 Nhóm Bảng Bài tập & Lên Lớp (Quizzes & Graduation)
+- **`quizzes`**: Bài kiểm tra do giáo viên tạo.
+  - `id` (UUID, PK), `teacher_id` (UUID, FK), `title` (VARCHAR), `time_limit_minutes` (INT), `is_published` (BOOLEAN).
+- **`quiz_questions`**: Câu hỏi trong bài kiểm tra.
+  - `id` (UUID, PK), `quiz_id` (UUID, FK), `question_text` (TEXT), `question_type` (Enum: MULTIPLE_CHOICE, FILL_BLANK).
+- **`quiz_options`**: Đáp án trắc nghiệm.
+  - `id` (UUID, PK), `question_id` (UUID, FK), `option_text` (VARCHAR), `is_correct` (BOOLEAN).
+- **`quiz_attempts`**: Lượt làm bài của học sinh.
+  - `id` (UUID, PK), `student_id` (UUID, FK), `quiz_id` (UUID, FK), `total_score` (FLOAT), `earned_xp` (INT), `submitted_at` (TIMESTAMP).
+- **`student_answers`**: Chi tiết câu trả lời của học sinh.
+  - `id` (UUID, PK), `attempt_id` (UUID, FK), `question_id` (UUID, FK), `selected_option_id` (UUID, FK), `is_correct` (BOOLEAN).
+- **`graduation_exams`**: Đề thi Vượt cấp Đầu ra / Lên lớp (Giáo viên phụ trách khối lớp tạo).
+  - `id` (UUID, PK), `teacher_id` (UUID, FK), `grade_level` (INT, Khối lớp yêu cầu), `passing_score` (FLOAT), `quiz_id` (UUID, FK -> quizzes).
 
-    Document {
-        uuid id PK
-        string title
-        string fileName
-        string filePath
-        int fileSize
-        string fileType
-        string subject
-        string gradeLevel
-        string status "PROCESSING | SUCCESS | FAILED"
-        int progressPercentage
-        uuid createdById FK
-        timestamptz createdAt
-    }
+### 2.3 Nhóm Bảng AI & Knowledge (RAG System)
+- **`documents`**: Tài liệu bài giảng.
+  - `id` (UUID, PK), `teacher_id` (UUID, FK), `title` (VARCHAR), `file_url` (VARCHAR), `status` (Enum: PROCESSING, SUCCESS, FAILED).
+- **`files_metadata`**: Lưu trữ thông tin chi tiết của file.
+  - `id` (UUID, PK), `document_id` (UUID, FK), `file_size_bytes` (INT), `mime_type` (VARCHAR), `page_count` (INT).
+- **`vector_embeddings`**: Lưu trữ Vector cho AI RAG (`pgvector`).
+  - `id` (UUID, PK), `document_id` (UUID, FK), `chunk_text` (TEXT), `embedding` (VECTOR(1536)).
+- **`chat_sessions`**: Phiên chat giữa Student và AI.
+  - `id` (UUID, PK), `student_id` (UUID, FK), `started_at` (TIMESTAMP).
+- **`chat_messages`**: Tin nhắn chi tiết.
+  - `id` (UUID, PK), `session_id` (UUID, FK), `sender_type` (Enum: STUDENT, AI), `content` (TEXT), `citations` (JSONB).
 
-    Lesson {
-        uuid id PK
-        string title
-        text description
-        string subject
-        string gradeLevel
-        int order
-        text contentText
-        timestamptz createdAt
-    }
+### 2.4 Nhóm Gamification, Shop & Mạng xã hội (Social)
+- **`shop_items`**: Vật phẩm có thể mua bằng XP.
+  - `id` (UUID, PK), `name` (VARCHAR), `type` (Enum: AVATAR, BADGE, THEME), `cost_xp` (INT), `image_url` (VARCHAR).
+- **`student_inventory`**: Kho đồ của học sinh.
+  - `student_id` (UUID, FK), `item_id` (UUID, FK), `is_equipped` (BOOLEAN), `acquired_at` (TIMESTAMP).
+- **`achievements`**: Danh mục Thành tựu học tập.
+  - `id` (UUID, PK), `name` (VARCHAR), `description` (TEXT), `reward_xp` (INT).
+- **`student_achievements`**: Thành tựu học sinh đã mở khóa.
+  - `student_id` (UUID, FK), `achievement_id` (UUID, FK), `unlocked_at` (TIMESTAMP).
+- **`friendships`**: Mạng lưới kết bạn giữa các học sinh.
+  - `student_id_1` (UUID, FK), `student_id_2` (UUID, FK), `status` (Enum: PENDING, ACCEPTED), `created_at` (TIMESTAMP).
+- **`direct_messages`**: Tin nhắn nội bộ giữa học sinh.
+  - `id` (UUID, PK), `sender_id` (UUID, FK), `receiver_id` (UUID, FK), `content` (TEXT), `sent_at` (TIMESTAMP), `is_read` (BOOLEAN).
 
-    %% Relationships
-    User ||--o| Student : "has student details"
-    Student ||--o{ Schedule : "timetable"
-    Student ||--o{ CalendarEvent : "personal calendar"
-    Student ||--o{ ChatSession : "chats with tutor"
-    ChatSession ||--o{ ChatMessage : "contains"
-    Student ||--o{ QuizAttempt : "attempts"
-    Quiz ||--o{ QuizAttempt : "receives"
-    Student ||--o{ Document : "uploads reference"
-    Document ||--o{ Lesson : "source for"
-2.2 Biểu đồ Luồng công việc (Workflow Diagram)
-Luồng thao tác chung của học sinh khi sử dụng tính năng học với AI.
-flowchart TD
-    A["Học sinh Đăng nhập"] --> B{"Lựa chọn Chức năng"}
-    B -->|Hỏi bài| C["Mở AI Tutor Chat"]
-    C --> D["Nhập câu hỏi"]
-    D --> E["AI phân tích bằng RAG & LangChain"]
-    E --> F["Trả về câu trả lời kèm Trích dẫn"]
-    
-    B -->|Xem lịch| G["Mở Schedule"]
-    G --> H["Thêm lịch mới chụp ảnh / Nhập tay"]
-    H --> I["OCR trích xuất thông tin"]
-    I --> J["Lưu lịch học"]
-    
-    B -->|Luyện tập| K["Mở Practice & Quizzes"]
-    K --> L["Làm bài kiểm tra (Timer)"]
-    L --> M["Nộp bài"]
-    M --> N["Cập nhật XP & Leaderboard"]
-2.3 Biểu đồ Chuyển đổi trạng thái (State Transition Diagram)
-Trạng thái của một Bài tập / Quiz trong hệ thống.
-stateDiagram-v2
-    [*] --> Draft: Giáo viên tạo bài
-    Draft --> Published: Duyệt và Phát hành
-    Published --> InProgress: Học sinh đang làm
-    InProgress --> Submitted: Hết giờ / Nộp bài
-    Submitted --> Graded: Hệ thống chấm điểm tự động
-    Graded --> [*]
-2.4 Biểu đồ Use Case (Use Case Diagram)
-Các tác nhân và hành động tương ứng.
+### 2.5 Nhóm Bảng Thương mại & Thanh toán (Payments)
+- **`subscriptions`**: Gói cước đăng ký khóa học hoặc dịch vụ AI VIP.
+  - `id` (UUID, PK), `name` (VARCHAR), `price` (FLOAT), `duration_days` (INT).
+- **`user_subscriptions`**: Gói cước mà User (Student/Parent) đang sử dụng.
+  - `id` (UUID, PK), `user_id` (UUID, FK), `subscription_id` (UUID, FK), `valid_until` (TIMESTAMP), `status` (Enum: ACTIVE, EXPIRED).
+- **`transactions`**: Lưu vết thanh toán (VNPay, Momo, Stripe).
+  - `id` (UUID, PK), `user_id` (UUID, FK), `amount` (FLOAT), `payment_method` (VARCHAR), `status` (Enum: PENDING, SUCCESS, FAILED), `created_at` (TIMESTAMP).
+
+### 2.6 Nhóm Bảng Lớp học & Vận hành Hệ thống
+- **`classes`** & **`class_enrollments`**: Quản lý Lớp học của Giáo viên.
+  - `classes`: `id` (UUID), `teacher_id` (UUID), `name` (VARCHAR), `grade_level` (INT).
+  - `class_enrollments`: `class_id` (UUID), `student_id` (UUID).
+- **`notifications`**: Hệ thống Quả chuông (Push Notifications).
+  - `id` (UUID, PK), `user_id` (UUID, FK), `title` (VARCHAR), `body` (TEXT), `type` (VARCHAR), `is_read` (BOOLEAN), `created_at` (TIMESTAMP).
+- **`ai_token_usages`** & **`audit_logs`**: Nhật ký vận hành (Dành cho Admin).
+  - `ai_token_usages`: `user_id`, `tokens_used`, `cost`, `timestamp`.
+  - `audit_logs`: `user_id`, `action`, `details`, `timestamp`.
+
+---
+
+## 3. CHÍNH SÁCH BẢO MẬT & QUYỀN RIÊNG TƯ (SECURITY & PRIVACY)
+
+### 3.1 Bảo mật Hệ thống & API
+1. **Mã hóa truyền tải (In Transit)**: 100% các request API và WebSockets phải đi qua giao thức bảo mật HTTPS/WSS (TLS 1.2 trở lên).
+2. **Xác thực (Authentication & Authorization)**: 
+   - Sử dụng cơ chế **JWT (JSON Web Tokens)** kết hợp Access Token (ngắn hạn) và Refresh Token (dài hạn).
+   - **Lưu trữ Token an toàn**: **Tuyệt đối KHÔNG LƯU JWT vào `localStorage`** để tránh lỗ hổng XSS. Access Token và Refresh Token phải được lưu dưới dạng **`httpOnly`, `Secure`, `SameSite=Strict` Cookies**.
+   - Bắt buộc bật **Xác minh 2 bước (2FA)** hoặc OTP Email đối với luồng Đăng nhập của Admin và Giáo viên.
+   - Refresh Token có khả năng bị thu hồi (Revoke) tự động nếu phát hiện thiết bị/IP đăng nhập bất thường.
+   - Mật khẩu lưu trong Database bắt buộc băm bằng thuật toán `bcrypt` (salt rounds >= 10).
+3. **Bảo vệ chống tấn công Web & Server**:
+   - Tích hợp **CORS** chỉ định rõ các White-listed Domains, cấu hình **CSRF Token** để bảo vệ các thao tác state-changing.
+   - Tích hợp `Helmet` để thiết lập HTTP Headers an toàn và **WAF (Web Application Firewall)** để chặn truy cập dị thường.
+   - Bật **Rate Limiting** nghiêm ngặt và cấu hình **Fail2Ban** (tự động khóa IP nếu quét port hoặc brute-force) để chống DDoS và Spam API.
+   - Cấu hình mã hóa dữ liệu tại chỗ (**Encryption at Rest**) đối với PII (Personally Identifiable Information) trong CSDL.
+
+### 3.2 Chính sách Quyền riêng tư (Privacy Policy)
+Bảo vệ dữ liệu trẻ em là ưu tiên cao nhất của hệ thống:
+1. **Tuân thủ COPPA (Trẻ em)**: Không thu thập dữ liệu định danh dư thừa của Học sinh. Không chia sẻ dữ liệu định danh, hành vi học tập cho bất kỳ bên thứ 3 nào vì mục đích quảng cáo.
+2. **Bảo mật dữ liệu LLM**: Dữ liệu hội thoại gửi lên các API của OpenAI/Gemini/Claude phải được ẩn danh (Anonymized) và được cam kết (Opt-out) không sử dụng để huấn luyện (train) các model công khai của hãng.
+
+---
+
+## 4. ĐẶC TẢ CHI TIẾT LUỒNG HOẠT ĐỘNG (WORKFLOWS)
+
+Phần này đặc tả tường minh các tính năng thông qua luồng hoạt động của 4 phân quyền riêng biệt.
+
+### 4.1 Phân hệ & Luồng của Quản trị viên (Admin)
+Admin là người quản lý hạ tầng, kiểm duyệt cấp cao và vận hành toàn bộ hệ thống AI Tutor. Hệ thống Admin Dashboard được phân bổ thành các module (luồng) chính và phụ cực kỳ chi tiết:
+
+**Sơ đồ Use Case của Quản trị viên (Admin Use Cases):**
+```mermaid
 flowchart LR
-    Student((Học sinh))
     Admin((Quản trị viên))
     
-    subgraph MobileApp["Ứng dụng Mobile (AI Tutor)"]
-        UC1(["Chat với AI Tutor"])
-        UC2(["Quản lý lịch học"])
-        UC3(["Làm bài tập trắc nghiệm"])
-        UC4(["Xem tiến độ & Bảng xếp hạng"])
+    subgraph AdminDashboard ["Hệ thống Quản trị (Admin Dashboard)"]
+        UC1(["Quản lý Người dùng (Giáo viên, Học sinh, Phụ huynh)"])
+        UC2(["Quản lý Dữ liệu gốc (Môn học, Khối lớp)"])
+        UC3(["Kiểm duyệt Nội dung (Xóa tài liệu, Bài tập)"])
+        UC4(["Cấu hình AI & Thống kê Token Quota"])
+        UC5(["Vận hành (Gửi Thông báo, Xem Audit Log)"])
     end
     
-    subgraph AdminDashboard["Trang Web Quản trị"]
-        UC5(["Quản lý Học sinh"])
-        UC6(["Quản lý Giáo trình & Tài liệu"])
-        UC7(["Xem Phân tích & Báo cáo"])
+    Admin --> UC1
+    Admin --> UC2
+    Admin --> UC3
+    Admin --> UC4
+    Admin --> UC5
+```
+
+#### 4.1.1 Luồng Quản lý Người dùng (User Management)
+- **Bước 1**: Admin truy cập Dashboard, gọi API `GET /admin/users`.
+- **Bước 2**: Hệ thống trả về danh sách Giáo viên, Học sinh, Phụ huynh kèm trạng thái `is_active`.
+- **Bước 3**: Admin bấm Khóa (Ban) tài khoản. Web gọi API `PATCH /admin/users/{id}/ban`.
+- **Bước 4**: Backend cập nhật `is_active = false`, lập tức thu hồi toàn bộ token của User này trong bảng `user_sessions` (Force Logout). Ghi nhận thao tác vào bảng `audit_logs`.
+
+#### 4.1.2 Luồng Quản lý Dữ liệu gốc & Nội dung (Content & Master Data)
+- **Quản lý Cấu trúc Môn học**: Khởi tạo Danh mục Môn học và Khối/Lớp (Lớp 1 - 12) làm dữ liệu Master.
+- **Kiểm duyệt Tài liệu**: Admin xem danh sách bài giảng. Khi bấm "Xóa" tài liệu vi phạm, Backend sẽ xóa Document, đồng thời gọi lệnh SQL xóa toàn bộ Vector Embeddings tương ứng trong `pgvector`.
+
+#### 4.1.3 Luồng Cấu hình AI & Thống kê Token (AI & Billing)
+- **Cấu hình**: Admin thay đổi API Keys (OpenAI/Gemini) hoặc System Prompt gốc trên giao diện trực quan.
+- **Thống kê**: Gọi API `GET /admin/analytics/tokens` để nhóm (GROUP BY) dữ liệu từ bảng `ai_token_usages`, vẽ biểu đồ chi phí chạy AI Token theo ngày/tuần để tránh vượt quá ngân sách.
+
+#### 4.1.4 Luồng Vận hành Hệ thống (System Operations)
+- **Bước 1**: Admin soạn thảo thông báo và gửi qua Web Dashboard.
+- **Bước 2**: Backend lưu nội dung vào bảng `notifications`.
+- **Bước 3**: Gọi Firebase Admin SDK (`messaging().sendToDevice()`) để bắn Push Notification đồng loạt tới tất cả Mobile App của Học sinh và Phụ huynh.
+
+**Luồng Hoạt động Tiêu biểu (Kiểm duyệt và Khóa Tài khoản):**
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant Web as Admin Dashboard
+    participant API as NestJS Backend
+    participant DB as PostgreSQL
+    Admin->>Web: Bấm "Khóa tài khoản" học sinh vi phạm
+    Web->>API: PATCH /admin/students/{id}/ban
+    API->>DB: Cập nhật is_active = false
+    API-->>Web: Trả về thành công
+    API->>API: Force logout các session hiện tại của Học sinh
+```
+
+### 4.2 Phân hệ & Luồng của Giáo viên (Teacher)
+Giáo viên đóng vai trò là "Người nuôi dưỡng tri thức" (Content Creator) cho hệ thống AI và điều phối việc học của học sinh. Hệ thống Teacher Dashboard được chia thành các luồng quản lý chính như sau:
+
+**Sơ đồ Use Case của Giáo viên (Teacher Use Cases):**
+```mermaid
+flowchart LR
+    Teacher((Giáo viên))
+    
+    subgraph TeacherDashboard ["Cổng thông tin Giáo viên (Teacher Web)"]
+        UC1(["Quản lý Lớp học & Thành viên"])
+        UC2(["Quản lý Phụ huynh (Liên lạc, Báo cáo)"])
+        UC3(["Quản lý Nội dung (Tải tài liệu, Tạo Quiz)"])
+        UC4(["Bảng tin & Thông báo (News/Announcements)"])
+        UC5(["Xem Phân tích & Đánh giá (Analytics)"])
+    end
+    
+    Teacher --> UC1
+    Teacher --> UC2
+    Teacher --> UC3
+    Teacher --> UC4
+    Teacher --> UC5
+```
+
+#### 4.2.1 Luồng Quản lý Đa Lớp học (Class Management)
+- **Bước 1**: Giáo viên gọi API `POST /teachers/classes` để tạo Lớp học mới (VD: Lớp Toán Khối 5).
+- **Bước 2**: Backend tự động sinh ra một `Invite Code` duy nhất (VD: MATH5-XYZ).
+- **Bước 3**: Học sinh dùng mã này trên App để Join. Backend thêm dữ liệu vào `class_enrollments`.
+- **Bước 4**: Kể từ lúc này, Giáo viên quản lý Học sinh này và toàn quyền liên lạc với Phụ huynh của Học sinh đó.
+
+#### 4.2.2 Luồng Xử lý Tài liệu cho AI (Document Ingestion)
+- **Bước 1**: Giáo viên Upload PDF bài giảng qua Web. API trả về `status: PROCESSING`.
+- **Bước 2**: Background Worker (BullMQ/Redis) tải PDF xuống, dùng thư viện trích xuất toàn bộ Text.
+- **Bước 3**: Worker chia nhỏ Text (Chunking). Gọi API LangChain `Embeddings` để lấy mảng Vector.
+- **Bước 4**: `INSERT` mảng Vector này vào bảng `vector_embeddings` của `pgvector`. Cập nhật `status: SUCCESS` và báo cho Giáo viên.
+
+#### 4.2.3 Luồng Tạo Bài tập (Quiz Builder) & Đề thi Đầu ra (Level Up Exam)
+- **Bước 1 (AI Trợ lực)**: Giáo viên có thể tự soạn hoặc bấm nút **yêu cầu AI tự động sinh (Generate) câu hỏi và đáp án** dựa trên tài liệu PDF đã upload. Backend gọi LangChain gửi prompt yêu cầu LLM phân tích văn bản và trả về JSON chứa danh sách câu hỏi trắc nghiệm kèm đáp án đúng.
+- **Bước 2**: Giáo viên duyệt (Review) và chỉnh sửa lại câu hỏi/đáp án nếu cần. Web gọi API `POST /quizzes`.
+- **Bước 3**: Backend lưu trữ các câu hỏi vào bảng `quiz_questions` và các đáp án vào bảng `quiz_options` (với đáp án đúng có `is_correct = true`).
+- **Bước 4**: Giáo viên giao (Assign) Quiz cho `class_id`. Hệ thống tự động gửi Push Notification đến toàn bộ học sinh trong lớp.
+- **Tạo Đề thi Đầu ra (Thăng lớp)**: Giáo viên phụ trách Khối có thể gán nhãn một Quiz thành **Đề thi Vượt cấp (Graduation Exam)**, gọi API `POST /teachers/graduation_exams`, thiết lập điểm chuẩn `passing_score` (VD: 8.0). Học sinh thi đỗ đề thi này sẽ được tự động cập nhật lên khối lớp tiếp theo.
+
+#### 4.2.4 Luồng Liên lạc (Communications & Reports)
+- Giáo viên gọi API `GET /teachers/classes/{id}/analytics` để lấy báo cáo năng lực của cả lớp. Nếu thấy Học sinh trượt bài liên tục, Giáo viên gọi API `POST /teachers/notifications` gửi tin nhắn cảnh báo trực tiếp. Backend lưu vào `notifications` và Push thẳng đến thiết bị của Phụ huynh.
+
+**Luồng Hoạt động Tiêu biểu (Xử lý Tài liệu cho AI):**
+```mermaid
+sequenceDiagram
+    actor Teacher
+    participant Web as Teacher Web
+    participant API as NestJS Backend
+    participant Worker as Background Worker (Redis/Bull)
+    participant LLM as OpenAI Embedding API
+    participant VectorDB as pgvector
+    Teacher->>Web: Upload PDF Bài giảng
+    Web->>API: POST /documents/upload
+    API->>Worker: Tạo Job Ingestion
+    API-->>Web: Trả về "Đang xử lý..."
+    Worker->>Worker: Trích xuất Text & Chia nhỏ (Chunking)
+    Worker->>LLM: Gửi mảng Text Chunks
+    LLM-->>Worker: Trả về Vector Embeddings
+    Worker->>VectorDB: INSERT Vectors vào DB
+    Worker->>API: Đánh dấu status = SUCCESS
+    API->>Teacher: Gửi thông báo hoàn tất
+```
+
+### 4.3 Phân hệ & Luồng của Học sinh (Student)
+Học sinh là trung tâm của nền tảng, tương tác thường xuyên nhất với hệ thống. Ứng dụng Học sinh (Mobile App) xoay quanh các trải nghiệm học tập và trò chơi hóa (Gamification).
+
+**Sơ đồ Use Case của Học sinh:**
+```mermaid
+flowchart LR
+    Student((Học sinh))
+    
+    subgraph StudentApp ["Ứng dụng Học sinh (Mobile App)"]
+        UC1(["Chat AI & Giải đáp (RAG)"])
+        UC2(["Làm Bài tập & Thi Vượt cấp (Level Up)"])
+        UC3(["Gamification (Mua Avatar, Shop)"])
+        UC4(["Mạng Xã hội (Kết bạn, Nhắn tin)"])
+        UC5(["Thanh toán Gói học tập (VIP)"])
     end
     
     Student --> UC1
     Student --> UC2
     Student --> UC3
     Student --> UC4
+    Student --> UC5
+```
+
+#### 4.3.1 Luồng Học tập với AI (AI RAG Chat) - Step-by-Step
+- **Bước 1**: App gọi WebSocket kết nối đến `wss://api.domain.com/chat`.
+- **Bước 2**: Backend kiểm tra JWT token và Quota sử dụng trong bảng `ai_token_usages` của ngày hôm nay. Nếu vượt quá Quota -> Báo lỗi.
+- **Bước 3**: Học sinh gửi câu hỏi. `pgvector` thực hiện Similarity Search trên dữ liệu `vector_embeddings` của các `documents` thuộc lớp học sinh đang học.
+- **Bước 4**: Backend gọi LangChain API (OpenAI/Gemini). Stream từng chữ trả về Mobile App để tạo hiệu ứng gõ phím chân thực.
+- **Bước 5**: Lưu nội dung vào `chat_messages` và trừ Quota trong ngày.
+
+#### 4.3.2 Luồng Làm Bài kiểm tra & Thi Vượt cấp (Graduation Exam)
+- **Kiểm tra thông thường (Quiz)**: Làm bài tập do Giáo viên giao. Hệ thống đếm ngược thời gian, chấm điểm tự động thông qua `student_answers` so với `quiz_options`, và cộng điểm XP ngay lập tức.
+- **Thi Vượt cấp (Level Up)**: 
+  - *Điều kiện*: Học sinh lớp 1 muốn lên lớp 2 cần đăng ký làm bài thi "Đầu ra Lớp 1". Bài thi này do Admin hoặc System thiết lập, lưu trong `graduation_exams`.
+  - *Quy trình*: Hệ thống phát đề có thời gian giới hạn. Học sinh submit bài. Nếu điểm `total_score >= passing_score` -> Cập nhật trường `current_grade = 2` trong bảng `students` (chính thức lên lớp), mở khóa lộ trình học tập của lớp 2, và tặng Huy hiệu Vượt cấp (Badge). Nếu trượt, học sinh phải ôn luyện và thi lại.
+
+#### 4.3.3 Luồng Gamification (Cửa hàng & Đổi quà)
+- **Bước 1**: Học sinh tích lũy XP qua các tương tác hàng ngày.
+- **Bước 2**: Truy cập Cửa hàng (Shop), gọi API `GET /shop/items` để tải danh sách các vật phẩm (Avatar, Khung viền) chưa sở hữu.
+- **Bước 3**: Bấm "Mua" -> Backend kiểm tra `total_xp >= cost_xp`. Nếu đủ, trừ XP và `INSERT` vật phẩm vào bảng `student_inventory`.
+- **Bước 4**: Bấm "Trang bị" -> Cập nhật `is_equipped = true`.
+
+#### 4.3.4 Luồng Mạng Xã hội (Kết bạn & Nhắn tin)
+- **Kết bạn**: Tìm kiếm học sinh khác qua ID. Gửi lời mời kết bạn (Status: `PENDING`). Khi được chấp nhận -> Status: `ACCEPTED` trong bảng `friendships`.
+- **Nhắn tin Nội bộ (Direct Message)**: Học sinh chat với bạn bè. Tin nhắn lưu vào bảng `direct_messages`. Giáo viên hoặc Admin có quyền truy xuất xem lại lịch sử chat nếu học sinh bị Report có ngôn từ đả kích.
+
+#### 4.3.5 Luồng Thanh toán Khóa học/Dịch vụ (Payments)
+- Học sinh hoặc Phụ huynh chọn mua gói cước AI VIP (VD: Gói không giới hạn Chat AI trong 1 tháng).
+- **Bước 1**: Gọi API tạo đơn hàng Cổng thanh toán (VNPay/Momo). Hệ thống lưu Record vào bảng `transactions` với trạng thái `PENDING`.
+- **Bước 2**: App chuyển hướng sang App Momo/VNPay để người dùng quét mã QR.
+- **Bước 3**: Sau khi thanh toán, Momo/VNPay gọi Webhook trả về cho Backend (`POST /webhooks/vnpay`).
+- **Bước 4**: Backend xác nhận tính hợp lệ, cập nhật `transactions` thành `SUCCESS`, đồng thời INSERT vào `user_subscriptions` cấp quyền VIP 30 ngày.
+
+---
+
+### 4.4 Phân hệ & Luồng của Phụ huynh (Parent)
+Phụ huynh đóng vai trò là "Người đồng hành và Giám sát", sử dụng App/Web riêng với giao diện tối giản, tập trung vào phân tích số liệu.
+
+**Sơ đồ Use Case của Phụ huynh:**
+```mermaid
+flowchart LR
+    Parent((Phụ huynh))
     
-    Admin --> UC5
-    Admin --> UC6
-    Admin --> UC7
+    subgraph ParentApp ["Cổng Phụ huynh (Parent App/Web)"]
+        UC1(["Liên kết & Quản lý Tài khoản con"])
+        UC2(["Xem Báo cáo Analytics (Điểm, XP)"])
+        UC3(["Thanh toán Học phí & Gói VIP"])
+        UC4(["Liên lạc & Nhận Cảnh báo từ Hệ thống"])
+    end
+    
+    Parent --> UC1
+    Parent --> UC2
+    Parent --> UC3
+    Parent --> UC4
+```
 
-PHẦN 3: YÊU CẦU VỀ BẢO MẬT (SECURITY REQUIREMENT)
-3.1 Ma trận phân quyền (RBAC Matrix)
+#### 4.4.1 Luồng Liên kết Tài khoản (Account Linking)
+- **Bước 1**: Trên thiết bị Học sinh sinh ra mã QR Code chứa chuỗi Token liên kết tạm thời.
+- **Bước 2**: Phụ huynh mở App, dùng Camera quét mã QR.
+- **Bước 3**: Backend xác nhận Token hợp lệ, INSERT bản ghi vào bảng `parent_student_links`. Kể từ lúc này, Phụ huynh có toàn quyền truy xuất data của con.
 
-PHẦN 4: ĐẶC TẢ USE CASE (USE CASE SPECIFICATION)
-4.1 UC-01: Chat với AI Tutor (RAG System)
-Actor: Học sinh
-Pre-conditions: Học sinh đã đăng nhập thành công vào Mobile App.
-Normal Flow:
-Học sinh truy cập tab "AI Tutor".
-Hệ thống hiển thị lịch sử chat hoặc màn hình chào mừng.
-Học sinh nhập nội dung câu hỏi (text/voice).
-Hệ thống (Backend) gửi câu hỏi cho AI Engine. Dữ liệu được tìm kiếm trong Vector DB (pgvector).
-AI Engine trả về phản hồi kèm theo nguồn trích dẫn (citations).
-Màn hình Mobile hiển thị câu trả lời dạng real-time qua WebSockets.
-Alternative Flow:
-Nếu câu hỏi vi phạm chính sách Child Safety, AI trả lời từ chối khéo léo và cảnh báo nội dung không phù hợp.
-Post-conditions: Lịch sử chat được lưu, session cập nhật.
-4.2 UC-02: Quản lý Lịch Học bằng OCR
-Actor: Học sinh
-Pre-conditions: App đã được cấp quyền truy cập Camera/Thư viện ảnh.
-Normal Flow:
-Học sinh truy cập tab "Schedule" và chọn "Thêm lịch từ ảnh".
-Học sinh chụp ảnh Thời khóa biểu.
-Hệ thống upload ảnh lên Backend và thực hiện OCR.
-Hệ thống trả về dữ liệu thời khóa biểu dạng text đã được cấu trúc.
-Học sinh kiểm tra lại, chỉnh sửa nếu cần, rồi nhấn "Lưu".
-Hệ thống lưu lịch học và tự động lên lịch Push Notification nhắc nhở.
-Alternative Flow: OCR không đọc được chữ, học sinh tự nhập thủ công (Manual input).
-Post-conditions: Lịch học được đồng bộ, thông báo nhắc nhở sẵn sàng.
-4.3 UC-03: Quản lý Nội dung Dạy học (Admin Ingestion)
-Actor: Admin
-Pre-conditions: Đăng nhập vào trang Admin Dashboard.
-Normal Flow:
-Admin điều hướng đến "Content Management".
-Chọn file tài liệu (PDF, Word, Markdown) và bấm "Upload".
-Hệ thống tải file lên và khởi chạy Background Worker (DocumentIngestionWorker).
-Admin thấy thanh Progress Bar hiển thị tiến độ phân mảnh (chunking) và nhúng vector (embedding) tài liệu.
-Khi hoàn tất, tài liệu chuyển sang trạng thái "Sẵn sàng" trong Vector Database.
-Exception Flow: File lỗi định dạng hoặc vượt quá dung lượng cho phép. Hệ thống báo lỗi ngay tại bước Upload.
-Post-conditions: AI Tutor có thể trả lời câu hỏi dựa trên kiến thức từ tài liệu mới này.
+#### 4.4.2 Luồng Giám sát & Báo cáo (Analytics Dashboard)
+- **Bước 1**: App Phụ huynh gọi API `GET /parents/dashboard/{student_id}`.
+- **Bước 2**: Backend tổng hợp dữ liệu từ `quiz_attempts`, `ai_token_usages`, `schedules` trong 30 ngày gần nhất.
+- **Bước 3**: Trả về dữ liệu JSON để App vẽ Biểu đồ (Chart): Mức độ chăm chỉ, Môn học điểm cao/thấp, và Lịch học sắp tới.
 
-PHẦN 5: THIẾT KẾ MÀN HÌNH (WIREFRAME)
-5.1 Mobile App (Học sinh)
-Header: Hiển thị Avatar, Tên học sinh, số lượng XP, Streak lửa đang có (Gamification).
-Tab Bar (Bottom): 5 mục: Home (AI Chat), Schedule, Practice, Progress (Leaderboard), Profile.
-Main Content (AI Chat):
-Giao diện chat bong bóng giống iMessage.
-Phía dưới có thanh Input nhập văn bản, nút gửi, và icon Micro (thu âm).
-Bong bóng AI có huy hiệu "AI Tutor", các link citation có thể nhấn vào xem chi tiết bài giảng liên quan.
-5.2 Admin Dashboard (Web)
-Sidebar (Trái): Logo AI Tutor, Navigation links: Students, Content, Analytics, Settings.
-Top Bar: Search bar toàn cục, Notification bell, Admin Profile Dropdown.
-Main Area (Content Management):
-Góc trên phải: Nút "Upload Document" và "Create Lesson".
-Giữa: Bảng danh sách tài liệu (Data Table) với các cột: Tên tài liệu, Môn học, Lớp, Trạng thái Ingestion (Thanh tiến trình), Hành động (Edit/Delete).
+#### 4.4.3 Luồng Cảnh báo Thời gian thực (Real-time Alerts)
+- Phụ huynh sẽ nhận được Push Notification qua Firebase ngay lập tức trong các trường hợp sau:
+  - Con thi trượt bài Vượt cấp (Graduation Exam) hoặc bị điểm kém liên tục.
+  - Con vi phạm từ ngữ cấm khi chat với AI.
+  - Đóng tiền gia hạn khóa học (Subscription expired).
 
-PHẦN 6: CÁC YÊU CẦU KHÁC (OTHER REQUIREMENT)
-6.1 Yêu cầu Tích hợp (Integration)
-AI Models Integration: Hệ thống bắt buộc hỗ trợ cấu hình đa mô hình qua LangChain (OpenAI GPT-4, Google Gemini Pro, Anthropic Claude 3, DeepSeek Chat).
-Push Notification: Tích hợp Firebase Admin SDK để gửi thông báo real-time qua iOS/Android.
-Database: Tích hợp PostgreSQL và pgvector cho xử lý Embedding; Redis cho caching session.
-6.2 Yêu cầu Hiệu năng (Performance)
-Real-time Chat: Thời gian phản hồi của AI chat qua WebSockets phải dưới 2 giây/request trong điều kiện mạng ổn định.
-OCR Processing: Không được vượt quá 5 giây/tài liệu ảnh.
-6.3 Phụ lục (Appendices)
-Mã lỗi phổ biến:
-ERR_AI_001: Model API không khả dụng.
-ERR_AUTH_002: Token hết hạn.
-ERR_CONTENT_003: File tài liệu chứa virus hoặc định dạng không hỗ trợ.
+#### 4.4.4 Luồng Thanh toán Hộ (Proxy Payment)
+- Tương tự luồng 4.3.5 của Học sinh, nhưng Phụ huynh thực hiện thanh toán trên thiết bị của mình. Gói VIP (Subscription) sẽ được cộng trực tiếp vào `user_id` của Học sinh do Phụ huynh chọn.
+
+---
+
+## 5. YÊU CẦU ĐỒNG BỘ VÀ PHI CHỨC NĂNG (NON-FUNCTIONAL)
+
+### 5.1 Tính chất Đồng bộ Hệ sinh thái (Ecosystem Sync)
+Hệ thống AI Tutor hoạt động theo cơ chế **Single Source of Truth** (Chỉ dùng 1 DB Postgres duy nhất).
+- Bất kỳ khi nào Giáo viên thêm tài liệu, AI sẽ ngay lập tức có thêm kiến thức mới để trả lời Học sinh.
+- Bất kỳ thay đổi trạng thái (State) nào của Học sinh (Lên cấp, hoàn thành bài tập) đều được Backend bắn Event qua WebSockets (hoặc Push Notification) đến App của Phụ huynh, không yêu cầu Phụ huynh phải kéo thả/reload lại app để xem.
+
+### 5.2 Hiệu năng (Performance)
+- **Tốc độ phản hồi AI (Time to First Token)**: Quá trình từ lúc Học sinh hỏi đến lúc nhận lại chữ cái đầu tiên (bao gồm thao tác tra cứu Vector DB) phải `< 2000ms`.
+- **Tốc độ Upload/OCR**: Quá trình phân tích chữ từ ảnh không được vượt quá `5000ms` để đảm bảo trải nghiệm UX mượt mà.

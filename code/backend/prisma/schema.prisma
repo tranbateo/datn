@@ -15,6 +15,7 @@ enum Role {
   STUDENT
   TEACHER
   ADMIN
+  PARENT
 }
 
 enum SubscriptionTier {
@@ -29,9 +30,11 @@ model User {
   avatarUrl String?
   role      Role     @default(STUDENT)
   tier      SubscriptionTier @default(FREE)
+  passwordHash String?
   isActive  Boolean  @default(true)
   deviceToken String? // For Firebase Push Notifications
   grade     Int?     // 1 to 12
+  linkCode  String?  @unique // For parents to link
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -42,6 +45,21 @@ model User {
   courses             Course[]       @relation("TeacherCourses")
   calendarEvents      CalendarEvent[]
   notifications       Notification[]
+  parentLinks         ParentStudentLink[] @relation("ParentLinks")
+  studentLinks        ParentStudentLink[] @relation("StudentLinks")
+  aiTokenUsages       AiTokenUsage[]
+  transactions        Transaction[]
+  
+  // Messaging & Proposals
+  conversationsAsParticipant1 Conversation[] @relation("Participant1")
+  conversationsAsParticipant2 Conversation[] @relation("Participant2")
+  sentMessages                DirectMessage[] @relation("MessageSender")
+  parentProposals             Proposal[]     @relation("ParentProposals")
+  teacherProposals            Proposal[]     @relation("TeacherProposals")
+  studentProposals            Proposal[]     @relation("StudentProposals")
+
+  // Enrollments
+  enrollments                 Enrollment[]
 }
 
 // -----------------------------------------------------------------------
@@ -80,6 +98,19 @@ model Course {
 
   lessons     Lesson[]
   documents   Document[]
+  enrollments Enrollment[]
+}
+
+model Enrollment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId  String   @db.Uuid
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, courseId])
 }
 
 model Document {
@@ -185,6 +216,7 @@ model Quiz {
   subjectId   String?  @db.Uuid
   subject     Subject? @relation(fields: [subjectId], references: [id])
   duration    Int?     // in minutes
+  isGraduation Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -247,3 +279,89 @@ model Notification {
   createdAt DateTime @default(now())
 }
 
+// -----------------------------------------------------------------------
+// 7. Parents & Links
+// -----------------------------------------------------------------------
+model ParentStudentLink {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentId  String   @db.Uuid
+  parent    User     @relation("ParentLinks", fields: [parentId], references: [id], onDelete: Cascade)
+  studentId String   @db.Uuid
+  student   User     @relation("StudentLinks", fields: [studentId], references: [id], onDelete: Cascade)
+  linkCode  String   @unique
+  linkedAt  DateTime @default(now())
+
+  @@unique([parentId, studentId])
+}
+
+// -----------------------------------------------------------------------
+// 8. AI Token Usage & Quotas
+// -----------------------------------------------------------------------
+model AiTokenUsage {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime @db.Date
+  tokensUsed  Int      @default(0)
+  messageCount Int     @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, date])
+}
+
+// -----------------------------------------------------------------------
+// 9. Transactions & Subscriptions
+// -----------------------------------------------------------------------
+model Transaction {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @db.Uuid
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentMethod String
+  status        String   // PENDING, SUCCESS, FAILED
+  description   String?
+  createdAt     DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------
+// 10. Parent-Teacher Messaging & Proposals
+// -----------------------------------------------------------------------
+model Conversation {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  participant1Id String   @db.Uuid
+  participant2Id String   @db.Uuid
+  participant1   User     @relation("Participant1", fields: [participant1Id], references: [id], onDelete: Cascade)
+  participant2   User     @relation("Participant2", fields: [participant2Id], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  messages       DirectMessage[]
+
+  @@unique([participant1Id, participant2Id])
+}
+
+model DirectMessage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String   @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String   @db.Uuid
+  sender         User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+}
+
+model Proposal {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentId    String   @db.Uuid
+  parent      User     @relation("ParentProposals", fields: [parentId], references: [id], onDelete: Cascade)
+  teacherId   String   @db.Uuid
+  teacher     User     @relation("TeacherProposals", fields: [teacherId], references: [id], onDelete: Cascade)
+  studentId   String?  @db.Uuid
+  student     User?    @relation("StudentProposals", fields: [studentId], references: [id], onDelete: SetNull)
+  title       String
+  content     String
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

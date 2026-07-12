@@ -1,14 +1,15 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @next/next/no-img-element */
+ 
+ 
 /* eslint-disable react/no-unescaped-entities */
 
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { ArrowLeft, Bell, Play, FileText, Activity } from 'lucide-react';
 import { useState } from 'react';
+import Image from 'next/image';
 
-export default function LessonDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function LessonDetailPage() {
   const t = useTranslations('User.Lesson');
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'content' | 'exercises'>('content');
@@ -31,10 +32,11 @@ export default function LessonDetailPage({ params }: { params: Promise<{ id: str
 
         {/* Video Player Area */}
         <div className="w-full aspect-video bg-gray-900 relative group">
-          <img 
+          <Image 
             src="https://images.unsplash.com/photo-1632559648398-0cfa0b32252a?auto=format&fit=crop&q=80&w=800&h=450" 
             alt="Video Thumbnail"
-            className="w-full h-full object-cover opacity-80"
+            fill
+            className="object-cover opacity-80"
           />
           <div className="absolute inset-0 flex items-center justify-center">
             <button className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center backdrop-blur-sm shadow-lg group-hover:scale-110 transition-transform">

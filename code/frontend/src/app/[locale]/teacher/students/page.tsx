@@ -1,20 +1,49 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
-import { Search, Plus, Filter, Calendar, ChevronLeft, ChevronRight, TrendingUp, Users, AlertTriangle, MoreVertical } from "lucide-react";
+import { Search, Filter, Calendar, ChevronLeft, ChevronRight, Users, MoreVertical, TrendingUp, AlertTriangle } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useState, useEffect } from "react";
+import { teacherService } from "@/services/teacher.service";
 
-const students = [
-  { id: 1, name: "Emma Smith", email: "emma.s@student.edu", initials: "ES", grade: "10th Grade", lastActivity: "2 hours ago", progress: 85, status: "Active", color: "bg-indigo-500" },
-  { id: 2, name: "Liam Johnson", email: "liam.j@student.edu", initials: "LJ", grade: "11th Grade", lastActivity: "Yesterday", progress: 42, status: "At Risk", color: "bg-purple-500" },
-  { id: 3, name: "Olivia Davis", email: "olivia.d@student.edu", initials: "OD", grade: "9th Grade", lastActivity: "Just now", progress: 95, status: "Active", color: "bg-amber-600" },
-  { id: 4, name: "Mason Wilson", email: "mason.w@student.edu", initials: "MW", grade: "12th Grade", lastActivity: "2 weeks ago", progress: 15, status: "Inactive", color: "bg-blue-300" },
-  { id: 5, name: "Sophia Martinez", email: "sophia.m@student.edu", initials: "SM", grade: "10th Grade", lastActivity: "5 hours ago", progress: 78, status: "Active", color: "bg-rose-500" },
-  { id: 6, name: "James Anderson", email: "james.a@student.edu", initials: "JA", grade: "11th Grade", lastActivity: "3 days ago", progress: 60, status: "Active", color: "bg-teal-500" },
-];
+interface StudentData {
+  id: string;
+  name: string;
+  email: string;
+  grade: string;
+  initials: string;
+  color?: string;
+  lastActivity: string | null;
+  progress: number;
+  status: string;
+  enrolledAt?: string;
+}
 
 export default function TeacherStudentsPage() {
   const t = useTranslations("Teacher.Students");
+  const [students, setStudents] = useState<StudentData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Derive quick stats
+  const activeToday = students.filter(s => s.lastActivity && new Date(s.lastActivity).toDateString() === new Date().toDateString()).length;
+  const newThisWeek = students.filter(s => s.enrolledAt && (new Date().getTime() - new Date(s.enrolledAt).getTime()) < 7 * 24 * 60 * 60 * 1000).length;
+  const studentsAtRisk = students.filter(s => s.status === 'At Risk').length;
+
+  useEffect(() => {
+    async function loadStudents() {
+      try {
+        const data = await teacherService.getStudents();
+        if (data) {
+          setStudents(data as unknown as StudentData[]);
+        }
+      } catch (error) {
+        console.error("Failed to load students", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadStudents();
+  }, []);
 
   return (
     <div className="flex flex-col lg:flex-row gap-8">
@@ -42,17 +71,17 @@ export default function TeacherStudentsPage() {
           <div className="border-b border-gray-100 dark:border-card-border p-4 flex items-center justify-between overflow-x-auto scrollbar-hide">
             <div className="flex items-center gap-2">
               <button className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                <Filter className="w-4 h-4" /> Filter
+                <Filter className="w-4 h-4" /> {t('filter')}
               </button>
               <select className="text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none min-w-[120px]">
                 <option>{t('allGrades')}</option>
-                <option>9th Grade</option>
-                <option>10th Grade</option>
+                <option>Lớp 9</option>
+                <option>Lớp 10</option>
               </select>
               <select className="text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none min-w-[120px]">
                 <option>{t('anyStatus')}</option>
-                <option>Active</option>
-                <option>At Risk</option>
+                <option>{t('active')}</option>
+                <option>{t('atRisk')}</option>
               </select>
               <button className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                 <Calendar className="w-4 h-4" /> {t('registrationDate')}
@@ -78,13 +107,25 @@ export default function TeacherStudentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-card-border">
-                {students.map((student) => (
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                      Đang tải danh sách học sinh...
+                    </td>
+                  </tr>
+                ) : students.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                      Chưa có học sinh nào.
+                    </td>
+                  </tr>
+                ) : students.map((student) => (
                   <tr key={student.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group">
                     <td className="px-6 py-4"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-full ${student.color} flex items-center justify-center text-white text-xs font-bold shadow-sm`}>
-                          {student.initials}
+                        <div className={`w-9 h-9 rounded-full ${student.color || 'bg-indigo-500'} flex items-center justify-center text-white text-xs font-bold shadow-sm`}>
+                          {student.initials || 'HS'}
                         </div>
                         <div>
                           <div className="font-semibold text-gray-900 dark:text-white text-sm">{student.name}</div>
@@ -93,7 +134,9 @@ export default function TeacherStudentsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{student.grade}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{student.lastActivity}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                      {student.lastActivity ? new Date(student.lastActivity).toLocaleDateString() : 'Chưa có'}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden min-w-[80px]">
@@ -111,7 +154,7 @@ export default function TeacherStudentsPage() {
                         student.status === 'At Risk' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/50' : 
                         'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
                       }`}>
-                        {student.status}
+                        {student.status === 'Active' ? t('active') : student.status === 'At Risk' ? t('atRisk') : t('inactive')}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -150,12 +193,9 @@ export default function TeacherStudentsPage() {
             <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <span className="text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-full flex items-center gap-1">
-              ↗ 12%
-            </span>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t('activeToday')}</p>
-          <h3 className="text-3xl font-bold text-gray-900 dark:text-white">842</h3>
+          <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{activeToday}</h3>
         </div>
 
         <div className="bg-white dark:bg-card-bg rounded-2xl border border-gray-100 dark:border-card-border p-5 shadow-sm">
@@ -165,7 +205,7 @@ export default function TeacherStudentsPage() {
             </div>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t('newThisWeek')}</p>
-          <h3 className="text-3xl font-bold text-gray-900 dark:text-white">45</h3>
+          <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{newThisWeek}</h3>
         </div>
 
         <div className="bg-white dark:bg-card-bg rounded-2xl border border-red-100 dark:border-red-900/30 p-5 shadow-sm relative overflow-hidden">
@@ -174,12 +214,9 @@ export default function TeacherStudentsPage() {
             <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
               <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
             </div>
-            <span className="text-xs font-medium text-red-600 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded-full flex items-center gap-1">
-              ↗ 2%
-            </span>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t('studentsAtRisk')}</p>
-          <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">18</h3>
+          <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">{studentsAtRisk}</h3>
           <a href="#" className="text-sm font-medium text-primary hover:text-primary-hover flex items-center gap-1 transition-colors">
             {t('viewActionPlan')}
           </a>

@@ -1,12 +1,12 @@
 "use client";
 
 import { APP_ROUTES } from '@/constants/routes';
-/* eslint-disable @next/next/no-img-element */
 
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { X, Zap, Camera, Image as ImageIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 export default function OCRScanPage() {
   const t = useTranslations('User.OCR');
@@ -46,10 +46,11 @@ export default function OCRScanPage() {
       <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-gray-900">
         
         {/* Placeholder image simulating camera feed */}
-        <img 
+        <Image 
           src="https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=600&h=800" 
           alt="Camera feed"
-          className="absolute inset-0 w-full h-full object-cover opacity-60"
+          fill
+          className="object-cover opacity-60"
         />
 
         {/* Scan Frame Overlay */}

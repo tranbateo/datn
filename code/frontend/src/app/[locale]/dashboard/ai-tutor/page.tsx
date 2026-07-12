@@ -1,10 +1,10 @@
 "use client";
 
 import { API_ENDPOINTS } from '@/constants/api';
-/* eslint-disable @typescript-eslint/no-unused-vars */
+
 
 import { useState, useRef, useEffect } from "react";
-import { Search, Edit, Paperclip, Send, Mic, ChevronLeft, Bot, User } from "lucide-react";
+import { Search, Edit, Send, Mic, ChevronLeft, Bot, User } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { fetchApi, fetchApiStream } from "@/lib/api-client";
 import ReactMarkdown from "react-markdown";
@@ -136,7 +136,7 @@ export default function AITutorPage() {
 
       // Create a session if one doesn't exist
       if (!currentSessionId) {
-        const session = await fetchApi(API_ENDPOINTS.CHAT.SESSION, {
+        const session = await fetchApi<{ id: string }>(API_ENDPOINTS.CHAT.SESSION, {
           method: 'POST',
           body: JSON.stringify({ 
             title: userMessage.content.substring(0, 50) + "..."
@@ -183,7 +183,7 @@ export default function AITutorPage() {
                     )
                   );
                 }
-              } catch (e) {
+              } catch {
                 // Ignore parse errors for partial chunks
               }
             }

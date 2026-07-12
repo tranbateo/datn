@@ -1,7 +1,7 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
-import { Search, Plus, UploadCloud, Download, MoreVertical } from "lucide-react";
+import { Plus, UploadCloud, Download, MoreVertical } from "lucide-react";
 
 const questions = [
   { id: 1, stem: "What is the time complexity of binary searc...", subject: "Computer Science", subjectColor: "bg-blue-100 text-blue-700", type: "Multiple Choice", difficulty: "Medium", diffColor: "text-emerald-500", date: "Oct 24, 2023" },

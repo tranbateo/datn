@@ -1,11 +1,12 @@
 "use client";
 
 import { APP_ROUTES } from '@/constants/routes';
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useRouter } from "@/i18n/routing";
-import { Camera, User, ArrowRight, ArrowLeft } from "lucide-react";
+import { Camera, User, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTranslations } from "next-intl";
+import { fetchApi } from "@/lib/api-client";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -13,14 +14,49 @@ export default function OnboardingPage() {
   const [gender, setGender] = useState("");
   const [grade, setGrade] = useState<number | null>(null);
   const [subjects, setSubjects] = useState<string[]>([]);
+  const [fullName, setFullName] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const t = useTranslations("User.Onboarding");
 
-  const handleNext = () => {
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const profile = await fetchApi('/users/profile');
+        if (profile) {
+          setFullName(profile.fullName || "");
+          if (profile.grade) setGrade(profile.grade);
+          // Currently no gender/subjects in Prisma User by default, but keeping states just in case
+        }
+      } catch (error) {
+        console.error("Failed to load profile", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadProfile();
+  }, []);
+
+  const handleNext = async () => {
     if (step === 1) {
+      if (!fullName) return; // Basic validation
       setStep(2);
     } else {
-      // Complete onboarding and go to dashboard
-      router.push(APP_ROUTES.DASHBOARD);
+      setIsSubmitting(true);
+      try {
+        await fetchApi('/users/profile', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            fullName,
+            grade
+          })
+        });
+        router.push(APP_ROUTES.DASHBOARD);
+      } catch (error) {
+        console.error("Failed to update profile", error);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -57,8 +93,11 @@ export default function OnboardingPage() {
         <LanguageSwitcher />
       </div>
       <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-xl overflow-hidden min-h-[600px] flex flex-col relative border border-gray-100 dark:border-gray-800 mt-4">
-        
-        {step === 1 ? (
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+          </div>
+        ) : step === 1 ? (
           // STEP 1: Basic Info
           <div className="flex-1 flex flex-col p-8 animate-in slide-in-from-right-8 duration-500 relative">
             <Link href={APP_ROUTES.DASHBOARD} className="absolute top-8 left-8 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
@@ -87,6 +126,8 @@ export default function OnboardingPage() {
                   <User className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input 
                     type="text" 
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
                     placeholder={t('nicknamePlaceholder')}
                     className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-white"
                   />
@@ -195,16 +236,17 @@ export default function OnboardingPage() {
             <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-white via-white dark:from-gray-900 dark:via-gray-900 to-transparent">
               <button 
                 onClick={handleNext}
-                disabled={!grade}
+                disabled={!grade || isSubmitting}
                 className={`w-full py-3.5 rounded-2xl font-bold transition-all shadow-lg flex items-center justify-center gap-2
-                  ${grade 
+                  ${grade && !isSubmitting
                     ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20' 
                     : 'bg-gray-200 text-gray-400 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed shadow-none'
                   }
                 `}
               >
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 {t('finish')}
-                <ArrowRight className="w-4 h-4" />
+                {!isSubmitting && <ArrowRight className="w-4 h-4" />}
               </button>
             </div>
             

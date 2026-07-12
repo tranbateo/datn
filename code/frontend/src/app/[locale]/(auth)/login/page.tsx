@@ -11,7 +11,7 @@ export default function LoginPage() {
   const t = useTranslations('Auth');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [role, setRole] = useState<'student' | 'teacher'>('student');
+  const [role, setRole] = useState<'student' | 'teacher' | 'parent'>('student');
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -22,7 +22,8 @@ export default function LoginPage() {
     const result = await login(formData);
 
     if (result?.error) {
-      setErrorMsg(result.error);
+      const knownErrors = ['EMAIL_EXISTS', 'EMAIL_SEND_FAILED', 'OTP_NOT_FOUND', 'OTP_EXPIRED', 'OTP_INVALID', 'UNAUTHORIZED_ADMIN_REGISTRATION', 'PENDING_APPROVAL', 'INVALID_CREDENTIALS', 'LOGIN_FAILED', 'NETWORK_ERROR', 'SIGNUP_FAILED', 'OTP_VERIFICATION_FAILED', 'NOT_ADMIN', 'ADMIN_USE_PORTAL', 'roleMismatch'];
+      setErrorMsg(knownErrors.includes(result.error) ? t(`Errors.${result.error}` as Parameters<typeof t>[0]) : result.error);
       setIsLoading(false);
     }
   }
@@ -64,6 +65,17 @@ export default function LoginPage() {
           }`}
         >
           👩‍🏫 Giáo viên
+        </button>
+        <button
+          type="button"
+          onClick={() => setRole('parent')}
+          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+            role === 'parent' 
+              ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm' 
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+        >
+          👨‍👩‍👧 Phụ huynh
         </button>
       </div>
 

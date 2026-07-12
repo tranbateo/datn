@@ -1,16 +1,17 @@
 "use client";
 
 import { APP_ROUTES } from '@/constants/routes';
-/* eslint-disable @next/next/no-img-element */
+ 
 
 import { usePathname } from "next/navigation";
 import { Link } from "@/i18n/routing";
 import { Home, Bot, Calendar, BookOpen, BarChart2, Bell, LogOut, Edit3, MessageSquareWarning, X, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ThemeToggle } from "../ThemeToggle";
 import { LanguageSwitcher } from "../LanguageSwitcher";
 import { logout } from "@/app/[locale]/(auth)/actions";
 import { useTranslations } from "next-intl";
+import Image from "next/image";
 
 export function StudentNavigation() {
   const pathname = usePathname();
@@ -21,6 +22,32 @@ export function StudentNavigation() {
   const t = useTranslations("User.Navigation");
   const tNotif = useTranslations("User.Notifications");
   const tFeedback = useTranslations("Admin.FeedbackModal");
+  const [hasUnread, setHasUnread] = useState(false);
+  const [userProfile, setUserProfile] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const { fetchApi } = await import('@/lib/api-client');
+        const [profileData, notificationsData] = await Promise.all([
+          fetchApi('/users/profile').catch(() => null),
+          fetchApi('/notifications').catch(() => [])
+        ]);
+        
+        if (profileData) {
+          setUserProfile(profileData);
+        }
+        
+        if (Array.isArray(notificationsData)) {
+          const unread = notificationsData.some((n: Record<string, unknown>) => !n.isRead);
+          setHasUnread(unread);
+        }
+      } catch (error) {
+        console.error("Failed to fetch user data", error);
+      }
+    };
+    fetchUserData();
+  }, []);
 
   // Simple check for active link based on the last segment
   const isActive = (path: string) => {
@@ -50,13 +77,13 @@ export function StudentNavigation() {
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="w-10 h-10 rounded-full overflow-hidden border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 transition-colors shrink-0 relative"
           >
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Minh" alt="Avatar" className="w-full h-full bg-gray-100" />
+            <Image src={userProfile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile?.fullName || 'User'}`} alt="Avatar" fill className="object-cover bg-gray-100" sizes="40px" />
             <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full"></div>
           </button>
 
           <div className="flex flex-col">
-            <span className="font-bold text-blue-600 dark:text-blue-500 text-sm">AI Tutor</span>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{t("greetingMobile")}</span>
+            <span className="font-bold text-blue-600 dark:text-blue-500 text-sm truncate max-w-[120px]">{userProfile?.fullName || 'Học viên'}</span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{userProfile?.grade ? `Lớp ${userProfile.grade}` : t("greetingMobile")}</span>
           </div>
 
           {/* Profile Dropdown */}
@@ -89,7 +116,7 @@ export function StudentNavigation() {
             className="relative w-8 h-8 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
           >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-2 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+            {hasUnread && <span className="absolute top-1.5 right-2 w-1.5 h-1.5 bg-red-500 rounded-full"></span>}
           </button>
           
           {/* Notifications Dropdown (Mobile) */}
@@ -154,14 +181,18 @@ export function StudentNavigation() {
         {/* User Profile Snippet in Sidebar */}
         <div className="p-4 mt-auto border-t border-gray-100 dark:border-gray-800">
           <Link href={APP_ROUTES.ONBOARDING} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors border border-transparent dark:border-gray-800">
-            <img
-              src="https://api.dicebear.com/7.x/avataaars/svg?seed=Minh"
-              alt="Avatar"
-              className="w-10 h-10 rounded-full bg-gray-100"
-            />
+            <div className="w-10 h-10 rounded-full shrink-0 relative overflow-hidden">
+              <Image
+                src={userProfile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile?.fullName || 'User'}`}
+                alt="Avatar"
+                fill
+                className="bg-gray-100 object-cover"
+                sizes="40px"
+              />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">Minh Khôi</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{t("role")}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{userProfile?.fullName || 'Học viên'}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userProfile?.grade ? `Lớp ${userProfile.grade}` : t("role")}</p>
             </div>
           </Link>
           <form action={logout} className="mt-2">
@@ -190,7 +221,7 @@ export function StudentNavigation() {
             className="relative w-8 h-8 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
           >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-2 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+            {hasUnread && <span className="absolute top-1.5 right-2 w-1.5 h-1.5 bg-red-500 rounded-full"></span>}
           </button>
           
           {/* Notifications Dropdown (Desktop) */}

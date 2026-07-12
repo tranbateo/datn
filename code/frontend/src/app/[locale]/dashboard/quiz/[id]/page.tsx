@@ -1,12 +1,12 @@
 "use client";
 
 import { APP_ROUTES } from '@/constants/routes';
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
 import { useState, use } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
-import { Clock, X, ArrowRight, CheckCircle2, Circle } from 'lucide-react';
+import { Clock, X, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export default function QuizPage({ params }: { params: Promise<{ id: string }> }) {
   const t = useTranslations('User.Quiz');

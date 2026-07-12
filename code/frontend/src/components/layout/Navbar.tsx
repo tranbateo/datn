@@ -4,13 +4,20 @@ import { GraduationCap, LogOut, LayoutDashboard } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { ThemeToggle } from "../ThemeToggle";
 import { LanguageSwitcher } from "../LanguageSwitcher";
-import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { decodeJwt } from "jose";
 import { logout } from "@/app/[locale]/(auth)/actions";
 
 export default async function Navbar() {
   const t = await getTranslations("Navigation");
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token')?.value;
+  let user: Record<string, unknown> | null = null;
+  if (token) {
+    try {
+      user = decodeJwt(token);
+    } catch {}
+  }
 
   return (
     <header className="w-full bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 sticky top-0 z-50 transition-colors">
@@ -39,7 +46,7 @@ export default async function Navbar() {
             {user ? (
               <div className="flex items-center gap-3">
                 <Link 
-                  href={user.user_metadata?.role === 'admin' ? "/admin" : "/dashboard"} 
+                  href={user.role?.toLowerCase() === 'admin' ? "/admin" : "/dashboard"} 
                   className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium hover:text-primary transition-colors px-2 py-1 text-sm"
                 >
                   <LayoutDashboard className="w-4 h-4" />

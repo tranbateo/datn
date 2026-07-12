@@ -17,8 +17,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       // Trả về một mock user (lấy từ dữ liệu seed.ts)
       console.warn('⚠️ No token provided, using Mock User for testing!');
       return {
-        id: 'user-mock-id', // Sẽ map với một user có thật sau, hoặc chỉ dùng để pass guard
-        userId: 'student1@test.com', // Dùng email tạm để query hoặc có thể để trống tuỳ logic
+        id: '00000000-0000-0000-0000-000000000000', // Sẽ map với một user có thật sau, hoặc chỉ dùng để pass guard
+        userId: '00000000-0000-0000-0000-000000000000', // Dùng UUID chuẩn để Prisma không bị lỗi
+        email: 'student1@test.com',
         role: Role.STUDENT,
       };
     }

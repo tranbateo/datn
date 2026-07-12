@@ -1,11 +1,13 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { Search, Bell, User } from "lucide-react";
+ 
+import { Search, User } from "lucide-react";
 import { ThemeToggle } from "../ThemeToggle";
 import { LanguageSwitcher } from "../LanguageSwitcher";
-import { useTranslations } from "next-intl";
+
+import { NotificationBell } from "../common/NotificationBell";
 
 export function TeacherHeader() {
-  const t = useTranslations("Teacher.Dashboard"); // We'll just reuse some text or static text
+
+
 
   return (
     <header className="h-20 bg-white dark:bg-card-bg border-b border-gray-100 dark:border-card-border flex items-center justify-between px-8 sticky top-0 z-10">
@@ -30,8 +32,7 @@ export function TeacherHeader() {
           <LanguageSwitcher />
           
           <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors relative">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-gray-900"></span>
+            <NotificationBell />
           </button>
         </div>
 

@@ -1,108 +1,124 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 "use server";
 
-import { revalidatePath } from 'next/cache';
+
 import { redirect } from '@/i18n/routing';
-import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+
+const getApiUrl = () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export async function login(formData: FormData) {
-  const supabase = await createClient();
-
-  const data = {
-    email: formData.get('email') as string,
-    password: formData.get('password') as string,
-  };
-
-  const { data: authData, error } = await supabase.auth.signInWithPassword(data);
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  try {
-    const { fetchApiServer } = await import('@/lib/api-server');
-    await fetchApiServer('/users/sync', { method: 'POST' });
-  } catch (syncError) {
-    console.error('Failed to sync user with backend:', syncError);
-  }
-
-  const actualRole = authData.user.user_metadata?.role || 'student';
+  const email = formData.get('email') as string;
+  const password = formData.get('password') as string;
   const selectedRole = formData.get('role') as string;
 
-  if (selectedRole && selectedRole !== actualRole && actualRole !== 'admin') {
-    // If they selected teacher but are a student, or vice versa
-    await supabase.auth.signOut();
-    return { error: 'Tài khoản của bạn không khớp với vai trò đã chọn. Vui lòng chọn đúng vai trò.' };
+  let targetPath = '';
+
+  try {
+    const response = await fetch(`${getApiUrl()}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      return { error: errorData.message || 'Login failed' };
+    }
+
+    const data = await response.json();
+    const actualRole = data.user.role?.toLowerCase() || 'student';
+
+    if (actualRole === 'admin') {
+      return { error: 'ADMIN_USE_PORTAL' };
+    }
+
+    if (selectedRole && selectedRole !== actualRole) {
+      return { error: 'roleMismatch' };
+    }
+
+    // Set cookie
+    const cookieStore = await cookies();
+    cookieStore.set('auth-token', data.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+    });
+
+    let tempPath = '/';
+    if (actualRole === 'admin') tempPath = '/admin';
+    else if (actualRole === 'teacher') tempPath = '/teacher';
+    else if (actualRole === 'parent') tempPath = '/parent';
+    
+    targetPath = tempPath;
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : 'Network error' };
   }
 
-  const role = actualRole;
-
-  // Redirect to appropriate dashboard based on role
-  let targetPath = '/';
-  if (role === 'admin') targetPath = '/admin';
-  else if (role === 'teacher') targetPath = '/teacher';
-  
-  redirect({ href: targetPath, locale: 'vi' }); 
+  if (targetPath) {
+    redirect({ href: targetPath, locale: 'vi' }); 
+  }
 }
 
 export async function signup(formData: FormData) {
-  const supabase = await createClient();
+  const email = formData.get('email') as string;
+  const password = formData.get('password') as string;
+  const firstName = formData.get('firstName') as string;
+  const lastName = formData.get('lastName') as string;
+  const role = formData.get('role') as string;
 
-  const data = {
-    email: formData.get('email') as string,
-    password: formData.get('password') as string,
-    options: {
-      data: {
-        first_name: formData.get('firstName') as string,
-        last_name: formData.get('lastName') as string,
-        role: 'student' // Default role for standard signup
-      }
+  try {
+    const response = await fetch(`${getApiUrl()}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password,
+        fullName: `${firstName} ${lastName}`.trim(),
+        role: role || 'STUDENT',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      return { error: errorData.message || 'Signup failed' };
     }
-  };
 
-  const { error } = await supabase.auth.signUp(data);
-
-  if (error) {
-    return { error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : 'Network error' };
   }
-
-  return { success: true };
 }
 
 export async function verifyOtp(formData: FormData) {
-  const supabase = await createClient();
-  const data = {
-    email: formData.get('email') as string,
-    token: formData.get('token') as string,
-    type: 'signup' as const,
-  };
-
-  const { error } = await supabase.auth.verifyOtp(data);
-
-  if (error) {
-    return { error: error.message };
-  }
+  const email = formData.get('email') as string;
+  const otp = formData.get('token') as string;
 
   try {
-    const { fetchApiServer } = await import('@/lib/api-server');
-    await fetchApiServer('/users/sync', { method: 'POST' });
-  } catch (syncError) {
-    console.error('Failed to sync user with backend:', syncError);
+    const response = await fetch(`${getApiUrl()}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      return { error: errorData.message || 'OTP verification failed' };
+    }
+
+    // We get accessToken back but user requested to login manually after successful OTP
+    // So we don't set the cookie here, just return success
+    return { success: true };
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : 'Network error' };
   }
-
-  // User requested to login manually after successful OTP verification
-  await supabase.auth.signOut();
-
-  return { success: true };
 }
 
 export async function logout() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-  // Use a plain redirect from next/navigation so we don't hardcode locale and cause a client-side layout remount
-  // However, since this is a server action, it's safer to just let the client do a full reload.
-  // We'll redirect to the root path which will resolve locale automatically.
-  // Next.js middleware will handle the locale prefix
+  const cookieStore = await cookies();
+  cookieStore.delete('auth-token');
   const { redirect: nextRedirect } = await import('next/navigation');
   nextRedirect('/');
 }

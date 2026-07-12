@@ -8,8 +8,8 @@ import { useState, useEffect } from "react";
 export default function ResourceLibrary() {
   const t = useTranslations("Admin.Documents");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [documents, setDocuments] = useState<any[]>([]);
+   
+  const [documents, setDocuments] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
@@ -197,7 +197,7 @@ export default function ResourceLibrary() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
-                        {new Date(doc.uploadedAt).toLocaleString()}
+                        {new Date(doc.uploadedAt).toLocaleString('en-GB')}
                       </td>
                     </tr>
                   ))}

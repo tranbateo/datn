@@ -75,12 +75,19 @@ export default function ProgressPage() {
                   {Math.pow(profile?.level || 1, 2) * 100} XP
                 </span>
               </div>
-              <div className="w-full h-4 bg-black/20 rounded-full overflow-hidden">
+              <div className="w-full h-4 bg-black/20 rounded-full overflow-hidden mb-4">
                 <div 
                   className="h-full bg-gradient-to-r from-yellow-300 to-yellow-500 rounded-full"
                   style={{ width: `${Math.min(100, ((profile?.currentXp || 0) / (Math.pow(profile?.level || 1, 2) * 100)) * 100)}%` }}
                 />
               </div>
+              
+              {((profile?.currentXp || 0) >= Math.pow(profile?.level || 1, 2) * 100) && (
+                <button className="w-full py-3 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-amber-900 rounded-2xl font-bold shadow-lg shadow-yellow-500/30 transition-all flex items-center justify-center gap-2 animate-bounce">
+                  <Star className="w-5 h-5 fill-amber-900" />
+                  Thi Vượt Cấp Ngay
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -107,13 +114,13 @@ export default function ProgressPage() {
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Bảng xếp hạng</h2>
         </div>
         
-        <div className="space-y-3">
+        <div className="space-y-4">
           {leaderboard.map((entry, index) => {
-            const isCurrentUser = false; // We don't have userId on GamificationProfile
+            const isCurrentUser = entry.userId === profile?.userId;
             
             return (
               <div 
-                key={entry.id} 
+                key={entry.userId} 
                 className={`flex items-center justify-between p-4 rounded-2xl border ${
                   isCurrentUser 
                     ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800/50' 

@@ -11,7 +11,7 @@ import { Role } from '@prisma/client';
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private configService: ConfigService) {
     const secret =
-      configService.get<string>('SUPABASE_JWT_SECRET') || 'defaultSecretForDev';
+      configService.get<string>('JWT_SECRET') || 'defaultSecretForDev';
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -30,9 +30,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     return {
-      userId: payload.sub,
+      id: payload.sub,
       email: payload.email,
-      role: payload.user_role || Role.STUDENT,
+      role: payload.role || Role.STUDENT,
     };
   }
 }

@@ -12,8 +12,6 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   
-  const [verificationMethod, setVerificationMethod] = useState<"link" | "otp">("link");
-  const [isVerifyingLink, setIsVerifyingLink] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   
@@ -30,15 +28,12 @@ export default function RegisterPage() {
     const result = await signup(formData);
 
     if (result?.error) {
-      setErrorMsg(result.error);
+      const knownErrors = ['EMAIL_EXISTS', 'EMAIL_SEND_FAILED', 'OTP_NOT_FOUND', 'OTP_EXPIRED', 'OTP_INVALID', 'UNAUTHORIZED_ADMIN_REGISTRATION', 'PENDING_APPROVAL', 'INVALID_CREDENTIALS', 'LOGIN_FAILED', 'NETWORK_ERROR', 'SIGNUP_FAILED', 'OTP_VERIFICATION_FAILED', 'NOT_ADMIN', 'roleMismatch'];
+      setErrorMsg(knownErrors.includes(result.error) ? t(`Errors.${result.error}` as Parameters<typeof t>[0]) : result.error);
       setIsLoading(false);
     } else {
       setUserEmail(email);
-      if (verificationMethod === 'link') {
-        setIsVerifyingLink(true);
-      } else {
-        setIsVerifyingOtp(true);
-      }
+      setIsVerifyingOtp(true);
       setIsLoading(false);
     }
   }
@@ -54,7 +49,8 @@ export default function RegisterPage() {
     const result = await verifyOtp(formData);
 
     if (result?.error) {
-      setErrorMsg(result.error);
+      const knownErrors = ['EMAIL_EXISTS', 'EMAIL_SEND_FAILED', 'OTP_NOT_FOUND', 'OTP_EXPIRED', 'OTP_INVALID', 'UNAUTHORIZED_ADMIN_REGISTRATION', 'PENDING_APPROVAL', 'INVALID_CREDENTIALS', 'LOGIN_FAILED', 'NETWORK_ERROR', 'SIGNUP_FAILED', 'OTP_VERIFICATION_FAILED', 'NOT_ADMIN', 'roleMismatch'];
+      setErrorMsg(knownErrors.includes(result.error) ? t(`Errors.${result.error}` as Parameters<typeof t>[0]) : result.error);
       setIsLoading(false);
     } else if (result?.success) {
       setIsVerifyingOtp(false);
@@ -80,26 +76,7 @@ export default function RegisterPage() {
     );
   }
 
-  if (isVerifyingLink) {
-    return (
-      <div className="w-full">
-        <div className="mb-8 text-center">
-          <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Mail className="w-8 h-8" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('checkEmail')}</h1>
-          <p className="text-gray-500 dark:text-gray-400">
-            Chúng tôi đã gửi một đường link xác nhận đến email: <br/>
-            <span className="font-semibold text-gray-900 dark:text-white">{userEmail}</span><br/>
-            Vui lòng kiểm tra hộp thư đến (hoặc Spam) và click vào link để đăng nhập.
-          </p>
-        </div>
-        <Link href={APP_ROUTES.LOGIN} className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 py-3 rounded-xl text-sm font-semibold transition-colors mt-4">
-          <ArrowRight className="w-4 h-4" /> Quay lại đăng nhập
-        </Link>
-      </div>
-    );
-  }
+
 
   if (isVerifyingOtp) {
     return (
@@ -233,31 +210,38 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-4 pt-2">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Phương thức xác thực</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Bạn là ai?</label>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 cursor-pointer">
               <input 
                 type="radio" 
-                name="verificationMethod" 
-                value="link" 
-                checked={verificationMethod === 'link'} 
-                onChange={() => setVerificationMethod('link')}
+                name="role" 
+                value="STUDENT" 
+                defaultChecked
                 className="w-4 h-4 text-primary focus:ring-primary border-gray-300"
               />
-              <span className="text-sm text-gray-700 dark:text-gray-300">Gửi Link xác nhận</span>
+              <span className="text-sm text-gray-700 dark:text-gray-300">Học sinh</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input 
                 type="radio" 
-                name="verificationMethod" 
-                value="otp" 
-                checked={verificationMethod === 'otp'} 
-                onChange={() => setVerificationMethod('otp')}
+                name="role" 
+                value="PARENT" 
                 className="w-4 h-4 text-primary focus:ring-primary border-gray-300"
               />
-              <span className="text-sm text-gray-700 dark:text-gray-300">Gửi mã OTP</span>
+              <span className="text-sm text-gray-700 dark:text-gray-300">Phụ huynh</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="radio" 
+                name="role" 
+                value="TEACHER" 
+                className="w-4 h-4 text-primary focus:ring-primary border-gray-300"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">Giáo viên</span>
             </label>
           </div>
+          <p className="text-xs text-gray-500 italic mt-1">* Tài khoản Giáo viên sẽ cần sự phê duyệt từ Quản trị viên sau khi đăng ký.</p>
         </div>
 
         <button 

@@ -20,6 +20,7 @@ import { Prisma, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { QuotaGuard } from './quota.guard';
 
 @Controller('chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -34,6 +35,7 @@ export class ChatRagController {
   }
 
   @Post('session/:id/message')
+  @UseGuards(QuotaGuard)
   @UseInterceptors(FileInterceptor('image'))
   sendMessage(
     @Param('id') sessionId: string,
@@ -44,6 +46,7 @@ export class ChatRagController {
   }
 
   @Post('session/:id/message-stream')
+  @UseGuards(QuotaGuard)
   @UseInterceptors(FileInterceptor('image'))
   async sendMessageStream(
     @Param('id') sessionId: string,

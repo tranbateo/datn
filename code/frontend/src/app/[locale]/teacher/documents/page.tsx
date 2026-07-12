@@ -3,14 +3,35 @@
 import { useTranslations } from "next-intl";
 import { Upload, FileText, Search, MoreVertical, CheckCircle2, Clock } from "lucide-react";
 
+import { useState, useEffect } from "react";
+import { teacherService } from "@/services/teacher.service";
+
+interface DocumentData {
+  id: string | number;
+  name: string;
+  size: string;
+  status: string;
+  date: string;
+}
+
 export default function TeacherDocumentsPage() {
   const t = useTranslations("Teacher.Documents");
+  const [documents, setDocuments] = useState<DocumentData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const documents = [
-    { id: 1, name: "Chapter 1: Intro to Machine Learning.pdf", size: "2.4 MB", status: "ready", date: "Oct 24, 2023" },
-    { id: 2, name: "Syllabus_Fall_2023.docx", size: "1.1 MB", status: "ready", date: "Oct 22, 2023" },
-    { id: 3, name: "Advanced_Algorithms_Slide.pdf", size: "5.8 MB", status: "processing", date: "Just now" },
-  ];
+  useEffect(() => {
+    async function loadDocuments() {
+      try {
+        const data = await teacherService.getDocuments();
+        if (data) setDocuments(data);
+      } catch (error) {
+        console.error("Failed to load documents", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadDocuments();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -50,7 +71,19 @@ export default function TeacherDocumentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {documents.map((doc) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                    Đang tải tài liệu...
+                  </td>
+                </tr>
+              ) : documents.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                    Chưa có tài liệu nào.
+                  </td>
+                </tr>
+              ) : documents.map((doc) => (
                 <tr key={doc.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
