@@ -11,6 +11,8 @@ interface StudentData {
   name: string;
   email: string;
   grade: string;
+  level?: number;
+  streak?: number;
   initials: string;
   color?: string;
   lastActivity: string | null;
@@ -100,6 +102,7 @@ export default function TeacherStudentsPage() {
                   <th className="px-6 py-4 w-12"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></th>
                   <th className="px-6 py-4">{t('studentName')}</th>
                   <th className="px-6 py-4">{t('grade')}</th>
+                  <th className="px-6 py-4">Level & Streak</th>
                   <th className="px-6 py-4">{t('lastActivity')}</th>
                   <th className="px-6 py-4">{t('progress')}</th>
                   <th className="px-6 py-4">{t('status')}</th>
@@ -134,6 +137,14 @@ export default function TeacherStudentsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{student.grade}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">Lv {student.level || 1}</span>
+                        <span className="text-xs text-orange-500 flex items-center gap-1">
+                          🔥 {student.streak || 0} ngày
+                        </span>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
                       {student.lastActivity ? new Date(student.lastActivity).toLocaleDateString() : 'Chưa có'}
                     </td>

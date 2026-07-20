@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,7 @@ export default function TeacherSettingsPage() {
     const fetchProfile = async () => {
       try {
         const { fetchApi } = await import('@/lib/api-client');
-        const data = await fetchApi('/users/profile');
+        const data = await fetchApi<any>('/users/profile');
 
         setName(data.fullName || '');
         setAvatarUrl(data.avatarUrl || '');

@@ -1,11 +1,44 @@
 "use client";
 
-import { Search, Plus, Filter, Calendar, ChevronLeft, ChevronRight, TrendingUp, MoreVertical, UserCheck } from "lucide-react";
+import { Search, Plus, Filter, Calendar, ChevronLeft, ChevronRight, TrendingUp, MoreVertical, UserCheck, Edit, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
+import { fetchApi } from "@/lib/api-client";
+import { User } from '@/types';
+import UserModal from "@/components/admin/UserModal";
 
-export default function AdminParentsClient({ initialData }: { initialData: Record<string, unknown>[] }) {
+export default function AdminParentsClient({ initialData }: { initialData: any[] }) {
   const t = useTranslations("Admin.Parents");
-  const parents = initialData || [];
+  const [parents, setParents] = useState<any[]>(initialData || []);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  const handleOpenModal = (user?: any) => {
+    setSelectedUser(user ? (user as User) : null);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveUser = async (data: Partial<User>) => {
+    if (selectedUser) {
+      await fetchApi(`/admin/users/${selectedUser.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      setParents(parents.map(s => s.id === selectedUser.id ? { ...s, ...data } : s));
+    } else {
+      const newUser = await fetchApi<any>(`/admin/users`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      setParents([newUser, ...parents]);
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa phụ huynh này?')) return;
+    await fetchApi(`/admin/users/${id}`, { method: 'DELETE' });
+    setParents(parents.filter(s => s.id !== id));
+  };
 
   return (
     <div className="flex flex-col lg:flex-row gap-8">
@@ -25,7 +58,10 @@ export default function AdminParentsClient({ initialData }: { initialData: Recor
                 className="pl-9 pr-4 py-2 w-full sm:w-64 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
-            <button className="bg-primary hover:bg-primary-hover text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+            <button 
+              onClick={() => handleOpenModal()}
+              className="bg-primary hover:bg-primary-hover text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+            >
               <Plus className="w-4 h-4" /> {t('addParent')}
             </button>
           </div>
@@ -71,7 +107,7 @@ export default function AdminParentsClient({ initialData }: { initialData: Recor
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-card-border">
-                  {parents.map((parent: Record<string, unknown>) => (
+                  {parents.map((parent: any) => (
                     <tr key={parent.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group">
                       <td className="px-6 py-4"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></td>
                       <td className="px-6 py-4">
@@ -88,7 +124,7 @@ export default function AdminParentsClient({ initialData }: { initialData: Recor
                       <td className="px-6 py-4">
                         {parent.parentLinks && parent.parentLinks.length > 0 ? (
                           <div className="space-y-1">
-                            {((parent.parentLinks as unknown[]) || []).map((link: Record<string, unknown>, index: number) => (
+                            {((parent.parentLinks as any[]) || []).map((link: any, index: number) => (
                               <div key={index} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                                 <span className="font-medium">{link.student?.fullName || 'Học sinh ẩn'}</span>
                               </div>
@@ -110,9 +146,14 @@ export default function AdminParentsClient({ initialData }: { initialData: Recor
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <MoreVertical className="w-5 h-5" />
-                        </button>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => handleOpenModal(parent)} className="p-1 text-blue-500 hover:text-blue-700">
+                            <Edit className="w-5 h-5" />
+                          </button>
+                          <button onClick={() => handleDeleteUser(parent.id as string)} className="p-1 text-red-500 hover:text-red-700">
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -157,6 +198,13 @@ export default function AdminParentsClient({ initialData }: { initialData: Recor
           <h3 className="text-3xl font-bold text-gray-900 dark:text-white">0</h3>
         </div>
       </div>
+      <UserModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSave={handleSaveUser} 
+        user={selectedUser} 
+        role="PARENT" 
+      />
     </div>
   );
 }

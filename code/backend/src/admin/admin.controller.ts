@@ -1,5 +1,16 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { AdminService } from './admin.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -17,7 +28,7 @@ export class AdminController {
   }
 
   @Get('analytics/stats')
-  getAnalyticsStats() {
+  async getAnalyticsStats() {
     return this.adminService.getAnalyticsStats();
   }
 
@@ -41,6 +52,11 @@ export class AdminController {
     return this.adminService.getCourses();
   }
 
+  @Get('quizzes')
+  async getQuizzes() {
+    return this.adminService.getQuizzes();
+  }
+
   @Get('notifications')
   async getNotifications() {
     return this.adminService.getNotifications();
@@ -59,5 +75,20 @@ export class AdminController {
   @Get('settings')
   getSettings() {
     return this.adminService.getSettings();
+  }
+
+  @Post('users')
+  async createUser(@Body() dto: CreateUserDto) {
+    return this.adminService.createUser(dto);
+  }
+
+  @Put('users/:id')
+  async updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+    return this.adminService.updateUser(id, dto);
+  }
+
+  @Delete('users/:id')
+  async deleteUser(@Param('id') id: string) {
+    return this.adminService.deleteUser(id);
   }
 }

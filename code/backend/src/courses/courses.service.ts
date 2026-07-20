@@ -12,7 +12,7 @@ import { Prisma } from '@prisma/client';
 export class CoursesService {
   constructor(private prisma: PrismaService) {}
 
-  async create(data: Prisma.CourseCreateInput) {
+  async create(data: Prisma.CourseCreateInput, teacherId: string) {
     // Validate subject and grade match
     if (data.grade && data.subject?.connect?.id) {
       const subject = await this.prisma.subject.findUnique({
@@ -24,6 +24,10 @@ export class CoursesService {
         );
       }
     }
+
+    // Explicitly connect teacher
+    data.teacher = { connect: { id: teacherId } };
+
     return this.prisma.course.create({ data });
   }
 
@@ -69,6 +73,36 @@ export class CoursesService {
   async remove(id: string) {
     return this.prisma.course.delete({
       where: { id },
+    });
+  }
+
+  async enrollCourse(courseId: string, userId: string) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+    });
+    if (!course) {
+      throw new NotFoundException('Khóa học không tồn tại');
+    }
+
+    // Check if already enrolled
+    const existing = await this.prisma.enrollment.findUnique({
+      where: {
+        userId_courseId: {
+          userId,
+          courseId,
+        },
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Bạn đã đăng ký khóa học này rồi');
+    }
+
+    return this.prisma.enrollment.create({
+      data: {
+        userId,
+        courseId,
+      },
     });
   }
 }

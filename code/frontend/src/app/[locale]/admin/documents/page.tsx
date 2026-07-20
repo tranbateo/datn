@@ -9,14 +9,14 @@ export default function ResourceLibrary() {
   const t = useTranslations("Admin.Documents");
 
    
-  const [documents, setDocuments] = useState<Record<string, unknown>[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
   const loadDocs = async () => {
     try {
       const { fetchApi } = await import('@/lib/api-client');
-      const data = await fetchApi(API_ENDPOINTS.DOCUMENTS.LIST);
+      const data = await fetchApi<any[]>(API_ENDPOINTS.DOCUMENTS.LIST);
       setDocuments(data);
     } catch (e) {
       console.error(e);
@@ -38,7 +38,7 @@ export default function ResourceLibrary() {
       setUploading(true);
       const { fetchApi } = await import('@/lib/api-client');
       // Fetch course or use placeholder
-      const courses = await fetchApi(API_ENDPOINTS.COURSES.LIST);
+      const courses = await fetchApi<any[]>(API_ENDPOINTS.COURSES.LIST);
       let courseId = '';
       if (courses && courses.length > 0) {
         courseId = courses[0].id;

@@ -32,25 +32,25 @@ export interface ParentDashboardData {
 
 export const parentService = {
   getDashboard: () => fetchApi<ParentDashboardData>('/parents/dashboard'),
-  linkStudent: (linkCode: string) => fetchApi<{success: boolean, student: Record<string, unknown>}>('/parents/link-student', {
+  linkStudent: (linkCode: string) => fetchApi<{success: boolean, student: any}>('/parents/link-student', {
     method: 'POST',
     body: JSON.stringify({ linkCode })
   }),
   generateLinkCode: () => fetchApi<{linkCode: string}>('/parents/generate-link-code'),
   
   // Teachers
-  getTeachers: () => fetchApi<{teachers: Record<string, unknown>[]}>('/parents/teachers'),
+  getTeachers: () => fetchApi<{teachers: any[]}>('/parents/teachers'),
 
   // Messages
-  getMessages: (teacherId: string) => fetchApi<Record<string, unknown>[]>(`/messages/${teacherId}`),
-  sendMessage: (teacherId: string, content: string) => fetchApi<Record<string, unknown>>(`/messages/${teacherId}`, {
+  getMessages: (teacherId: string) => fetchApi<any[]>(`/messages/${teacherId}`),
+  sendMessage: (teacherId: string, content: string) => fetchApi<any>(`/messages/${teacherId}`, {
     method: 'POST',
     body: JSON.stringify({ content })
   }),
 
   // Proposals
-  getProposals: () => fetchApi<Record<string, unknown>[]>('/proposals/parent'),
-  createProposal: (teacherId: string, title: string, content: string) => fetchApi<Record<string, unknown>>('/proposals', {
+  getProposals: () => fetchApi<any[]>('/proposals/parent'),
+  createProposal: (teacherId: string, title: string, content: string) => fetchApi<any>('/proposals', {
     method: 'POST',
     body: JSON.stringify({ teacherId, title, content })
   }),

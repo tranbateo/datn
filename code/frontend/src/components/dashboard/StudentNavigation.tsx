@@ -23,7 +23,7 @@ export function StudentNavigation() {
   const tNotif = useTranslations("User.Notifications");
   const tFeedback = useTranslations("Admin.FeedbackModal");
   const [hasUnread, setHasUnread] = useState(false);
-  const [userProfile, setUserProfile] = useState<Record<string, unknown> | null>(null);
+  const [userProfile, setUserProfile] = useState<any | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -39,7 +39,7 @@ export function StudentNavigation() {
         }
         
         if (Array.isArray(notificationsData)) {
-          const unread = notificationsData.some((n: Record<string, unknown>) => !n.isRead);
+          const unread = notificationsData.some((n: any) => !n.isRead);
           setHasUnread(unread);
         }
       } catch (error) {
@@ -61,8 +61,9 @@ export function StudentNavigation() {
   const navItems = [
     { name: t("home"), href: "/dashboard", icon: Home },
     { name: t("aiTutor"), href: "/dashboard/ai-tutor", icon: Bot },
+    { name: "Khóa học", href: "/dashboard/courses", icon: BookOpen }, // Add explicit translation if possible, for now hardcode "Khóa học"
     { name: t("schedule"), href: "/dashboard/schedule", icon: Calendar },
-    { name: t("practice"), href: "/dashboard/practice", icon: BookOpen },
+    { name: t("practice"), href: "/dashboard/practice", icon: Edit3 },
     { name: t("progress"), href: "/dashboard/progress", icon: BarChart2 },
   ];
 

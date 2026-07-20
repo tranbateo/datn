@@ -6,7 +6,7 @@ export async function updateSession(request: NextRequest, response: NextResponse
   const token = request.cookies.get('auth-token')?.value;
   
   let userRole = 'student';
-  let user: Record<string, unknown> | null = null;
+  let user: any | null = null;
 
   if (token) {
     try {

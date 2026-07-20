@@ -6,10 +6,10 @@ import { useTranslations } from "next-intl";
 
 interface AnalyticsData {
   storageCapacity?: { current: number; max: number };
-  dbLoad?: { average: number; trend: number; data: Record<string, unknown>[] };
+  dbLoad?: { average: number; trend: number; data: any[] };
   cacheHitRate?: { current: number; trend: number };
   userActivity?: { matrix: number[][] };
-  subjectEngagement?: { scatterData: Record<string, unknown>[] };
+  subjectEngagement?: { scatterData: any[] };
 }
 
 export default function AnalyticsClient({ data }: { data: AnalyticsData }) {
@@ -182,8 +182,8 @@ export default function AnalyticsClient({ data }: { data: AnalyticsData }) {
                   <YAxis type="number" dataKey="y" name="Users" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
                   <ZAxis type="number" dataKey="z" range={[60, 400]} name="Score" />
                   <Tooltip cursor={{strokeDasharray: '3 3'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Scatter name="STEM" data={subjectEngagement.scatterData.filter((d: Record<string, unknown>) => d.subject === 'STEM')} fill="#4F46E5" fillOpacity={0.6} />
-                  <Scatter name="Arts" data={subjectEngagement.scatterData.filter((d: Record<string, unknown>) => d.subject === 'Arts')} fill="#FB7185" fillOpacity={0.6} />
+                  <Scatter name="STEM" data={subjectEngagement.scatterData.filter((d: any) => d.subject === 'STEM')} fill="#4F46E5" fillOpacity={0.6} />
+                  <Scatter name="Arts" data={subjectEngagement.scatterData.filter((d: any) => d.subject === 'Arts')} fill="#FB7185" fillOpacity={0.6} />
                 </ScatterChart>
               </ResponsiveContainer>
             ) : (

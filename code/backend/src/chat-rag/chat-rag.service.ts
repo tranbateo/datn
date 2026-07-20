@@ -86,25 +86,29 @@ export class ChatRagService {
       const docs = await this.vectorStore.similaritySearch(content, 4); // Get top 4 results
       const contextDocs = docs.map((doc) => doc.pageContent).join('\n\n');
 
-      // Retrieve user grade
+      // Retrieve user grade and subject
       const session = await this.prisma.chatSession.findUnique({
         where: { id: sessionId },
-        include: { user: true },
+        include: { user: true, subject: true },
       });
       const userGrade = session?.user?.grade || 'chưa xác định';
+      const subjectName = session?.subject?.name || 'Tổng hợp';
 
       const promptText = `
-Bạn là một gia sư AI thông minh và tận tâm tại Việt Nam. Học sinh đang học lớp ${userGrade}. 
-Hãy giải thích kiến thức sao cho phù hợp với trình độ học vấn của học sinh lớp ${userGrade} (KHÔNG sử dụng kiến thức vượt lớp trừ khi được yêu cầu).
+Bạn là một gia sư AI thông minh và tận tâm tại Việt Nam. Học sinh đang học môn ${subjectName}, lớp ${userGrade}.
+Hãy giải thích kiến thức sao cho phù hợp với trình độ học vấn của học sinh lớp ${userGrade}.
 
-Dưới đây là các tài liệu liên quan đến khóa học:
+QUY TẮC BẮT BUỘC (GUARDRAILS):
+1. TỪ CHỐI MÔN KHÁC: Nếu câu hỏi của học sinh KHÔNG thuộc về môn ${subjectName} (và môn hiện tại không phải là "Tổng hợp"), bạn PHẢI TỪ CHỐI lịch sự và nhắc học sinh rằng bạn chỉ hỗ trợ giải đáp môn ${subjectName} trong phiên chat này.
+2. TÌM KIẾM TRONG TÀI LIỆU RAG: Dưới đây là các tài liệu bài giảng:
+<context>
 ${contextDocs}
+</context>
+3. CÂU HỎI NGOÀI TÀI LIỆU: Nếu thông tin KHÔNG CÓ trong <context> nhưng câu hỏi VẪN THUỘC môn ${subjectName}, bạn được phép dùng kiến thức của mình để hướng dẫn.
+4. PHƯƠNG PHÁP SƯ PHẠM: KHÔNG BAO GIỜ đưa ra đáp án cuối cùng ngay lập tức cho bài tập. Hãy đưa ra gợi ý, và hướng dẫn học sinh tự giải từng bước.
 
-Dựa vào tài liệu ở trên, hãy trả lời câu hỏi của học sinh:
-Câu hỏi: ${content}
-
-Nếu thông tin không có trong tài liệu, hãy nói rõ là bạn không tìm thấy thông tin này trong bài giảng.
-Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
+Dựa vào quy tắc trên, hãy trả lời câu hỏi sau của học sinh bằng ngôn ngữ tự nhiên, thân thiện:
+Câu hỏi: ${content}`;
 
       // 3. Create the Multimodal message
       const messageContent: any[] = [{ type: 'text', text: promptText }];
@@ -205,25 +209,29 @@ Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
       const docs = await this.vectorStore.similaritySearch(content, 4);
       const contextDocs = docs.map((doc) => doc.pageContent).join('\n\n');
 
-      // Retrieve user grade
+      // Retrieve user grade and subject
       const session = await this.prisma.chatSession.findUnique({
         where: { id: sessionId },
-        include: { user: true },
+        include: { user: true, subject: true },
       });
       const userGrade = session?.user?.grade || 'chưa xác định';
+      const subjectName = session?.subject?.name || 'Tổng hợp';
 
       const promptText = `
-Bạn là một gia sư AI thông minh và tận tâm tại Việt Nam. Học sinh đang học lớp ${userGrade}. 
-Hãy giải thích kiến thức sao cho phù hợp với trình độ học vấn của học sinh lớp ${userGrade} (KHÔNG sử dụng kiến thức vượt lớp trừ khi được yêu cầu).
+Bạn là một gia sư AI thông minh và tận tâm tại Việt Nam. Học sinh đang học môn ${subjectName}, lớp ${userGrade}.
+Hãy giải thích kiến thức sao cho phù hợp với trình độ học vấn của học sinh lớp ${userGrade}.
 
-Dưới đây là các tài liệu liên quan đến khóa học:
+QUY TẮC BẮT BUỘC (GUARDRAILS):
+1. TỪ CHỐI MÔN KHÁC: Nếu câu hỏi của học sinh KHÔNG thuộc về môn ${subjectName} (và môn hiện tại không phải là "Tổng hợp"), bạn PHẢI TỪ CHỐI lịch sự và nhắc học sinh rằng bạn chỉ hỗ trợ giải đáp môn ${subjectName} trong phiên chat này.
+2. TÌM KIẾM TRONG TÀI LIỆU RAG: Dưới đây là các tài liệu bài giảng:
+<context>
 ${contextDocs}
+</context>
+3. CÂU HỎI NGOÀI TÀI LIỆU: Nếu thông tin KHÔNG CÓ trong <context> nhưng câu hỏi VẪN THUỘC môn ${subjectName}, bạn được phép dùng kiến thức của mình để hướng dẫn.
+4. PHƯƠNG PHÁP SƯ PHẠM: KHÔNG BAO GIỜ đưa ra đáp án cuối cùng ngay lập tức cho bài tập. Hãy đưa ra gợi ý, và hướng dẫn học sinh tự giải từng bước.
 
-Dựa vào tài liệu ở trên, hãy trả lời câu hỏi của học sinh:
-Câu hỏi: ${content}
-
-Nếu thông tin không có trong tài liệu, hãy nói rõ là bạn không tìm thấy thông tin này trong bài giảng.
-Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
+Dựa vào quy tắc trên, hãy trả lời câu hỏi sau của học sinh bằng ngôn ngữ tự nhiên, thân thiện:
+Câu hỏi: ${content}`;
 
       // 3. Create the Multimodal message
       const messageContent: any[] = [{ type: 'text', text: promptText }];
@@ -306,5 +314,19 @@ Phản hồi bằng ngôn ngữ tự nhiên, thân thiện và dễ hiểu.`;
     });
     if (!session) throw new NotFoundException('Session not found');
     return session;
+  }
+
+  async submitFeedback(
+    userId: string,
+    category: import('@prisma/client').FeedbackCategory,
+    content: string,
+  ) {
+    return this.prisma.feedback.create({
+      data: {
+        userId,
+        category,
+        content,
+      },
+    });
   }
 }

@@ -12,7 +12,7 @@ export default async function Navbar() {
   const t = await getTranslations("Navigation");
   const cookieStore = await cookies();
   const token = cookieStore.get('auth-token')?.value;
-  let user: Record<string, unknown> | null = null;
+  let user: any | null = null;
   if (token) {
     try {
       user = decodeJwt(token);

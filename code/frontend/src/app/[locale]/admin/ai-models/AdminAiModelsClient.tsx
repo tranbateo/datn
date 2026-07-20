@@ -6,7 +6,7 @@ import { Cpu, Filter, Settings } from "lucide-react";
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useTranslations } from "next-intl";
 
-export default function AdminAiModelsClient({ initialData }: { initialData: Record<string, unknown>[] }) {
+export default function AdminAiModelsClient({ initialData }: { initialData: any[] }) {
   const t = useTranslations("Admin.AIModels");
   const requestVolumeData = initialData || [];
 
@@ -224,17 +224,44 @@ export default function AdminAiModelsClient({ initialData }: { initialData: Reco
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-gray-50/50 dark:bg-gray-800/20 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold border-b border-gray-100 dark:border-card-border">
-              <th className="px-6 py-4">{t('timestamp')}</th>
-              <th className="px-6 py-4">{t('model')}</th>
-              <th className="px-6 py-4">{t('contextTask')}</th>
-              <th className="px-6 py-4">{t('latency')}</th>
-              <th className="px-6 py-4">{t('tokensInOut')}</th>
-              <th className="px-6 py-4">{t('status')}</th>
+              <th className="px-6 py-4">Ngày (Date)</th>
+              <th className="px-6 py-4">Người dùng</th>
+              <th className="px-6 py-4">Mô hình (Model)</th>
+              <th className="px-6 py-4">Số tin nhắn</th>
+              <th className="px-6 py-4">Tokens Used</th>
+              <th className="px-6 py-4">Ước tính phí</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-card-border">
-            {/* Empty state */}
-            <tr><td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">{t('emptyLogs')}</td></tr>
+            {initialData && initialData.length > 0 ? (
+              initialData.map((usage: any) => (
+                <tr key={usage.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                  <td className="px-6 py-4 text-sm text-gray-900 dark:text-white font-medium">
+                    {new Date(usage.date).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
+                    <div>{usage.user?.fullName}</div>
+                    <div className="text-xs text-gray-400">{usage.user?.email}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-100 dark:border-blue-800">
+                      Gemini 1.5 Pro
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
+                    {usage.messageCount}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-mono">
+                    {usage.tokensUsed.toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-white">
+                    ${Number(usage.estimatedCost).toFixed(4)}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">{t('emptyLogs')}</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -242,7 +269,7 @@ export default function AdminAiModelsClient({ initialData }: { initialData: Reco
   );
 }
 
-function BotIcon(props: Record<string, unknown>) {
+function BotIcon(props: any) {
   return (
     <svg
       {...props}

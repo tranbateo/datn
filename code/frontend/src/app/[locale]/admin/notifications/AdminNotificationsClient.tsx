@@ -4,7 +4,7 @@
 import { Send, CheckCircle2, Clock, Users, Search, AlertCircle, Info } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-export default function AdminNotificationsClient({ initialData }: { initialData: Record<string, unknown>[] }) {
+export default function AdminNotificationsClient({ initialData }: { initialData: any[] }) {
   const t = useTranslations("Admin.Notifications");
   const notifications = initialData || [];
 
@@ -112,7 +112,7 @@ export default function AdminNotificationsClient({ initialData }: { initialData:
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                    {notifications.map((notif: Record<string, unknown>) => (
+                    {notifications.map((notif: any) => (
                       <tr key={notif.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
                         <td className="px-6 py-4">
                           <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center"><Info className="w-4 h-4 text-blue-500" /></div>

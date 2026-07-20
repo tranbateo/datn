@@ -4,7 +4,7 @@ import { API_ENDPOINTS } from '@/constants/api';
 
 
 import { useState, useRef, useEffect } from "react";
-import { Search, Edit, Send, Mic, ChevronLeft, Bot, User } from "lucide-react";
+import { Search, Edit, Send, Mic, ChevronLeft, Bot, User, Flag, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { fetchApi, fetchApiStream } from "@/lib/api-client";
 import ReactMarkdown from "react-markdown";
@@ -53,6 +53,10 @@ export default function AITutorPage() {
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  
+  const [feedbackMsgId, setFeedbackMsgId] = useState<string | null>(null);
+  const [feedbackCategory, setFeedbackCategory] = useState("AI_ERROR");
+  const [feedbackContent, setFeedbackContent] = useState("");
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const t = useTranslations("User.AITutor");
@@ -209,6 +213,26 @@ export default function AITutorPage() {
     }
   };
 
+  const handleSubmitFeedback = async () => {
+    if (!feedbackMsgId) return;
+    try {
+      await fetchApi('/chat/feedback', {
+        method: 'POST',
+        body: JSON.stringify({
+          category: feedbackCategory,
+          content: feedbackContent || "Báo cáo tin nhắn AI",
+        }),
+      });
+      alert('Cảm ơn bạn đã phản hồi!');
+    } catch (error) {
+      console.error(error);
+      alert('Có lỗi xảy ra khi gửi phản hồi.');
+    } finally {
+      setFeedbackMsgId(null);
+      setFeedbackContent('');
+    }
+  };
+
   return (
     <div className="h-[calc(100vh-theme(spacing.16))] md:h-screen flex flex-col md:flex-row bg-gray-50 dark:bg-[#0f111a]">
       
@@ -298,6 +322,16 @@ export default function AITutorPage() {
                         {msg.role === 'assistant' ? (
                           <div className="prose prose-sm dark:prose-invert max-w-none">
                             <ReactMarkdown>{msg.content}</ReactMarkdown>
+                            
+                            <div className="mt-4 flex justify-end">
+                              <button 
+                                onClick={() => setFeedbackMsgId(msg.id)}
+                                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-500 transition-colors"
+                                title="Báo cáo câu trả lời này"
+                              >
+                                <Flag className="w-3.5 h-3.5" /> Báo lỗi
+                              </button>
+                            </div>
                           </div>
                         ) : (
                           <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -367,6 +401,49 @@ export default function AITutorPage() {
 
         </div>
       </div>
+
+      {/* Feedback Modal */}
+      {feedbackMsgId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white dark:bg-card-bg rounded-2xl p-6 w-full max-w-md shadow-xl border border-gray-100 dark:border-gray-800">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Báo lỗi AI</h3>
+              <button onClick={() => setFeedbackMsgId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Loại lỗi</label>
+                <select 
+                  value={feedbackCategory}
+                  onChange={(e) => setFeedbackCategory(e.target.value)}
+                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none dark:text-white focus:border-blue-500"
+                >
+                  <option value="AI_ERROR">AI trả lời không đúng nội dung</option>
+                  <option value="CONTENT_ERROR">Sai kiến thức chuyên môn</option>
+                  <option value="SYSTEM_BUG">Lỗi hệ thống hiển thị</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chi tiết (Tùy chọn)</label>
+                <textarea 
+                  value={feedbackContent}
+                  onChange={(e) => setFeedbackContent(e.target.value)}
+                  placeholder="Mô tả lỗi gặp phải..."
+                  className="w-full p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none dark:text-white focus:border-blue-500 resize-none h-24"
+                />
+              </div>
+              <button 
+                onClick={handleSubmitFeedback}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors"
+              >
+                Gửi báo cáo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

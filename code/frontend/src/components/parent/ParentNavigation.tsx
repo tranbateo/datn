@@ -21,7 +21,7 @@ export function ParentNavigation() {
   const tFeedback = useTranslations("Admin.FeedbackModal");
   const tParent = useTranslations("ParentUI.Sidebar");
   const [hasUnread, setHasUnread] = useState(false);
-  const [userProfile, setUserProfile] = useState<Record<string, unknown> | null>(null);
+  const [userProfile, setUserProfile] = useState<any | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -37,7 +37,7 @@ export function ParentNavigation() {
         }
         
         if (Array.isArray(notificationsData)) {
-          const unread = notificationsData.some((n: Record<string, unknown>) => !n.isRead);
+          const unread = notificationsData.some((n: any) => !n.isRead);
           setHasUnread(unread);
         }
       } catch (error) {

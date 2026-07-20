@@ -22,7 +22,7 @@ export default function OnboardingPage() {
   useEffect(() => {
     const loadProfile = async () => {
       try {
-        const profile = await fetchApi('/users/profile');
+        const profile = await fetchApi<any>('/users/profile');
         if (profile) {
           setFullName(profile.fullName || "");
           if (profile.grade) setGrade(profile.grade);

@@ -1,21 +1,29 @@
 "use client";
  
 
-import { Plus, UploadCloud, Download, MoreVertical } from "lucide-react";
-
-const questions = [
-  { id: 1, stem: "What is the time complexity of binary searc...", subject: "Computer Science", subjectColor: "bg-blue-100 text-blue-700", type: "Multiple Choice", difficulty: "Medium", diffColor: "text-emerald-500", date: "Oct 24, 2023" },
-  { id: 2, stem: "The derivative of e^x is always e^x,...", subject: "Mathematics", subjectColor: "bg-indigo-100 text-indigo-700", type: "True / False", difficulty: "Easy", diffColor: "text-emerald-500", date: "Oct 22, 2023" },
-  { id: 3, stem: "Explain the significance of the Schrödinger...", subject: "Physics", subjectColor: "bg-purple-100 text-purple-700", type: "Short Answer", difficulty: "Hard", diffColor: "text-red-500", date: "Oct 20, 2023" },
-];
+import { useState, useEffect } from "react";
+import { Plus, UploadCloud, Download, MoreVertical, Loader2 } from "lucide-react";
+import { getAdminQuizzes } from "../actions";
 
 export default function QuestionBankPage() {
+  const [quizzes, setQuizzes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadQuizzes() {
+      const res = await getAdminQuizzes();
+      if (res.data) setQuizzes(res.data);
+      setLoading(false);
+    }
+    loadQuizzes();
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-2">Question Bank</h2>
-          <p className="text-gray-500 dark:text-gray-400">Manage and organize assessment items across all subjects.</p>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-2">Quản lý Đề Thi</h2>
+          <p className="text-gray-500 dark:text-gray-400">Manage and organize quizzes across all subjects.</p>
         </div>
         <div className="flex items-center gap-3">
           <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border rounded-lg text-sm font-medium text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
@@ -25,7 +33,7 @@ export default function QuestionBankPage() {
             <Download className="w-4 h-4" /> Export
           </button>
           <button className="bg-primary hover:bg-primary-hover text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            <Plus className="w-4 h-4" /> Add Question
+            <Plus className="w-4 h-4" /> Add Quiz
           </button>
         </div>
       </div>
@@ -54,7 +62,7 @@ export default function QuestionBankPage() {
             </select>
           </div>
           <div className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
-            Showing 1-10 of 1,245 questions
+            Showing {quizzes.length} quizzes
           </div>
         </div>
 
@@ -64,36 +72,37 @@ export default function QuestionBankPage() {
             <thead>
               <tr className="border-b border-gray-100 dark:border-card-border text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold bg-gray-50/50 dark:bg-gray-800/20">
                 <th className="px-6 py-4 w-12"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></th>
-                <th className="px-6 py-4">Question Stem</th>
+                <th className="px-6 py-4">Title</th>
                 <th className="px-6 py-4">Subject</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Difficulty</th>
-                <th className="px-6 py-4">Last Modified</th>
+                <th className="px-6 py-4">Questions</th>
+                <th className="px-6 py-4">Attempts</th>
+                <th className="px-6 py-4">Created At</th>
                 <th className="px-6 py-4 w-12"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-card-border">
-              {questions.map((q) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                    Đang tải đề thi...
+                  </td>
+                </tr>
+              ) : quizzes.map((q) => (
                 <tr key={q.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group">
                   <td className="px-6 py-4"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></td>
                   <td className="px-6 py-4">
-                    <span className="font-medium text-gray-900 dark:text-white text-sm">{q.stem}</span>
+                    <span className="font-medium text-gray-900 dark:text-white text-sm">{q.title}</span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${q.subjectColor} dark:bg-opacity-20`}>
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-opacity-20`}>
                       {q.subject}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{q.type}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{q.questionsCount}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{q.attemptsCount}</td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full bg-current ${q.diffColor}`}></div>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{q.difficulty}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900 dark:text-white">{q.date}</div>
-                    <div className="text-xs text-gray-500">2023</div>
+                    <div className="text-sm text-gray-900 dark:text-white">{new Date(q.createdAt).toLocaleDateString()}</div>
                   </td>
                   <td className="px-6 py-4">
                     <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity">

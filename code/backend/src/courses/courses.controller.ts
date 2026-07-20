@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
 import { Prisma, Role } from '@prisma/client';
@@ -21,13 +22,22 @@ export class CoursesController {
 
   @Post()
   @Roles(Role.TEACHER, Role.ADMIN) // Only teachers and admins can create courses
-  create(@Body() createCourseDto: Prisma.CourseCreateInput) {
-    return this.coursesService.create(createCourseDto);
+  create(
+    @Body() createCourseDto: Prisma.CourseCreateInput,
+    @Req() req: { user: { id: string } },
+  ) {
+    return this.coursesService.create(createCourseDto, req.user.id);
   }
 
   @Get()
   findAll() {
     return this.coursesService.findAll();
+  }
+
+  @Post(':id/enroll')
+  @Roles(Role.STUDENT)
+  enroll(@Param('id') id: string, @Req() req: { user: { id: string } }) {
+    return this.coursesService.enrollCourse(id, req.user.id);
   }
 
   @Get(':id')

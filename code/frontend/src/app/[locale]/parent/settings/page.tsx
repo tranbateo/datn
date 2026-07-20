@@ -22,7 +22,7 @@ export default function ParentSettingsPage() {
     const fetchProfile = async () => {
       try {
         const { fetchApi } = await import('@/lib/api-client');
-        const data = await fetchApi('/users/profile');
+        const data = await fetchApi<any>('/users/profile');
         setName(data.fullName || '');
         setAvatarUrl(data.avatarUrl || '');
       } catch (error) {

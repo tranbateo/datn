@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateQuizDto, CreateQuestionDto } from './dto/teacher.dto';
 
 @Injectable()
 export class TeacherService {
@@ -271,6 +272,112 @@ export class TeacherService {
         year: 'numeric',
       }),
     }));
+  }
+
+  async getQuizzes(teacherId: string) {
+    const courses = await this.prisma.course.findMany({
+      where: { teacherId },
+      select: { subjectId: true },
+    });
+    const subjectIds = Array.from(
+      new Set(courses.map((c) => c.subjectId).filter(Boolean)),
+    ) as string[];
+
+    const quizzes = await this.prisma.quiz.findMany({
+      where: { subjectId: { in: subjectIds } },
+      include: {
+        subject: true,
+        _count: {
+          select: { questions: true, attempts: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return quizzes.map((q) => ({
+      id: q.id,
+      title: q.title,
+      subject: q.subject?.name || 'Khác',
+      questionsCount: q._count.questions,
+      attemptsCount: q._count.attempts,
+      duration: q.duration,
+      createdAt: q.createdAt,
+    }));
+  }
+
+  async createQuiz(teacherId: string, dto: CreateQuizDto) {
+    return this.prisma.quiz.create({
+      data: {
+        title: dto.title,
+        description: dto.description,
+        grade: dto.grade,
+        subjectId: dto.subjectId,
+        duration: dto.duration,
+        isGraduation: dto.isGraduation,
+      },
+    });
+  }
+
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+  async createQuestions(teacherId: string, dtos: CreateQuestionDto[]) {
+    // Basic implementation: assumes the teacher owns the quiz or is authorized
+    const created: any = await this.prisma.quizQuestion.createMany({
+      data: dtos.map((dto) => ({
+        quizId: dto.quizId,
+        content: dto.content,
+        options: dto.options,
+        correctOption: dto.correctOption,
+        explanation: dto.explanation,
+      })),
+    });
+    return { count: created.count };
+  }
+  /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+
+  async createQuizWithAiQuestions(
+    teacherId: string,
+    data: {
+      title: string;
+      courseId: string;
+      duration?: number;
+      isGraduation?: boolean;
+      questions: {
+        content: string;
+        options: string[];
+        correctOption: string;
+        explanation: string;
+      }[];
+    },
+  ) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: data.courseId },
+    });
+
+    return this.prisma.$transaction(async (prisma) => {
+      const quiz = await prisma.quiz.create({
+        data: {
+          title: data.title || 'AI Generated Quiz',
+          duration: data.duration,
+          isGraduation: data.isGraduation || false,
+          subjectId: course?.subjectId,
+          grade: course?.grade,
+        },
+      });
+
+      if (data.questions && data.questions.length > 0) {
+        await prisma.quizQuestion.createMany({
+          data: data.questions.map((q) => ({
+            quizId: quiz.id,
+            content: q.content,
+            options: q.options,
+            correctOption: q.correctOption,
+            explanation: q.explanation,
+          })),
+        });
+      }
+
+      return quiz;
+    });
   }
 
   async getDocuments(teacherId: string) {

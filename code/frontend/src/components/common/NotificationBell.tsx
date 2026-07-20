@@ -14,9 +14,9 @@ export function NotificationBell({ className }: NotificationBellProps) {
     const checkNotifications = async () => {
       try {
         const { fetchApi } = await import('@/lib/api-client');
-        const data = await fetchApi('/notifications');
+        const data = await fetchApi<any[]>('/notifications');
         if (Array.isArray(data)) {
-          const unread = data.some((n: Record<string, unknown>) => !n.isRead);
+          const unread = data.some((n: any) => !n.isRead);
           setHasUnread(unread);
         }
       } catch (error) {

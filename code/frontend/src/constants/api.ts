@@ -10,6 +10,7 @@ export const API_ENDPOINTS = {
     BY_SUBJECT: (subjectId: string | number) => `/quiz/subject/${subjectId}`,
     DETAIL: (quizId: string | number) => `/quiz/${quizId}`,
     SUBMIT: (quizId: string | number) => `/quiz/${quizId}/submit`,
+    GENERATE: '/quiz/generate-ai-quiz',
   },
   GAMIFICATION: {
     PROFILE: '/gamification/profile',
@@ -28,9 +29,12 @@ export const API_ENDPOINTS = {
     COURSES: '/teacher/courses',
     QUESTIONS: '/teacher/questions',
     DOCUMENTS: '/teacher/documents',
+    QUIZZES: '/teacher/quizzes',
+    QUIZZES_AI_BUILD: '/teacher/quizzes/ai-build',
   },
   COURSES: {
     LIST: '/courses',
+    ENROLL: (id: string) => `/courses/${id}/enroll`,
   },
   CALENDAR: {
     LIST: '/calendar',

@@ -40,7 +40,7 @@ export default function SchedulePage() {
       const formData = new FormData();
       formData.append('file', file);
       const { fetchApi } = await import('@/lib/api-client');
-      const response = await fetchApi(API_ENDPOINTS.CALENDAR.OCR, {
+      const response = await fetchApi<any[]>(API_ENDPOINTS.CALENDAR.OCR, {
         method: 'POST',
         body: formData,
       });

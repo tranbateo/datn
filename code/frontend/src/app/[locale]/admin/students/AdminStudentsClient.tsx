@@ -1,13 +1,46 @@
 "use client";
 
-import { Search, Plus, Filter, Calendar, ChevronLeft, ChevronRight, TrendingUp, Users, MoreVertical } from "lucide-react";
+import { Search, Plus, Filter, Calendar, ChevronLeft, ChevronRight, TrendingUp, Users, MoreVertical, Edit, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-
-import { Student } from '@/types';
+import { useState } from "react";
+import { fetchApi } from "@/lib/api-client";
+import { Student, User } from '@/types';
+import UserModal from "@/components/admin/UserModal";
 
 export default function AdminStudentsClient({ initialData }: { initialData: Student[] }) {
   const t = useTranslations("Admin.Students");
-  const students = initialData || [];
+  const [students, setStudents] = useState<Student[]>(initialData || []);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  const handleOpenModal = (user?: Student) => {
+    setSelectedUser(user ? (user as any as User) : null);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveUser = async (data: Partial<User>) => {
+    if (selectedUser) {
+      await fetchApi(`/admin/users/${selectedUser.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      // Update local state
+      setStudents(students.map(s => s.id === selectedUser.id ? { ...s, ...data } as unknown as Student : s));
+    } else {
+      const newUser = await fetchApi<Student>(`/admin/users`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      // Add to local state
+      setStudents([newUser, ...students]);
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa học viên này?')) return;
+    await fetchApi(`/admin/users/${id}`, { method: 'DELETE' });
+    setStudents(students.filter(s => s.id !== id));
+  };
 
   return (
     <div className="flex flex-col lg:flex-row gap-8">
@@ -27,7 +60,10 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                 className="pl-9 pr-4 py-2 w-full sm:w-64 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
-            <button className="bg-primary hover:bg-primary-hover text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+            <button 
+              onClick={() => handleOpenModal()}
+              className="bg-primary hover:bg-primary-hover text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+            >
               <Plus className="w-4 h-4" /> {t('addStudent')}
             </button>
           </div>
@@ -117,9 +153,14 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <MoreVertical className="w-5 h-5" />
-                        </button>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => handleOpenModal(student)} className="p-1 text-blue-500 hover:text-blue-700">
+                            <Edit className="w-5 h-5" />
+                          </button>
+                          <button onClick={() => handleDeleteUser(student.id)} className="p-1 text-red-500 hover:text-red-700">
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -164,6 +205,13 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
           <h3 className="text-3xl font-bold text-gray-900 dark:text-white">0</h3>
         </div>
       </div>
+      <UserModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSave={handleSaveUser} 
+        user={selectedUser} 
+        role="STUDENT" 
+      />
     </div>
   );
 }

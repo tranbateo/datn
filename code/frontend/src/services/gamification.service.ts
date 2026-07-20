@@ -27,7 +27,7 @@ export const gamificationService = {
     return fetchApi(API_ENDPOINTS.GAMIFICATION.LEADERBOARD(limit));
   },
   
-  addXp: (amount: number, reason: string): Promise<Record<string, unknown>> => {
+  addXp: (amount: number, reason: string): Promise<any> => {
     return fetchApi(API_ENDPOINTS.GAMIFICATION.ADD_XP, {
       method: 'POST',
       body: JSON.stringify({ amount, reason }),

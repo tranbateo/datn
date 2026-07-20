@@ -1,42 +1,50 @@
 "use client";
  
 
-import { Plus, UploadCloud, Download, MoreVertical } from "lucide-react";
+import { Plus, UploadCloud, Download, MoreVertical, Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { teacherService } from "@/services/teacher.service";
 import { useState, useEffect } from "react";
+import AiQuizBuilderModal from "@/components/teacher/AiQuizBuilderModal";
 
-interface QuestionData {
+interface QuizData {
   id: string | number;
-  stem: string;
+  title: string;
   subject: string;
-  subjectColor: string;
-  type: string;
-  difficulty: string;
-  diffColor: string;
-  date: string;
+  questionsCount: number;
+  attemptsCount: number;
+  duration: number | null;
+  createdAt: string;
 }
 
 export default function TeacherQuestionBankPage() {
   const t = useTranslations("Teacher.Quiz");
-  const [questions, setQuestions] = useState<QuestionData[]>([]);
+  const [quizzes, setQuizzes] = useState<QuizData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+
+  const handleAiSuccess = async (previewData: any[]) => {
+    alert(`Đã tạo thành công! Vui lòng tải lại trang để xem Đề thi mới.`);
+    loadQuizzes();
+  };
+
+  async function loadQuizzes() {
+    setLoading(true);
+    try {
+      const data = await teacherService.getQuizzes();
+      if (data) {
+        setQuizzes(data);
+      }
+    } catch (error) {
+      console.error("Failed to load quizzes", error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function loadQuestions() {
-      try {
-        const data = await teacherService.getQuestions();
-        if (data) {
-          setQuestions(data);
-        }
-      } catch (error) {
-        console.error("Failed to load questions", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadQuestions();
+    loadQuizzes();
   }, []);
 
   return (
@@ -49,6 +57,12 @@ export default function TeacherQuestionBankPage() {
         <div className="flex items-center gap-3">
           <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border rounded-lg text-sm font-medium text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
             <UploadCloud className="w-4 h-4" /> Import Excel
+          </button>
+          <button 
+            onClick={() => setIsAiModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-none rounded-lg text-sm font-medium transition-colors shadow-md shadow-blue-500/20"
+          >
+            <Sparkles className="w-4 h-4" /> AI Builder
           </button>
           <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
             <Download className="w-4 h-4" /> Export
@@ -93,11 +107,12 @@ export default function TeacherQuestionBankPage() {
             <thead>
               <tr className="border-b border-gray-100 dark:border-card-border text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold bg-gray-50/50 dark:bg-gray-800/20">
                 <th className="px-6 py-4 w-12"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></th>
-                <th className="px-6 py-4">Question Stem</th>
-                <th className="px-6 py-4">Subject</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Difficulty</th>
-                <th className="px-6 py-4">Last Modified</th>
+                <th className="px-6 py-4">Tên đề thi</th>
+                <th className="px-6 py-4">Môn học</th>
+                <th className="px-6 py-4">Số câu hỏi</th>
+                <th className="px-6 py-4">Số lượt làm bài</th>
+                <th className="px-6 py-4">Thời gian</th>
+                <th className="px-6 py-4">Ngày tạo</th>
                 <th className="px-6 py-4 w-12"></th>
               </tr>
             </thead>
@@ -108,33 +123,32 @@ export default function TeacherQuestionBankPage() {
                     Đang tải câu hỏi...
                   </td>
                 </tr>
-              ) : questions.length === 0 ? (
+              ) : quizzes.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                    Chưa có câu hỏi nào.
+                    Chưa có đề thi nào.
                   </td>
                 </tr>
-              ) : questions.map((q) => (
+              ) : quizzes.map((q) => (
                 <tr key={q.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group">
                   <td className="px-6 py-4"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></td>
                   <td className="px-6 py-4">
-                    <span className="font-medium text-gray-900 dark:text-white text-sm">{q.stem}</span>
+                    <span className="font-medium text-gray-900 dark:text-white text-sm">{q.title}</span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${q.subjectColor} dark:bg-opacity-20`}>
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold text-blue-700 bg-blue-100 dark:bg-opacity-20`}>
                       {q.subject}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{q.type}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{q.questionsCount} câu</td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full bg-current ${q.diffColor}`}></div>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{q.difficulty}</span>
-                    </div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{q.attemptsCount}</span>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900 dark:text-white">{q.date}</div>
-                    <div className="text-xs text-gray-500">2023</div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{q.duration ? `${q.duration} phút` : 'Không giới hạn'}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-gray-900 dark:text-white">{new Date(q.createdAt).toLocaleDateString('vi-VN')}</div>
                   </td>
                   <td className="px-6 py-4">
                     <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -164,6 +178,12 @@ export default function TeacherQuestionBankPage() {
           </button>
         </div>
       </div>
+
+      <AiQuizBuilderModal 
+        isOpen={isAiModalOpen} 
+        onClose={() => setIsAiModalOpen(false)} 
+        onSuccess={handleAiSuccess} 
+      />
     </div>
   );
 }

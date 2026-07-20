@@ -84,4 +84,14 @@ export class ChatRagController {
   getSessionHistory(@Param('id') id: string) {
     return this.chatRagService.getSessionHistory(id);
   }
+
+  @Post('feedback')
+  submitFeedback(
+    @Req() req: any,
+    @Body('category') category: import('@prisma/client').FeedbackCategory,
+    @Body('content') content: string,
+  ) {
+    const userId = req.user.userId || req.user.id;
+    return this.chatRagService.submitFeedback(userId, category, content);
+  }
 }

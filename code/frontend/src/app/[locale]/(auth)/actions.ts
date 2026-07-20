@@ -51,6 +51,7 @@ export async function login(formData: FormData) {
     if (actualRole === 'admin') tempPath = '/admin';
     else if (actualRole === 'teacher') tempPath = '/teacher';
     else if (actualRole === 'parent') tempPath = '/parent';
+    else if (actualRole === 'student') tempPath = '/dashboard';
     
     targetPath = tempPath;
   } catch (err: unknown) {

@@ -1,13 +1,44 @@
 "use client";
 
-import { Search, Plus, Download, MoreVertical, Star } from "lucide-react";
+import { Search, Plus, Download, MoreVertical, Star, Edit, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-
-import { Teacher, Course } from '@/types';
+import { useState } from "react";
+import { fetchApi } from "@/lib/api-client";
+import { Teacher, Course, User } from '@/types';
+import UserModal from "@/components/admin/UserModal";
 
 export default function AdminTeachersClient({ initialData }: { initialData: Teacher[] }) {
   const t = useTranslations("Admin.Teachers");
-  const teachers = initialData || [];
+  const [teachers, setTeachers] = useState<Teacher[]>(initialData || []);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  const handleOpenModal = (user?: Teacher) => {
+    setSelectedUser(user ? (user as any as User) : null);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveUser = async (data: Partial<User>) => {
+    if (selectedUser) {
+      await fetchApi(`/admin/users/${selectedUser.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      setTeachers(teachers.map(s => s.id === selectedUser.id ? { ...s, ...data } as unknown as Teacher : s));
+    } else {
+      const newUser = await fetchApi<Teacher>(`/admin/users`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      setTeachers([newUser, ...teachers]);
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa giáo viên này?')) return;
+    await fetchApi(`/admin/users/${id}`, { method: 'DELETE' });
+    setTeachers(teachers.filter(s => s.id !== id));
+  };
 
   return (
     <div className="space-y-6">
@@ -21,7 +52,10 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
           <button className="flex items-center gap-2 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
             <Download className="w-4 h-4" /> {t('export')}
           </button>
-          <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">
+          <button 
+            onClick={() => handleOpenModal()}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+          >
             <Plus className="w-4 h-4" /> {t('addTeacher')}
           </button>
         </div>
@@ -120,10 +154,15 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
                         {teacher.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => handleOpenModal(teacher)} className="p-1 text-blue-500 hover:text-blue-700">
+                          <Edit className="w-5 h-5" />
+                        </button>
+                        <button onClick={() => handleDeleteUser(teacher.id)} className="p-1 text-red-500 hover:text-red-700">
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -132,6 +171,13 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
           )}
         </div>
       </div>
+      <UserModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSave={handleSaveUser} 
+        user={selectedUser} 
+        role="TEACHER" 
+      />
     </div>
   );
 }

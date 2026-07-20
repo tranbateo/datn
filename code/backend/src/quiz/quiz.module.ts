@@ -7,5 +7,6 @@ import { GamificationModule } from '../gamification/gamification.module';
   imports: [GamificationModule],
   controllers: [QuizController],
   providers: [QuizService],
+  exports: [QuizService],
 })
 export class QuizModule {}

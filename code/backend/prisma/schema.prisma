@@ -60,6 +60,9 @@ model User {
 
   // Enrollments
   enrollments                 Enrollment[]
+
+  // Feedback
+  feedbacks                   Feedback[]
 }
 
 // -----------------------------------------------------------------------
@@ -72,8 +75,9 @@ model Subject {
   description String?
   
   // Relations
-  courses     Course[]
-  quizzes     Quiz[]
+  courses      Course[]
+  quizzes      Quiz[]
+  chatSessions ChatSession[]
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -185,6 +189,8 @@ model ChatSession {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @db.Uuid
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId String?  @db.Uuid
+  subject   Subject? @relation(fields: [subjectId], references: [id])
   title     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -365,3 +371,24 @@ model Proposal {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// -----------------------------------------------------------------------
+// 11. AI Feedback & Reporting
+// -----------------------------------------------------------------------
+enum FeedbackCategory {
+  AI_ERROR
+  CONTENT_ERROR
+  SYSTEM_BUG
+}
+
+model Feedback {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    FeedbackCategory
+  content     String
+  status      String   @default("PENDING") // PENDING, RESOLVED, IGNORED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+

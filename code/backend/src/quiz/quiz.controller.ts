@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { SubmitQuizDto } from './dto/submit-quiz.dto';
+import { GenerateQuizDto } from './dto/generate-quiz.dto';
 
 @Controller('quiz')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -58,6 +59,12 @@ export class QuizController {
   @Roles(Role.TEACHER, Role.ADMIN)
   remove(@Param('id') id: string) {
     return this.quizService.remove(id);
+  }
+
+  @Post('generate-ai-quiz')
+  @Roles(Role.TEACHER, Role.ADMIN)
+  async generateAiQuiz(@Body() generateQuizDto: GenerateQuizDto) {
+    return this.quizService.generateAiQuiz(generateQuizDto);
   }
 
   @Post(':id/submit')
