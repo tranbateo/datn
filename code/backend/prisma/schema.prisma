@@ -31,10 +31,12 @@ model User {
   role      Role     @default(STUDENT)
   tier      SubscriptionTier @default(FREE)
   passwordHash String?
+  refreshTokenHash String?
   isActive  Boolean  @default(true)
   deviceToken String? // For Firebase Push Notifications
   grade     Int?     // 1 to 12
   linkCode  String?  @unique // For parents to link
+  linkExpiresAt DateTime? // Token expiration
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -49,6 +51,7 @@ model User {
   studentLinks        ParentStudentLink[] @relation("StudentLinks")
   aiTokenUsages       AiTokenUsage[]
   transactions        Transaction[]
+  auditLogs           AuditLog[]
   
   // Messaging & Proposals
   conversationsAsParticipant1 Conversation[] @relation("Participant1")
@@ -148,7 +151,8 @@ model GamificationProfile {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId       String   @unique @db.Uuid
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  xp           Int      @default(0)
+  lifetimeXp   Int      @default(0)
+  spendableXp  Int      @default(0)
   level        Int      @default(1)
   currentStreak Int     @default(0)
   longestStreak Int     @default(0)
@@ -223,6 +227,7 @@ model Quiz {
   subject     Subject? @relation(fields: [subjectId], references: [id])
   duration    Int?     // in minutes
   isGraduation Boolean @default(false)
+  status      String   @default("DRAFT") // DRAFT, PUBLISHED, ASSIGNED, CLOSED
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -295,6 +300,7 @@ model ParentStudentLink {
   studentId String   @db.Uuid
   student   User     @relation("StudentLinks", fields: [studentId], references: [id], onDelete: Cascade)
   linkCode  String   @unique
+  expiresAt DateTime?
   linkedAt  DateTime @default(now())
 
   @@unique([parentId, studentId])
@@ -322,7 +328,7 @@ model Transaction {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId        String   @db.Uuid
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  amount        Float
+  amount        Decimal
   paymentMethod String
   status        String   // PENDING, SUCCESS, FAILED
   description   String?
@@ -392,3 +398,15 @@ model Feedback {
   updatedAt   DateTime @updatedAt
 }
 
+// -----------------------------------------------------------------------
+// 8. Audit Log
+// -----------------------------------------------------------------------
+model AuditLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  resource  String
+  details   Json?
+  createdAt DateTime @default(now())
+}

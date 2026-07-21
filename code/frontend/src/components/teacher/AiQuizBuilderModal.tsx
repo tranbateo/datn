@@ -38,7 +38,7 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
           numQuestions: Number(numQuestions)
         }),
       });
-      setPreviewData(data);
+      setPreviewData(data as any);
     } catch (err) {
       console.error(err);
       alert('Tạo quiz thất bại. Vui lòng thử lại.');

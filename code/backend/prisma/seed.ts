@@ -109,14 +109,16 @@ async function main() {
     await prisma.gamificationProfile.upsert({
       where: { userId: user.id },
       update: {
-        xp: tUser.xp,
+        lifetimeXp: tUser.xp,
+        spendableXp: tUser.xp,
         level,
         currentStreak: tUser.streak,
         longestStreak: tUser.streak,
       },
       create: {
         userId: user.id,
-        xp: tUser.xp,
+        lifetimeXp: tUser.xp,
+        spendableXp: tUser.xp,
         level,
         currentStreak: tUser.streak,
         longestStreak: tUser.streak,

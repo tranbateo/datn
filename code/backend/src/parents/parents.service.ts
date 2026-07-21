@@ -59,6 +59,26 @@ export class ParentsService {
     };
   }
 
+  async unlinkStudent(parentId: string, studentId: string) {
+    const existing = await this.prisma.parentStudentLink.findUnique({
+      where: {
+        parentId_studentId: { parentId, studentId },
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Liên kết không tồn tại');
+    }
+
+    await this.prisma.parentStudentLink.delete({
+      where: {
+        parentId_studentId: { parentId, studentId },
+      },
+    });
+
+    return { success: true };
+  }
+
   // 3. Get Parent Dashboard Data
   async getDashboard(parentId: string) {
     const links = await this.prisma.parentStudentLink.findMany({

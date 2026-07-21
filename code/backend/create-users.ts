@@ -27,7 +27,7 @@ async function main() {
   await prisma.gamificationProfile.upsert({
     where: { userId: student.id },
     update: {},
-    create: { userId: student.id, xp: 500, level: 2 },
+    create: { userId: student.id, lifetimeXp: 500, spendableXp: 500, level: 2 },
   });
 
   // 2. Create Teacher

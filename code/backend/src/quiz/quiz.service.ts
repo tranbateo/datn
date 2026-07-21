@@ -137,9 +137,25 @@ export class QuizService {
       }
     }
 
+    // Idempotency Check
+    const existingAttempt = await this.prisma.quizAttempt.findUnique({
+      where: { id: dto.attemptId },
+    });
+    if (existingAttempt) {
+      return {
+        attemptId: existingAttempt.id,
+        score: existingAttempt.score,
+        totalQuestions: existingAttempt.totalQuestions,
+        xpEarned: 0, // No double XP
+        isPassed: existingAttempt.score / existingAttempt.totalQuestions >= 0.5,
+        isGraduation: quiz.isGraduation,
+      };
+    }
+
     // Save attempt
     const attempt = await this.prisma.quizAttempt.create({
       data: {
+        id: dto.attemptId,
         quizId,
         userId,
         score,
@@ -159,18 +175,20 @@ export class QuizService {
 
     // Logic 1: Vượt cấp (Graduation)
     if (quiz.isGraduation && percentage >= 0.5) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (user && user.grade) {
-        await this.prisma.user.update({
-          where: { id: userId },
-          data: { grade: user.grade + 1 },
+      const profile = await this.prisma.gamificationProfile.findUnique({
+        where: { userId },
+      });
+      if (profile) {
+        await this.prisma.gamificationProfile.update({
+          where: { userId },
+          data: { level: profile.level + 1 },
         });
-        // Optionally create a notification for the student
+
         await this.prisma.notification.create({
           data: {
             userId,
             title: 'Chúc mừng thăng cấp!',
-            body: `Bạn đã xuất sắc vượt qua bài thi ${quiz.title} và được lên lớp ${user.grade + 1}!`,
+            body: `Bạn đã xuất sắc vượt qua bài thi ${quiz.title} và được lên cấp ${profile.level + 1}!`,
           },
         });
       }

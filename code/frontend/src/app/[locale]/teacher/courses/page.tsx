@@ -31,10 +31,10 @@ export default function TeacherCourseManagement() {
             instructor: c.instructor || 'Giáo viên',
             category: c.subject || 'Khác',
             enrollment: c.students || 0,
-            enrollmentTrend: c.enrollmentTrend || '+12%',
+            enrollmentTrend: c.enrollmentTrend || '+0%',
             lessons: c.lessons || 0,
-            trend: c.trend || [{value: 0}, {value: 10}, {value: 5}, {value: 20}],
-            trendColor: c.trendColor || '#10B981',
+            trend: c.trend || [{value: 0}, {value: 0}, {value: 0}, {value: 0}],
+            trendColor: c.trendColor || '#9CA3AF',
           }));
           setCoursesData(formatted);
         }
@@ -49,6 +49,13 @@ export default function TeacherCourseManagement() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadCourses();
   }, []);
+
+  // Calculate Average Completion
+  const calculateAvgCompletion = () => {
+    if (!coursesData || coursesData.length === 0) return '0%';
+    // Replace with real logic if provided from backend
+    return '0%'; 
+  };
 
   return (
     <div className="space-y-6">
@@ -104,7 +111,7 @@ export default function TeacherCourseManagement() {
             <div>
               <p className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('avgCompletion')}</p>
               <h3 className="text-4xl font-bold text-gray-900 dark:text-white">
-                {coursesData.length > 0 ? "85%" : "0%"}
+                {calculateAvgCompletion()}
               </h3>
             </div>
             <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">

@@ -90,8 +90,8 @@ export class GamificationService {
     const rank =
       (await this.prisma.gamificationProfile.count({
         where: {
-          xp: {
-            gt: profile.xp,
+          lifetimeXp: {
+            gt: profile.lifetimeXp,
           },
         },
       })) + 1;
@@ -114,7 +114,8 @@ export class GamificationService {
       });
     }
 
-    const newXp = profile.xp + amount;
+    const newXp = profile.lifetimeXp + amount;
+    const newSpendableXp = profile.spendableXp + amount;
     const newLevel = this.calculateLevel(newXp);
 
     const streakData = this.calculateStreak(
@@ -126,7 +127,8 @@ export class GamificationService {
     return this.prisma.gamificationProfile.update({
       where: { userId },
       data: {
-        xp: newXp,
+        lifetimeXp: newXp,
+        spendableXp: newSpendableXp,
         level: newLevel,
         ...streakData,
       },
@@ -139,7 +141,7 @@ export class GamificationService {
   async getLeaderboard(limit: number = 10) {
     return this.prisma.gamificationProfile.findMany({
       take: limit,
-      orderBy: { xp: 'desc' },
+      orderBy: { lifetimeXp: 'desc' },
       include: {
         user: {
           select: { fullName: true, avatarUrl: true, email: true },

@@ -82,17 +82,52 @@ export class ChatRagService {
     let aiResponseText = '';
 
     try {
-      // 2. Retrieve relevant documents using the vector store
-      const docs = await this.vectorStore.similaritySearch(content, 4); // Get top 4 results
-      const contextDocs = docs.map((doc) => doc.pageContent).join('\n\n');
-
-      // Retrieve user grade and subject
+      // Retrieve user session
       const session = await this.prisma.chatSession.findUnique({
         where: { id: sessionId },
         include: { user: true, subject: true },
       });
       const userGrade = session?.user?.grade || 'chưa xác định';
       const subjectName = session?.subject?.name || 'Tổng hợp';
+
+      // Enforce RAG filters (BR-RAG-001)
+      // Only search in courses the user is enrolled in for this subject
+      let contextDocs = '';
+      if (session && session.subjectId) {
+        const enrollments = await this.prisma.enrollment.findMany({
+          where: {
+            userId: session.userId,
+            course: { subjectId: session.subjectId },
+          },
+        });
+        const courseIds = enrollments.map((e) => e.courseId);
+
+        if (courseIds.length > 0) {
+          // Query vector store for each allowed course and merge results
+          const searchPromises = courseIds.map((cid) =>
+            this.vectorStore.similaritySearch(content, 4, { courseId: cid }),
+          );
+          const allDocsArrays = await Promise.all(searchPromises);
+          const docs = allDocsArrays.flat().slice(0, 4); // simplistic merge, taking up to 4
+          contextDocs = docs.map((doc) => doc.pageContent).join('\n\n');
+        }
+      } else {
+        // If no specific subject, maybe global chat. Search generically or restrict entirely.
+        // For safety, we can just not provide context if no subject is selected,
+        // or we could fetch all enrolled courses. Let's fetch all enrolled.
+        const enrollments = await this.prisma.enrollment.findMany({
+          where: { userId: session?.userId },
+        });
+        const courseIds = enrollments.map((e) => e.courseId);
+        if (courseIds.length > 0) {
+          const searchPromises = courseIds.map((cid) =>
+            this.vectorStore.similaritySearch(content, 2, { courseId: cid }),
+          );
+          const allDocsArrays = await Promise.all(searchPromises);
+          const docs = allDocsArrays.flat().slice(0, 4);
+          contextDocs = docs.map((doc) => doc.pageContent).join('\n\n');
+        }
+      }
 
       const promptText = `
 Bạn là một gia sư AI thông minh và tận tâm tại Việt Nam. Học sinh đang học môn ${subjectName}, lớp ${userGrade}.

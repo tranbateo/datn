@@ -1,11 +1,20 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-require-imports */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import {
+  CreateUserDto,
+  UpdateUserDto,
+  AdminUpdateUserDto,
+} from './dto/users.dto';
+import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+  ) {}
 
   async syncUser(id: string, email: string, role: any) {
     let user = await this.prisma.user.findUnique({ where: { id } });
@@ -21,16 +30,38 @@ export class UsersService {
         },
       });
     }
+    delete (user as any).passwordHash;
+    delete (user as any).refreshTokenHash;
     return user;
   }
 
-  async create(data: Prisma.UserCreateInput) {
-    return this.prisma.user.create({ data });
+  async create(dto: CreateUserDto) {
+    const { password, ...rest } = dto;
+    let passwordHash = null;
+    if (password) {
+      const pepper =
+        this.configService.get<string>('PASSWORD_PEPPER') || 'DEFAULT_PEPPER';
+      passwordHash = await bcrypt.hash(password + pepper, 10);
+    }
+    const user = await this.prisma.user.create({
+      data: {
+        ...rest,
+        passwordHash,
+      },
+    });
+    delete (user as any).passwordHash;
+    delete (user as any).refreshTokenHash;
+    return user;
   }
 
   async findAll() {
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
+    });
+    return users.map((user) => {
+      delete (user as any).passwordHash;
+      delete (user as any).refreshTokenHash;
+      return user;
     });
   }
 
@@ -39,20 +70,27 @@ export class UsersService {
       where: { id },
     });
     if (!user) throw new NotFoundException('User not found');
+    delete (user as any).passwordHash;
+    delete (user as any).refreshTokenHash;
     return user;
   }
 
-  async update(id: string, data: any) {
-    if (data.password) {
-      const bcrypt = require('bcryptjs');
-      data.passwordHash = await bcrypt.hash(data.password, 10);
+  async update(id: string, dto: UpdateUserDto | AdminUpdateUserDto) {
+    const data: any = { ...dto };
+    if ('password' in data && data.password) {
+      const pepper =
+        this.configService.get<string>('PASSWORD_PEPPER') || 'DEFAULT_PEPPER';
+      data.passwordHash = await bcrypt.hash(data.password + pepper, 10);
       delete data.password;
     }
 
-    return this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data,
     });
+    delete (updatedUser as any).passwordHash;
+    delete (updatedUser as any).refreshTokenHash;
+    return updatedUser;
   }
 
   async remove(id: string) {

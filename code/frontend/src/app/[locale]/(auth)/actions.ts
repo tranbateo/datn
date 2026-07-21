@@ -27,6 +27,11 @@ export async function login(formData: FormData) {
     }
 
     const data = await response.json();
+    
+    if (data.requireOtp) {
+      return { requireOtp: true, email: data.email, message: data.message };
+    }
+    
     const actualRole = data.user.role?.toLowerCase() || 'student';
 
     if (actualRole === 'admin') {
@@ -60,6 +65,52 @@ export async function login(formData: FormData) {
 
   if (targetPath) {
     redirect({ href: targetPath, locale: 'vi' }); 
+  }
+}
+
+export async function verifyLoginOtpAction(formData: FormData) {
+  const email = formData.get('email') as string;
+  const otp = formData.get('otp') as string;
+
+  let targetPath = '';
+
+  try {
+    const response = await fetch(`${getApiUrl()}/auth/verify-login-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      return { error: errorData.message || 'OTP verification failed' };
+    }
+
+    const data = await response.json();
+    const actualRole = data.user.role?.toLowerCase() || 'student';
+
+    const cookieStore = await cookies();
+    cookieStore.set('auth-token', data.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+    });
+
+    let tempPath = '/';
+    if (actualRole === 'admin') tempPath = '/admin';
+    else if (actualRole === 'teacher') tempPath = '/teacher';
+    else if (actualRole === 'parent') tempPath = '/parent';
+    else if (actualRole === 'student') tempPath = '/dashboard';
+    
+    targetPath = tempPath;
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : 'Network error' };
+  }
+
+  if (targetPath) {
+    redirect({ href: targetPath, locale: 'vi' });
   }
 }
 

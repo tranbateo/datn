@@ -1,356 +1,1369 @@
-# TÀI LIỆU ĐẶC TẢ KỸ THUẬT PHẦN MỀM (SRS) - AI TUTOR
+# TÀI LIỆU ĐẶC TẢ YÊU CẦU PHẦN MỀM (SRS)
 
-## 1. GIỚI THIỆU VÀ KIẾN TRÚC TỔNG THỂ
+## AI TUTOR — PHIÊN BẢN 2.0
 
-### 1.1 Tổng quan (Overview)
-AI Tutor là nền tảng giáo dục thông minh đa nền tảng. Hệ thống được thiết kế để kết nối 4 đối tượng người dùng: **Học sinh** (Người học chính), **Giáo viên** (Người tạo nội dung), **Phụ huynh** (Người giám sát), và **Admin** (Người quản trị hệ thống).
-
-### 1.2 Kiến trúc Hệ thống (System Architecture)
-Hệ thống sử dụng kiến trúc Client-Server dựa trên API tập trung:
-- **Backend**: NestJS (REST API, GraphQL, WebSockets qua Socket.IO).
-- **Frontend (Web)**: Next.js (App Router) phục vụ cho Web Admin, Web Teacher và Web Parent.
-- **Frontend (Mobile)**: React Native phục vụ cho App Student và App Parent.
-- **Database & Caching**: PostgreSQL (Dữ liệu quan hệ), `pgvector` (Vector Database phục vụ AI RAG), Redis (Caching session, Rate limiting, Pub/Sub WebSockets).
-- **Tích hợp bên ngoài**: 
-  - LLM Models: OpenAI, Gemini, Claude (qua LangChain).
-  - Push Notification: Firebase Cloud Messaging (FCM).
-  - Storage: AWS S3 hoặc Google Cloud Storage (Lưu trữ PDF, Image).
+- **Trạng thái**: Bản đặc tả đồng bộ với `GEMINI.md`
+- **Ngày cập nhật**: 21/07/2026
+- **Đối tượng sử dụng**: Product Owner, Business Analyst, Developer, Tester, DevOps và AI coding agent
 
 ---
 
-## 2. THIẾT KẾ CƠ SỞ DỮ LIỆU (DATABASE SCHEMA)
+# 1. GIỚI THIỆU
 
-Dữ liệu được tổ chức chặt chẽ trên PostgreSQL. Dưới đây là cấu trúc các bảng cốt lõi:
+## 1.1. Mục đích tài liệu
 
-### 2.1 Nhóm Bảng Người dùng & Auth (Users & Security)
-- **`users`**: Bảng gốc chứa thông tin đăng nhập.
-  - `id` (UUID, PK), `email` (VARCHAR, Unique), `password_hash` (VARCHAR), `full_name` (VARCHAR), `role` (Enum: STUDENT, TEACHER, PARENT, ADMIN), `is_active` (BOOLEAN, default: true), `created_at` (TIMESTAMP).
-- **`user_sessions`**: Quản lý thiết bị đăng nhập (Bảo mật JWT).
-  - `id` (UUID, PK), `user_id` (UUID, FK -> users), `refresh_token` (VARCHAR), `device_ip` (VARCHAR), `user_agent` (VARCHAR), `expires_at` (TIMESTAMP), `is_revoked` (BOOLEAN).
-- **`user_devices`**: Lưu trữ thiết bị nhận Cảnh báo bảo mật & Push Notification.
-  - `id` (UUID, PK), `user_id` (UUID, FK), `fcm_token` (VARCHAR), `device_type` (Enum: IOS, ANDROID, WEB), `last_active` (TIMESTAMP).
-- **`students`**: Kế thừa `users`.
-  - `id` (UUID, PK), `user_id` (UUID, FK), `total_xp` (INT), `current_level` (INT), `current_grade` (INT, Khối lớp hiện tại, VD: 1), `streak` (INT).
-- **`teachers`**: Kế thừa `users`.
-  - `id` (UUID, PK), `user_id` (UUID, FK), `subject_id` (UUID, FK), `education_level` (Enum: PRIMARY, MIDDLE, HIGH), `school_name` (VARCHAR), `is_verified` (BOOLEAN).
-- **`parents`**: Kế thừa `users`.
-  - `id` (UUID, PK), `user_id` (UUID, FK), `phone_number` (VARCHAR).
-- **`parent_student_links`**: Bảng trung gian n-n.
-  - `parent_id` (UUID, FK), `student_id` (UUID, FK), `linked_at` (TIMESTAMP).
+Tài liệu này mô tả phạm vi, tác nhân, yêu cầu chức năng, business rule, dữ liệu, bảo mật, hiệu năng và tiêu chí nghiệm thu của hệ thống **AI Tutor**.
 
-### 2.2 Nhóm Bảng Bài tập & Lên Lớp (Quizzes & Graduation)
-- **`quizzes`**: Bài kiểm tra do giáo viên tạo.
-  - `id` (UUID, PK), `teacher_id` (UUID, FK), `title` (VARCHAR), `time_limit_minutes` (INT), `is_published` (BOOLEAN).
-- **`quiz_questions`**: Câu hỏi trong bài kiểm tra.
-  - `id` (UUID, PK), `quiz_id` (UUID, FK), `question_text` (TEXT), `question_type` (Enum: MULTIPLE_CHOICE, FILL_BLANK).
-- **`quiz_options`**: Đáp án trắc nghiệm.
-  - `id` (UUID, PK), `question_id` (UUID, FK), `option_text` (VARCHAR), `is_correct` (BOOLEAN).
-- **`quiz_attempts`**: Lượt làm bài của học sinh.
-  - `id` (UUID, PK), `student_id` (UUID, FK), `quiz_id` (UUID, FK), `total_score` (FLOAT), `earned_xp` (INT), `submitted_at` (TIMESTAMP).
-- **`student_answers`**: Chi tiết câu trả lời của học sinh.
-  - `id` (UUID, PK), `attempt_id` (UUID, FK), `question_id` (UUID, FK), `selected_option_id` (UUID, FK), `is_correct` (BOOLEAN).
-- **`graduation_exams`**: Đề thi Vượt cấp Đầu ra / Lên lớp (Giáo viên phụ trách khối lớp tạo).
-  - `id` (UUID, PK), `teacher_id` (UUID, FK), `grade_level` (INT, Khối lớp yêu cầu), `passing_score` (FLOAT), `quiz_id` (UUID, FK -> quizzes).
+Tài liệu được dùng để:
 
-### 2.3 Nhóm Bảng AI & Knowledge (RAG System)
-- **`documents`**: Tài liệu bài giảng.
-  - `id` (UUID, PK), `teacher_id` (UUID, FK), `title` (VARCHAR), `file_url` (VARCHAR), `status` (Enum: PROCESSING, SUCCESS, FAILED).
-- **`files_metadata`**: Lưu trữ thông tin chi tiết của file.
-  - `id` (UUID, PK), `document_id` (UUID, FK), `file_size_bytes` (INT), `mime_type` (VARCHAR), `page_count` (INT).
-- **`vector_embeddings`**: Lưu trữ Vector cho AI RAG (`pgvector`).
-  - `id` (UUID, PK), `document_id` (UUID, FK), `chunk_text` (TEXT), `embedding` (VECTOR(1536)).
-- **`chat_sessions`**: Phiên chat giữa Student và AI.
-  - `id` (UUID, PK), `student_id` (UUID, FK), `started_at` (TIMESTAMP).
-- **`chat_messages`**: Tin nhắn chi tiết.
-  - `id` (UUID, PK), `session_id` (UUID, FK), `sender_type` (Enum: STUDENT, AI), `content` (TEXT), `citations` (JSONB).
+- Thống nhất nghiệp vụ giữa các bên liên quan.
+- Làm căn cứ thiết kế, lập trình và kiểm thử.
+- Hạn chế việc tự suy đoán hoặc mở rộng chức năng ngoài phạm vi.
+- Bảo đảm quyền riêng tư và an toàn dữ liệu học sinh.
+- Phân tách rõ phiên bản MVP và chức năng giai đoạn sau.
 
-### 2.4 Nhóm Gamification, Shop & Mạng xã hội (Social)
-- **`shop_items`**: Vật phẩm có thể mua bằng XP.
-  - `id` (UUID, PK), `name` (VARCHAR), `type` (Enum: AVATAR, BADGE, THEME), `cost_xp` (INT), `image_url` (VARCHAR).
-- **`student_inventory`**: Kho đồ của học sinh.
-  - `student_id` (UUID, FK), `item_id` (UUID, FK), `is_equipped` (BOOLEAN), `acquired_at` (TIMESTAMP).
-- **`achievements`**: Danh mục Thành tựu học tập.
-  - `id` (UUID, PK), `name` (VARCHAR), `description` (TEXT), `reward_xp` (INT).
-- **`student_achievements`**: Thành tựu học sinh đã mở khóa.
-  - `student_id` (UUID, FK), `achievement_id` (UUID, FK), `unlocked_at` (TIMESTAMP).
-- **`friendships`**: Mạng lưới kết bạn giữa các học sinh.
-  - `student_id_1` (UUID, FK), `student_id_2` (UUID, FK), `status` (Enum: PENDING, ACCEPTED), `created_at` (TIMESTAMP).
-- **`direct_messages`**: Tin nhắn nội bộ giữa học sinh.
-  - `id` (UUID, PK), `sender_id` (UUID, FK), `receiver_id` (UUID, FK), `content` (TEXT), `sent_at` (TIMESTAMP), `is_read` (BOOLEAN).
+## 1.2. Phạm vi sản phẩm
 
-### 2.5 Nhóm Bảng Thương mại & Thanh toán (Payments)
-- **`subscriptions`**: Gói cước đăng ký khóa học hoặc dịch vụ AI VIP.
-  - `id` (UUID, PK), `name` (VARCHAR), `price` (FLOAT), `duration_days` (INT).
-- **`user_subscriptions`**: Gói cước mà User (Student/Parent) đang sử dụng.
-  - `id` (UUID, PK), `user_id` (UUID, FK), `subscription_id` (UUID, FK), `valid_until` (TIMESTAMP), `status` (Enum: ACTIVE, EXPIRED).
-- **`transactions`**: Lưu vết thanh toán (VNPay, Momo, Stripe).
-  - `id` (UUID, PK), `user_id` (UUID, FK), `amount` (FLOAT), `payment_method` (VARCHAR), `status` (Enum: PENDING, SUCCESS, FAILED), `created_at` (TIMESTAMP).
+AI Tutor là nền tảng giáo dục thông minh dành cho học sinh Việt Nam. Hệ thống hỗ trợ học tập cá nhân hóa dựa trên tài liệu được giáo viên cung cấp, kết hợp RAG, bài kiểm tra, theo dõi tiến độ và kết nối phụ huynh – giáo viên – học sinh.
 
-### 2.6 Nhóm Bảng Lớp học & Vận hành Hệ thống
-- **`classes`** & **`class_enrollments`**: Quản lý Lớp học của Giáo viên.
-  - `classes`: `id` (UUID), `teacher_id` (UUID), `name` (VARCHAR), `grade_level` (INT).
-  - `class_enrollments`: `class_id` (UUID), `student_id` (UUID).
-- **`notifications`**: Hệ thống Quả chuông (Push Notifications).
-  - `id` (UUID, PK), `user_id` (UUID, FK), `title` (VARCHAR), `body` (TEXT), `type` (VARCHAR), `is_read` (BOOLEAN), `created_at` (TIMESTAMP).
-- **`ai_token_usages`** & **`audit_logs`**: Nhật ký vận hành (Dành cho Admin).
-  - `ai_token_usages`: `user_id`, `tokens_used`, `cost`, `timestamp`.
-  - `audit_logs`: `user_id`, `action`, `details`, `timestamp`.
+Hệ thống có bốn nhóm người dùng chính:
 
----
+- **Student**: người học chính.
+- **Teacher**: người quản lý lớp và nội dung học tập.
+- **Parent**: người liên kết, giám sát và đồng hành với học sinh.
+- **Admin**: người quản trị và vận hành hệ thống.
 
-## 3. CHÍNH SÁCH BẢO MẬT & QUYỀN RIÊNG TƯ (SECURITY & PRIVACY)
+## 1.3. Mục tiêu sản phẩm
 
-### 3.1 Bảo mật Hệ thống & API
-1. **Mã hóa truyền tải (In Transit)**: 100% các request API và WebSockets phải đi qua giao thức bảo mật HTTPS/WSS (TLS 1.2 trở lên).
-2. **Xác thực (Authentication & Authorization)**: 
-   - Sử dụng cơ chế **JWT (JSON Web Tokens)** kết hợp Access Token (ngắn hạn) và Refresh Token (dài hạn).
-   - **Lưu trữ Token an toàn**: **Tuyệt đối KHÔNG LƯU JWT vào `localStorage`** để tránh lỗ hổng XSS. Access Token và Refresh Token phải được lưu dưới dạng **`httpOnly`, `Secure`, `SameSite=Strict` Cookies**.
-   - Bắt buộc bật **Xác minh 2 bước (2FA)** hoặc OTP Email đối với luồng Đăng nhập của Admin và Giáo viên.
-   - Refresh Token có khả năng bị thu hồi (Revoke) tự động nếu phát hiện thiết bị/IP đăng nhập bất thường.
-   - Mật khẩu lưu trong Database bắt buộc băm bằng thuật toán `bcrypt` (salt rounds >= 10).
-3. **Bảo vệ chống tấn công Web & Server**:
-   - Tích hợp **CORS** chỉ định rõ các White-listed Domains, cấu hình **CSRF Token** để bảo vệ các thao tác state-changing.
-   - Tích hợp `Helmet` để thiết lập HTTP Headers an toàn và **WAF (Web Application Firewall)** để chặn truy cập dị thường.
-   - Bật **Rate Limiting** nghiêm ngặt và cấu hình **Fail2Ban** (tự động khóa IP nếu quét port hoặc brute-force) để chống DDoS và Spam API.
-   - Cấu hình mã hóa dữ liệu tại chỗ (**Encryption at Rest**) đối với PII (Personally Identifiable Information) trong CSDL.
+Hệ thống hướng tới các mục tiêu:
 
-### 3.2 Chính sách Quyền riêng tư (Privacy Policy)
-Bảo vệ dữ liệu trẻ em là ưu tiên cao nhất của hệ thống:
-1. **Tuân thủ COPPA (Trẻ em)**: Không thu thập dữ liệu định danh dư thừa của Học sinh. Không chia sẻ dữ liệu định danh, hành vi học tập cho bất kỳ bên thứ 3 nào vì mục đích quảng cáo.
-2. **Bảo mật dữ liệu LLM**: Dữ liệu hội thoại gửi lên các API của OpenAI/Gemini/Claude phải được ẩn danh (Anonymized) và được cam kết (Opt-out) không sử dụng để huấn luyện (train) các model công khai của hãng.
+1. Cho phép học sinh hỏi đáp với AI trong phạm vi tài liệu được cấp quyền.
+2. Cung cấp câu trả lời có nguồn tham khảo và hạn chế bịa thông tin.
+3. Hỗ trợ giáo viên quản lý lớp, tài liệu, quiz và tiến độ học sinh.
+4. Hỗ trợ AI sinh câu hỏi nhưng bắt buộc giáo viên duyệt trước khi giao.
+5. Theo dõi chủ đề mạnh/yếu và đề xuất nội dung ôn tập cơ bản.
+6. Cho phép phụ huynh theo dõi tài khoản con đã liên kết hợp lệ.
+7. Cho phép Admin quản lý hệ thống theo nguyên tắc phân quyền tối thiểu.
+
+## 1.4. Thuật ngữ và viết tắt
+
+| Thuật ngữ | Ý nghĩa |
+|---|---|
+| SRS | Software Requirements Specification |
+| MVP | Minimum Viable Product |
+| RAG | Retrieval-Augmented Generation |
+| LLM | Large Language Model |
+| RBAC | Role-Based Access Control |
+| PII | Dữ liệu định danh cá nhân |
+| XP | Điểm kinh nghiệm tích lũy |
+| TTFT | Time to First Token |
+| OTP | One-Time Password |
+| 2FA | Xác thực hai yếu tố |
+| Idempotency | Gửi lặp cùng một yêu cầu không tạo kết quả trùng |
+| Academic grade | Khối lớp học chính thức của học sinh |
+| Learning level | Cấp độ học tập bên trong ứng dụng |
+
+## 1.5. Mức độ ưu tiên yêu cầu
+
+Tài liệu sử dụng quy ước:
+
+- **MUST**: bắt buộc đối với phạm vi đang triển khai.
+- **SHOULD**: nên có nếu nguồn lực cho phép.
+- **COULD**: có thể phát triển ở giai đoạn sau.
+- **OUT**: không thuộc phạm vi hiện tại.
+
+## 1.6. Nguồn sự thật và xử lý mâu thuẫn
+
+Thứ tự ưu tiên khi xác định yêu cầu:
+
+1. Yêu cầu trực tiếp hiện tại đã được người có thẩm quyền phê duyệt.
+2. Business rule trong tài liệu này.
+3. Yêu cầu chức năng và tiêu chí nghiệm thu trong tài liệu này.
+4. Database schema, migration và API contract đã được phê duyệt.
+5. Mã nguồn và test hiện hành.
+6. Tài liệu mô tả tổng quan khác.
+
+Khi phát hiện mâu thuẫn ảnh hưởng đến quyền, dữ liệu, điểm số, thanh toán, schema hoặc API public, nhóm phát triển phải dừng phần thay đổi liên quan, ghi nhận mâu thuẫn và yêu cầu xác nhận. Không được tự chọn phương án nghiệp vụ.
 
 ---
 
-## 4. ĐẶC TẢ CHI TIẾT LUỒNG HOẠT ĐỘNG (WORKFLOWS)
+# 2. TỔNG QUAN HỆ THỐNG
 
-Phần này đặc tả tường minh các tính năng thông qua luồng hoạt động của 4 phân quyền riêng biệt.
+## 2.1. Tác nhân
 
-### 4.1 Phân hệ & Luồng của Quản trị viên (Admin)
-Admin là người quản lý hạ tầng, kiểm duyệt cấp cao và vận hành toàn bộ hệ thống AI Tutor. Hệ thống Admin Dashboard được phân bổ thành các module (luồng) chính và phụ cực kỳ chi tiết:
+### 2.1.1. Student
 
-**Sơ đồ Use Case của Quản trị viên (Admin Use Cases):**
-```mermaid
-flowchart LR
-    Admin((Quản trị viên))
-    
-    subgraph AdminDashboard ["Hệ thống Quản trị (Admin Dashboard)"]
-        UC1(["Quản lý Người dùng (Giáo viên, Học sinh, Phụ huynh)"])
-        UC2(["Quản lý Dữ liệu gốc (Môn học, Khối lớp)"])
-        UC3(["Kiểm duyệt Nội dung (Xóa tài liệu, Bài tập)"])
-        UC4(["Cấu hình AI & Thống kê Token Quota"])
-        UC5(["Vận hành (Gửi Thông báo, Xem Audit Log)"])
-    end
-    
-    Admin --> UC1
-    Admin --> UC2
-    Admin --> UC3
-    Admin --> UC4
-    Admin --> UC5
-```
+- Tham gia lớp học.
+- Xem tài liệu đã xuất bản.
+- Chat với AI theo phạm vi được cấp quyền.
+- Làm quiz, xem kết quả và giải thích lỗi sai.
+- Theo dõi tiến độ, XP và đề xuất ôn tập.
 
-#### 4.1.1 Luồng Quản lý Người dùng (User Management)
-- **Bước 1**: Admin truy cập Dashboard, gọi API `GET /admin/users`.
-- **Bước 2**: Hệ thống trả về danh sách Giáo viên, Học sinh, Phụ huynh kèm trạng thái `is_active`.
-- **Bước 3**: Admin bấm Khóa (Ban) tài khoản. Web gọi API `PATCH /admin/users/{id}/ban`.
-- **Bước 4**: Backend cập nhật `is_active = false`, lập tức thu hồi toàn bộ token của User này trong bảng `user_sessions` (Force Logout). Ghi nhận thao tác vào bảng `audit_logs`.
+### 2.1.2. Teacher
 
-#### 4.1.2 Luồng Quản lý Dữ liệu gốc & Nội dung (Content & Master Data)
-- **Quản lý Cấu trúc Môn học**: Khởi tạo Danh mục Môn học và Khối/Lớp (Lớp 1 - 12) làm dữ liệu Master.
-- **Kiểm duyệt Tài liệu**: Admin xem danh sách bài giảng. Khi bấm "Xóa" tài liệu vi phạm, Backend sẽ xóa Document, đồng thời gọi lệnh SQL xóa toàn bộ Vector Embeddings tương ứng trong `pgvector`.
+- Tạo và quản lý lớp phụ trách.
+- Quản lý thành viên lớp theo quyền.
+- Tải, xử lý, xuất bản và gỡ tài liệu.
+- Tạo hoặc dùng AI sinh quiz.
+- Duyệt nội dung do AI sinh trước khi giao.
+- Xem bài làm, điểm số và báo cáo của học sinh trong lớp.
 
-#### 4.1.3 Luồng Cấu hình AI & Thống kê Token (AI & Billing)
-- **Cấu hình**: Admin thay đổi API Keys (OpenAI/Gemini) hoặc System Prompt gốc trên giao diện trực quan.
-- **Thống kê**: Gọi API `GET /admin/analytics/tokens` để nhóm (GROUP BY) dữ liệu từ bảng `ai_token_usages`, vẽ biểu đồ chi phí chạy AI Token theo ngày/tuần để tránh vượt quá ngân sách.
+### 2.1.3. Parent
 
-#### 4.1.4 Luồng Vận hành Hệ thống (System Operations)
-- **Bước 1**: Admin soạn thảo thông báo và gửi qua Web Dashboard.
-- **Bước 2**: Backend lưu nội dung vào bảng `notifications`.
-- **Bước 3**: Gọi Firebase Admin SDK (`messaging().sendToDevice()`) để bắn Push Notification đồng loạt tới tất cả Mobile App của Học sinh và Phụ huynh.
+- Liên kết với tài khoản con bằng token hoặc QR có thời hạn.
+- Xem báo cáo của tài khoản con đã liên kết.
+- Nhận cảnh báo và cấu hình thông báo.
+- Thanh toán hộ nếu module thanh toán được bật.
 
-**Luồng Hoạt động Tiêu biểu (Kiểm duyệt và Khóa Tài khoản):**
-```mermaid
-sequenceDiagram
-    actor Admin
-    participant Web as Admin Dashboard
-    participant API as NestJS Backend
-    participant DB as PostgreSQL
-    Admin->>Web: Bấm "Khóa tài khoản" học sinh vi phạm
-    Web->>API: PATCH /admin/students/{id}/ban
-    API->>DB: Cập nhật is_active = false
-    API-->>Web: Trả về thành công
-    API->>API: Force logout các session hiện tại của Học sinh
-```
+### 2.1.4. Admin
 
-### 4.2 Phân hệ & Luồng của Giáo viên (Teacher)
-Giáo viên đóng vai trò là "Người nuôi dưỡng tri thức" (Content Creator) cho hệ thống AI và điều phối việc học của học sinh. Hệ thống Teacher Dashboard được chia thành các luồng quản lý chính như sau:
+- Quản lý tài khoản và trạng thái hoạt động.
+- Xác minh Teacher.
+- Quản lý môn học, khối lớp và dữ liệu gốc.
+- Kiểm duyệt nội dung theo quyền.
+- Xem audit log, thống kê vận hành và chi phí AI.
+- Quản lý cấu hình không chứa secret.
 
-**Sơ đồ Use Case của Giáo viên (Teacher Use Cases):**
-```mermaid
-flowchart LR
-    Teacher((Giáo viên))
-    
-    subgraph TeacherDashboard ["Cổng thông tin Giáo viên (Teacher Web)"]
-        UC1(["Quản lý Lớp học & Thành viên"])
-        UC2(["Quản lý Phụ huynh (Liên lạc, Báo cáo)"])
-        UC3(["Quản lý Nội dung (Tải tài liệu, Tạo Quiz)"])
-        UC4(["Bảng tin & Thông báo (News/Announcements)"])
-        UC5(["Xem Phân tích & Đánh giá (Analytics)"])
-    end
-    
-    Teacher --> UC1
-    Teacher --> UC2
-    Teacher --> UC3
-    Teacher --> UC4
-    Teacher --> UC5
-```
+### 2.1.5. Hệ thống bên ngoài
 
-#### 4.2.1 Luồng Quản lý Đa Lớp học (Class Management)
-- **Bước 1**: Giáo viên gọi API `POST /teachers/classes` để tạo Lớp học mới (VD: Lớp Toán Khối 5).
-- **Bước 2**: Backend tự động sinh ra một `Invite Code` duy nhất (VD: MATH5-XYZ).
-- **Bước 3**: Học sinh dùng mã này trên App để Join. Backend thêm dữ liệu vào `class_enrollments`.
-- **Bước 4**: Kể từ lúc này, Giáo viên quản lý Học sinh này và toàn quyền liên lạc với Phụ huynh của Học sinh đó.
+- AI/Embedding Provider.
+- Firebase Cloud Messaging.
+- Object Storage.
+- Email/OTP Provider.
+- Payment Gateway ở giai đoạn sau.
 
-#### 4.2.2 Luồng Xử lý Tài liệu cho AI (Document Ingestion)
-- **Bước 1**: Giáo viên Upload PDF bài giảng qua Web. API trả về `status: PROCESSING`.
-- **Bước 2**: Background Worker (BullMQ/Redis) tải PDF xuống, dùng thư viện trích xuất toàn bộ Text.
-- **Bước 3**: Worker chia nhỏ Text (Chunking). Gọi API LangChain `Embeddings` để lấy mảng Vector.
-- **Bước 4**: `INSERT` mảng Vector này vào bảng `vector_embeddings` của `pgvector`. Cập nhật `status: SUCCESS` và báo cho Giáo viên.
+## 2.2. Nền tảng
 
-#### 4.2.3 Luồng Tạo Bài tập (Quiz Builder) & Đề thi Đầu ra (Level Up Exam)
-- **Bước 1 (AI Trợ lực)**: Giáo viên có thể tự soạn hoặc bấm nút **yêu cầu AI tự động sinh (Generate) câu hỏi và đáp án** dựa trên tài liệu PDF đã upload. Backend gọi LangChain gửi prompt yêu cầu LLM phân tích văn bản và trả về JSON chứa danh sách câu hỏi trắc nghiệm kèm đáp án đúng.
-- **Bước 2**: Giáo viên duyệt (Review) và chỉnh sửa lại câu hỏi/đáp án nếu cần. Web gọi API `POST /quizzes`.
-- **Bước 3**: Backend lưu trữ các câu hỏi vào bảng `quiz_questions` và các đáp án vào bảng `quiz_options` (với đáp án đúng có `is_correct = true`).
-- **Bước 4**: Giáo viên giao (Assign) Quiz cho `class_id`. Hệ thống tự động gửi Push Notification đến toàn bộ học sinh trong lớp.
-- **Tạo Đề thi Đầu ra (Thăng lớp)**: Giáo viên phụ trách Khối có thể gán nhãn một Quiz thành **Đề thi Vượt cấp (Graduation Exam)**, gọi API `POST /teachers/graduation_exams`, thiết lập điểm chuẩn `passing_score` (VD: 8.0). Học sinh thi đỗ đề thi này sẽ được tự động cập nhật lên khối lớp tiếp theo.
+- Mobile App cho Student.
+- Mobile App hoặc Web Portal cho Parent theo quyết định sản phẩm.
+- Web Portal cho Teacher.
+- Web Portal cho Admin.
+- Backend API tập trung.
 
-#### 4.2.4 Luồng Liên lạc (Communications & Reports)
-- Giáo viên gọi API `GET /teachers/classes/{id}/analytics` để lấy báo cáo năng lực của cả lớp. Nếu thấy Học sinh trượt bài liên tục, Giáo viên gọi API `POST /teachers/notifications` gửi tin nhắn cảnh báo trực tiếp. Backend lưu vào `notifications` và Push thẳng đến thiết bị của Phụ huynh.
+## 2.3. Phạm vi MVP
 
-**Luồng Hoạt động Tiêu biểu (Xử lý Tài liệu cho AI):**
-```mermaid
-sequenceDiagram
-    actor Teacher
-    participant Web as Teacher Web
-    participant API as NestJS Backend
-    participant Worker as Background Worker (Redis/Bull)
-    participant LLM as OpenAI Embedding API
-    participant VectorDB as pgvector
-    Teacher->>Web: Upload PDF Bài giảng
-    Web->>API: POST /documents/upload
-    API->>Worker: Tạo Job Ingestion
-    API-->>Web: Trả về "Đang xử lý..."
-    Worker->>Worker: Trích xuất Text & Chia nhỏ (Chunking)
-    Worker->>LLM: Gửi mảng Text Chunks
-    LLM-->>Worker: Trả về Vector Embeddings
-    Worker->>VectorDB: INSERT Vectors vào DB
-    Worker->>API: Đánh dấu status = SUCCESS
-    API->>Teacher: Gửi thông báo hoàn tất
-```
+| Mã | Module | Mức độ |
+|---|---|---|
+| MVP-01 | Xác thực, session và RBAC | MUST |
+| MVP-02 | Quản lý lớp và thành viên | MUST |
+| MVP-03 | Quản lý tài liệu và xử lý vector | MUST |
+| MVP-04 | RAG Chat có citation | MUST |
+| MVP-05 | Quiz, assignment, attempt và chấm điểm | MUST |
+| MVP-06 | Theo dõi tiến độ và chủ đề mạnh/yếu | MUST |
+| MVP-07 | Liên kết Parent–Student và dashboard phụ huynh | MUST |
+| MVP-08 | Notification trong ứng dụng và push | MUST |
+| MVP-09 | Admin quản lý user, master data, audit và AI usage | MUST |
+| MVP-10 | XP cơ bản và streak | SHOULD |
 
-### 4.3 Phân hệ & Luồng của Học sinh (Student)
-Học sinh là trung tâm của nền tảng, tương tác thường xuyên nhất với hệ thống. Ứng dụng Học sinh (Mobile App) xoay quanh các trải nghiệm học tập và trò chơi hóa (Gamification).
+## 2.4. Chức năng giai đoạn sau
 
-**Sơ đồ Use Case của Học sinh:**
-```mermaid
-flowchart LR
-    Student((Học sinh))
-    
-    subgraph StudentApp ["Ứng dụng Học sinh (Mobile App)"]
-        UC1(["Chat AI & Giải đáp (RAG)"])
-        UC2(["Làm Bài tập & Thi Vượt cấp (Level Up)"])
-        UC3(["Gamification (Mua Avatar, Shop)"])
-        UC4(["Mạng Xã hội (Kết bạn, Nhắn tin)"])
-        UC5(["Thanh toán Gói học tập (VIP)"])
-    end
-    
-    Student --> UC1
-    Student --> UC2
-    Student --> UC3
-    Student --> UC4
-    Student --> UC5
-```
+| Mã | Module | Mức độ |
+|---|---|---|
+| P2-01 | Shop vật phẩm, avatar và theme | COULD |
+| P2-02 | Leaderboard nâng cao | COULD |
+| P2-03 | Subscription và thanh toán | COULD |
+| P2-04 | OCR thời khóa biểu | COULD |
+| P2-05 | Kết bạn và nhắn tin riêng | COULD |
+| P2-06 | Nhiều AI provider hoạt động đồng thời | COULD |
 
-#### 4.3.1 Luồng Học tập với AI (AI RAG Chat) - Step-by-Step
-- **Bước 1**: App gọi WebSocket kết nối đến `wss://api.domain.com/chat`.
-- **Bước 2**: Backend kiểm tra JWT token và Quota sử dụng trong bảng `ai_token_usages` của ngày hôm nay. Nếu vượt quá Quota -> Báo lỗi.
-- **Bước 3**: Học sinh gửi câu hỏi. `pgvector` thực hiện Similarity Search trên dữ liệu `vector_embeddings` của các `documents` thuộc lớp học sinh đang học.
-- **Bước 4**: Backend gọi LangChain API (OpenAI/Gemini). Stream từng chữ trả về Mobile App để tạo hiệu ứng gõ phím chân thực.
-- **Bước 5**: Lưu nội dung vào `chat_messages` và trừ Quota trong ngày.
+Các module giai đoạn sau không được tự động triển khai chỉ vì được mô tả trong tài liệu này.
 
-#### 4.3.2 Luồng Làm Bài kiểm tra & Thi Vượt cấp (Graduation Exam)
-- **Kiểm tra thông thường (Quiz)**: Làm bài tập do Giáo viên giao. Hệ thống đếm ngược thời gian, chấm điểm tự động thông qua `student_answers` so với `quiz_options`, và cộng điểm XP ngay lập tức.
-- **Thi Vượt cấp (Level Up)**: 
-  - *Điều kiện*: Học sinh lớp 1 muốn lên lớp 2 cần đăng ký làm bài thi "Đầu ra Lớp 1". Bài thi này do Admin hoặc System thiết lập, lưu trong `graduation_exams`.
-  - *Quy trình*: Hệ thống phát đề có thời gian giới hạn. Học sinh submit bài. Nếu điểm `total_score >= passing_score` -> Cập nhật trường `current_grade = 2` trong bảng `students` (chính thức lên lớp), mở khóa lộ trình học tập của lớp 2, và tặng Huy hiệu Vượt cấp (Badge). Nếu trượt, học sinh phải ôn luyện và thi lại.
+## 2.5. Ngoài phạm vi MVP
 
-#### 4.3.3 Luồng Gamification (Cửa hàng & Đổi quà)
-- **Bước 1**: Học sinh tích lũy XP qua các tương tác hàng ngày.
-- **Bước 2**: Truy cập Cửa hàng (Shop), gọi API `GET /shop/items` để tải danh sách các vật phẩm (Avatar, Khung viền) chưa sở hữu.
-- **Bước 3**: Bấm "Mua" -> Backend kiểm tra `total_xp >= cost_xp`. Nếu đủ, trừ XP và `INSERT` vật phẩm vào bảng `student_inventory`.
-- **Bước 4**: Bấm "Trang bị" -> Cập nhật `is_equipped = true`.
-
-#### 4.3.4 Luồng Mạng Xã hội (Kết bạn & Nhắn tin)
-- **Kết bạn**: Tìm kiếm học sinh khác qua ID. Gửi lời mời kết bạn (Status: `PENDING`). Khi được chấp nhận -> Status: `ACCEPTED` trong bảng `friendships`.
-- **Nhắn tin Nội bộ (Direct Message)**: Học sinh chat với bạn bè. Tin nhắn lưu vào bảng `direct_messages`. Giáo viên hoặc Admin có quyền truy xuất xem lại lịch sử chat nếu học sinh bị Report có ngôn từ đả kích.
-
-#### 4.3.5 Luồng Thanh toán Khóa học/Dịch vụ (Payments)
-- Học sinh hoặc Phụ huynh chọn mua gói cước AI VIP (VD: Gói không giới hạn Chat AI trong 1 tháng).
-- **Bước 1**: Gọi API tạo đơn hàng Cổng thanh toán (VNPay/Momo). Hệ thống lưu Record vào bảng `transactions` với trạng thái `PENDING`.
-- **Bước 2**: App chuyển hướng sang App Momo/VNPay để người dùng quét mã QR.
-- **Bước 3**: Sau khi thanh toán, Momo/VNPay gọi Webhook trả về cho Backend (`POST /webhooks/vnpay`).
-- **Bước 4**: Backend xác nhận tính hợp lệ, cập nhật `transactions` thành `SUCCESS`, đồng thời INSERT vào `user_subscriptions` cấp quyền VIP 30 ngày.
+- Livestream hoặc lớp học video trực tuyến.
+- Mạng xã hội công khai.
+- Quảng cáo dựa trên dữ liệu học sinh.
+- Tự động thay đổi khối lớp học chính thức chỉ dựa trên một bài thi.
+- Tự động xuất bản nội dung do AI sinh mà không có giáo viên duyệt.
+- Vận hành đồng thời nhiều cổng thanh toán trong MVP.
 
 ---
 
-### 4.4 Phân hệ & Luồng của Phụ huynh (Parent)
-Phụ huynh đóng vai trò là "Người đồng hành và Giám sát", sử dụng App/Web riêng với giao diện tối giản, tập trung vào phân tích số liệu.
+# 3. KIẾN TRÚC TỔNG THỂ
 
-**Sơ đồ Use Case của Phụ huynh:**
-```mermaid
-flowchart LR
-    Parent((Phụ huynh))
-    
-    subgraph ParentApp ["Cổng Phụ huynh (Parent App/Web)"]
-        UC1(["Liên kết & Quản lý Tài khoản con"])
-        UC2(["Xem Báo cáo Analytics (Điểm, XP)"])
-        UC3(["Thanh toán Học phí & Gói VIP"])
-        UC4(["Liên lạc & Nhận Cảnh báo từ Hệ thống"])
-    end
-    
-    Parent --> UC1
-    Parent --> UC2
-    Parent --> UC3
-    Parent --> UC4
-```
+## 3.1. Kiến trúc logic
 
-#### 4.4.1 Luồng Liên kết Tài khoản (Account Linking)
-- **Bước 1**: Trên thiết bị Học sinh sinh ra mã QR Code chứa chuỗi Token liên kết tạm thời.
-- **Bước 2**: Phụ huynh mở App, dùng Camera quét mã QR.
-- **Bước 3**: Backend xác nhận Token hợp lệ, INSERT bản ghi vào bảng `parent_student_links`. Kể từ lúc này, Phụ huynh có toàn quyền truy xuất data của con.
+Hệ thống sử dụng kiến trúc Client–Server với Backend API tập trung:
 
-#### 4.4.2 Luồng Giám sát & Báo cáo (Analytics Dashboard)
-- **Bước 1**: App Phụ huynh gọi API `GET /parents/dashboard/{student_id}`.
-- **Bước 2**: Backend tổng hợp dữ liệu từ `quiz_attempts`, `ai_token_usages`, `schedules` trong 30 ngày gần nhất.
-- **Bước 3**: Trả về dữ liệu JSON để App vẽ Biểu đồ (Chart): Mức độ chăm chỉ, Môn học điểm cao/thấp, và Lịch học sắp tới.
+- **Backend**: NestJS và TypeScript.
+- **Web**: Next.js App Router.
+- **Mobile**: React Native.
+- **Database**: PostgreSQL.
+- **Vector Search**: pgvector.
+- **Cache/Queue/PubSub**: Redis.
+- **Background Worker**: xử lý tài liệu, embedding, notification và job bất đồng bộ.
+- **Object Storage**: một dịch vụ được cấu hình theo môi trường.
+- **Notification**: Firebase Cloud Messaging.
+- **AI**: LLM/Embedding provider đi qua adapter và configuration.
 
-#### 4.4.3 Luồng Cảnh báo Thời gian thực (Real-time Alerts)
-- Phụ huynh sẽ nhận được Push Notification qua Firebase ngay lập tức trong các trường hợp sau:
-  - Con thi trượt bài Vượt cấp (Graduation Exam) hoặc bị điểm kém liên tục.
-  - Con vi phạm từ ngữ cấm khi chat với AI.
-  - Đóng tiền gia hạn khóa học (Subscription expired).
+## 3.2. Nguyên tắc kiến trúc
 
-#### 4.4.4 Luồng Thanh toán Hộ (Proxy Payment)
-- Tương tự luồng 4.3.5 của Học sinh, nhưng Phụ huynh thực hiện thanh toán trên thiết bị của mình. Gói VIP (Subscription) sẽ được cộng trực tiếp vào `user_id` của Học sinh do Phụ huynh chọn.
+1. PostgreSQL là nguồn dữ liệu nghiệp vụ chính thức.
+2. Redis không thay thế database cho dữ liệu lâu dài.
+3. REST API là giao thức mặc định.
+4. WebSocket chỉ dùng cho streaming chat hoặc sự kiện thực sự cần realtime.
+5. Push Notification chỉ là kênh truyền; notification trong database là trạng thái chính thức.
+6. Tác vụ xử lý PDF, embedding và gửi thông báo được thực hiện bất đồng bộ.
+7. AI provider/model không được hardcode trong business logic.
+8. Thêm GraphQL, provider hoặc storage mới cần yêu cầu được phê duyệt.
+
+## 3.3. Đồng bộ dữ liệu
+
+- Thao tác ghi thành công phải được xác nhận từ Backend.
+- Client phải có cơ chế tải lại dữ liệu khi WebSocket hoặc Push bị mất.
+- Hệ thống hướng tới near real-time, không cam kết “realtime 100%”.
+- Event quan trọng phải tránh gửi trùng và có cơ chế retry.
 
 ---
 
-## 5. YÊU CẦU ĐỒNG BỘ VÀ PHI CHỨC NĂNG (NON-FUNCTIONAL)
+# 4. PHÂN QUYỀN VÀ PHẠM VI DỮ LIỆU
 
-### 5.1 Tính chất Đồng bộ Hệ sinh thái (Ecosystem Sync)
-Hệ thống AI Tutor hoạt động theo cơ chế **Single Source of Truth** (Chỉ dùng 1 DB Postgres duy nhất).
-- Bất kỳ khi nào Giáo viên thêm tài liệu, AI sẽ ngay lập tức có thêm kiến thức mới để trả lời Học sinh.
-- Bất kỳ thay đổi trạng thái (State) nào của Học sinh (Lên cấp, hoàn thành bài tập) đều được Backend bắn Event qua WebSockets (hoặc Push Notification) đến App của Phụ huynh, không yêu cầu Phụ huynh phải kéo thả/reload lại app để xem.
+## 4.1. Ma trận quyền tổng quát
 
-### 5.2 Hiệu năng (Performance)
-- **Tốc độ phản hồi AI (Time to First Token)**: Quá trình từ lúc Học sinh hỏi đến lúc nhận lại chữ cái đầu tiên (bao gồm thao tác tra cứu Vector DB) phải `< 2000ms`.
-- **Tốc độ Upload/OCR**: Quá trình phân tích chữ từ ảnh không được vượt quá `5000ms` để đảm bảo trải nghiệm UX mượt mà.
+| Chức năng | Student | Teacher | Parent | Admin |
+|---|---:|---:|---:|---:|
+| Xem hồ sơ của chính mình | Có | Có | Có | Theo quyền |
+| Quản lý lớp | Không | Lớp phụ trách | Không | Theo quyền |
+| Tham gia lớp | Có | Không | Không | Không |
+| Upload tài liệu | Không | Có | Không | Không mặc định |
+| Xuất bản tài liệu | Không | Tài liệu của mình | Không | Kiểm duyệt theo quyền |
+| Chat AI | Có | Có thể dùng công cụ hỗ trợ | Không mặc định | Không mặc định |
+| Làm quiz | Có | Không | Không | Không |
+| Tạo quiz | Không | Có | Không | Theo quyền đặc biệt |
+| Xem kết quả Student | Chính mình | Học sinh trong lớp | Con đã liên kết | Theo quyền/audit |
+| Sửa điểm thủ công | Không | Theo chính sách lớp | Không | Theo quyền đặc biệt |
+| Liên kết Parent–Student | Xác nhận nếu yêu cầu | Không | Có | Hỗ trợ theo quyền |
+| Thanh toán | Không mặc định | Không | Có khi module bật | Không |
+| Quản lý user/role | Không | Không | Không | Theo quyền |
+| Xem audit log | Không | Không | Không | Theo quyền |
+
+## 4.2. Nguyên tắc phân quyền
+
+- Backend phải kiểm tra quyền cho từng resource.
+- Không chỉ dựa vào ẩn/hiện nút trên frontend.
+- Teacher chỉ truy cập lớp mình phụ trách.
+- Parent chỉ truy cập Student đã liên kết hợp lệ.
+- Student chỉ truy cập dữ liệu của chính mình và lớp đang tham gia.
+- Admin dùng permission cụ thể; không mặc định được đọc mọi dữ liệu riêng tư.
+- Thao tác nhạy cảm phải ghi audit log.
+
+---
+
+# 5. YÊU CẦU CHỨC NĂNG
+
+## 5.1. Xác thực và tài khoản
+
+### FR-AUTH-001 — Đăng ký tài khoản
+
+- Hệ thống cho phép đăng ký Student, Parent và Teacher theo chính sách sản phẩm.
+- Email hoặc định danh đăng nhập phải duy nhất.
+- Teacher mới đăng ký có trạng thái chờ xác minh và chưa được xuất bản nội dung.
+- Student thuộc độ tuổi yêu cầu đồng ý phải hoàn tất quy trình đồng ý của Parent trước khi sử dụng đầy đủ.
+
+**Tiêu chí nghiệm thu:**
+
+- Không tạo hai tài khoản có cùng email.
+- Password không được lưu dưới dạng rõ.
+- Teacher chưa xác minh bị từ chối tại endpoint yêu cầu quyền Teacher đã xác minh.
+
+### FR-AUTH-002 — Đăng nhập
+
+- Người dùng đăng nhập bằng thông tin hợp lệ.
+- Hệ thống kiểm tra trạng thái tài khoản, phương thức xác thực bổ sung và thiết bị.
+- Tài khoản bị khóa không được tạo session mới.
+
+### FR-AUTH-003 — Session và thiết bị
+
+- Người dùng xem được danh sách phiên/thiết bị của mình.
+- Người dùng có thể thu hồi một phiên hoặc tất cả phiên khác.
+- Đổi mật khẩu và khóa tài khoản phải thu hồi session liên quan.
+
+### FR-AUTH-004 — Quên và đổi mật khẩu
+
+- Hệ thống cung cấp token/OTP có thời hạn và dùng một lần.
+- Sau khi reset thành công, token cũ không còn giá trị.
+- Luồng không được tiết lộ email có tồn tại trong hệ thống hay không.
+
+### FR-AUTH-005 — 2FA/OTP
+
+- Admin và Teacher phải hoàn tất 2FA hoặc OTP theo cấu hình.
+- Mã xác minh có thời hạn, giới hạn số lần thử và không được log.
+
+## 5.2. Hồ sơ và dữ liệu người dùng
+
+### FR-USER-001 — Hồ sơ cá nhân
+
+- Người dùng xem và cập nhật các trường hồ sơ được phép.
+- Không được tự thay đổi role, điểm, trạng thái xác minh hoặc trạng thái subscription.
+
+### FR-USER-002 — Khóa và mở khóa tài khoản
+
+- Admin có permission phù hợp được khóa/mở khóa tài khoản.
+- Khóa tài khoản phải revoke session và ghi audit log.
+- Hệ thống phải lưu lý do, người thực hiện và thời gian.
+
+### FR-USER-003 — Xóa hoặc vô hiệu hóa dữ liệu
+
+- Người dùng có thể gửi yêu cầu xóa/vô hiệu hóa theo chính sách áp dụng.
+- Hệ thống phải phân biệt dữ liệu có thể xóa, dữ liệu phải giữ để audit và dữ liệu phải ẩn danh.
+
+## 5.3. Liên kết Parent–Student
+
+### FR-LINK-001 — Tạo mã liên kết
+
+- Student hoặc luồng được ủy quyền tạo token/QR liên kết.
+- Token phải ngẫu nhiên, có thời hạn và chỉ dùng một lần.
+
+### FR-LINK-002 — Xác nhận liên kết
+
+- Parent quét QR hoặc nhập token.
+- Backend xác minh token, trạng thái tài khoản và điều kiện đồng ý.
+- Liên kết chỉ hoạt động sau khi quy trình xác nhận hoàn tất.
+
+### FR-LINK-003 — Hủy liên kết
+
+- Bên có quyền được yêu cầu hủy liên kết.
+- Hủy liên kết phải chấm dứt quyền xem dữ liệu tương lai của Parent.
+- Thao tác phải ghi audit log.
+
+## 5.4. Môn học, khối lớp và lớp học
+
+### FR-MASTER-001 — Quản lý môn học và khối lớp
+
+- Admin có permission được tạo, sửa, kích hoạt hoặc ngừng sử dụng môn học/khối lớp.
+- Dữ liệu đã được tham chiếu không được xóa cứng nếu làm hỏng lịch sử.
+
+### FR-CLASS-001 — Tạo lớp
+
+- Teacher đã xác minh được tạo lớp.
+- Lớp phải có tên, môn học, khối lớp, chủ sở hữu và trạng thái.
+- Hệ thống sinh mã lớp duy nhất.
+
+### FR-CLASS-002 — Tham gia lớp
+
+- Student nhập mã lớp hợp lệ.
+- Tùy cấu hình, enrollment được kích hoạt ngay hoặc chờ Teacher duyệt.
+- Không tạo enrollment trùng đang hoạt động.
+
+### FR-CLASS-003 — Quản lý thành viên
+
+- Teacher xem, duyệt, từ chối hoặc gỡ Student trong lớp mình.
+- Lịch sử bài làm không tự động bị xóa khi enrollment kết thúc.
+
+### FR-CLASS-004 — Rời hoặc đóng lớp
+
+- Student có thể yêu cầu rời lớp theo chính sách.
+- Teacher có thể đóng/archive lớp.
+- Lớp archive không nhận assignment mới nhưng dữ liệu lịch sử vẫn xem được theo quyền.
+
+## 5.5. Quản lý tài liệu
+
+### FR-DOC-001 — Upload tài liệu
+
+- Teacher upload file thuộc định dạng và kích thước cho phép.
+- Tài liệu phải được gắn với môn, khối lớp và phạm vi lớp.
+- API trả trạng thái tiếp nhận; xử lý nội dung diễn ra bất đồng bộ.
+
+### FR-DOC-002 — Xử lý tài liệu
+
+- Worker trích xuất text, chia chunk, tạo embedding và lưu vector.
+- Hệ thống cập nhật trạng thái `PROCESSING`, `SUCCESS` hoặc `FAILED`.
+- Khi lỗi, Teacher nhận được thông báo và lý do có thể xử lý.
+
+### FR-DOC-003 — Xuất bản tài liệu
+
+- Chỉ Teacher sở hữu hoặc người có quyền mới được xuất bản.
+- Chỉ tài liệu xử lý thành công mới được xuất bản.
+- Student chỉ thấy tài liệu đã xuất bản và thuộc phạm vi được cấp quyền.
+
+### FR-DOC-004 — Gỡ hoặc xóa tài liệu
+
+- Gỡ xuất bản phải ngừng sử dụng tài liệu cho truy vấn mới.
+- Xóa phải xử lý nhất quán object storage, metadata, chunk và vector.
+- Dữ liệu audit cần thiết vẫn được giữ theo chính sách.
+
+## 5.6. RAG Chat
+
+### FR-RAG-001 — Tạo phiên chat
+
+- Student tạo và quản lý phiên chat của chính mình.
+- Phiên chat lưu Student, thời gian và ngữ cảnh phạm vi học tập.
+
+### FR-RAG-002 — Gửi câu hỏi
+
+- Backend xác thực người dùng, quota và phạm vi truy xuất.
+- Hệ thống thực hiện similarity search sau khi lọc quyền, lớp, môn, khối và trạng thái tài liệu.
+- Phản hồi được stream về client khi hạ tầng hỗ trợ.
+
+### FR-RAG-003 — Citation và độ tin cậy
+
+- Câu trả lời dựa trên tài liệu phải có citation.
+- Citation phải chỉ tới document và vị trí nguồn như trang/chunk khi có thể.
+- Nếu không đủ bằng chứng, AI phải thông báo không tìm thấy thông tin phù hợp.
+
+### FR-RAG-004 — Báo cáo phản hồi AI
+
+- Student được đánh giá hữu ích/không hữu ích và báo cáo nội dung sai hoặc không phù hợp.
+- Báo cáo phải lưu message, loại vấn đề và trạng thái xử lý.
+
+### FR-RAG-005 — Quota và chi phí
+
+- Hệ thống kiểm tra quota theo user/gói/use case.
+- Lưu token usage, model, latency, trạng thái và chi phí ước tính.
+- Không lưu PII không cần thiết trong log usage.
+
+## 5.7. Quiz và bài làm
+
+### FR-QUIZ-001 — Tạo quiz thủ công
+
+- Teacher tạo quiz nháp, câu hỏi, lựa chọn và đáp án.
+- Hỗ trợ tối thiểu trắc nghiệm và điền khuyết.
+- Mỗi câu có điểm số và thứ tự.
+
+### FR-QUIZ-002 — AI Quiz Generator
+
+- Teacher chọn tài liệu đã xử lý thành công.
+- AI trả structured output theo schema được validate.
+- Nội dung sinh ra luôn ở trạng thái nháp.
+- Teacher phải duyệt và chỉnh sửa trước khi xuất bản/giao.
+
+### FR-QUIZ-003 — Giao quiz
+
+- Teacher giao quiz cho lớp hoặc Student được phép.
+- Assignment có thời gian mở, hạn nộp, thời lượng, số lượt làm và chính sách công bố kết quả.
+- Hệ thống gửi notification nhưng lỗi gửi push không làm thất bại assignment.
+
+### FR-QUIZ-004 — Làm bài
+
+- Student chỉ bắt đầu bài được giao và đang mở.
+- Attempt lưu trạng thái, thời gian bắt đầu và thời hạn do server xác định.
+- Client có thể lưu tạm an toàn và khôi phục theo thiết kế được phê duyệt.
+
+### FR-QUIZ-005 — Nộp và chấm bài
+
+- Submit phải idempotent.
+- Hệ thống chấm tự động câu hỗ trợ chấm máy.
+- Câu cần Teacher chấm phải ở trạng thái chờ chấm.
+- Không cộng XP lặp khi request được gửi lại.
+
+### FR-QUIZ-006 — Xem kết quả
+
+- Student chỉ xem kết quả và đáp án theo chính sách assignment.
+- Teacher xem kết quả Student trong lớp mình.
+- Parent xem kết quả của con đã liên kết nếu dữ liệu được phép chia sẻ.
+
+### FR-QUIZ-007 — Sửa điểm thủ công
+
+- Chỉ Teacher/Admin có permission phù hợp được sửa điểm.
+- Phải lưu điểm cũ, điểm mới, lý do, người sửa và thời gian.
+
+## 5.8. Tiến độ và cá nhân hóa
+
+### FR-LEARN-001 — Theo dõi mức độ thành thạo
+
+- Hệ thống tổng hợp kết quả theo môn, chủ đề và mục tiêu học tập.
+- Mức độ thành thạo phải dựa trên dữ liệu có thể truy vết.
+
+### FR-LEARN-002 — Xác định điểm mạnh/yếu
+
+- Hệ thống hiển thị các chủ đề có kết quả tốt và chủ đề cần ôn tập.
+- Không đưa ra kết luận vượt quá dữ liệu hiện có.
+
+### FR-LEARN-003 — Đề xuất học tập
+
+- Hệ thống đề xuất tài liệu hoặc quiz phù hợp với chủ đề cần cải thiện.
+- Teacher có thể xem nguồn dữ liệu tạo đề xuất.
+- Đề xuất không tự thay đổi điểm hoặc khối lớp.
+
+### FR-LEVEL-001 — Thi vượt cấp học tập
+
+- Bài thi vượt cấp phải có điều kiện đủ, điểm đạt, số lần thi lại và thời gian chờ.
+- Đỗ chỉ tự động mở khóa `learning_level` tiếp theo.
+- Thay đổi `academic_grade` phải qua quy trình phê duyệt riêng.
+
+## 5.9. XP và streak
+
+### FR-XP-001 — Cộng XP
+
+- XP được cộng theo sự kiện đã cấu hình.
+- Một sự kiện chỉ được thưởng một lần bằng idempotency key.
+- Hệ thống lưu ledger cho mọi thay đổi.
+
+### FR-XP-002 — Phân tách XP và số dư tiêu dùng
+
+- `lifetime_xp` không giảm khi mua vật phẩm.
+- Nếu shop được bật, sử dụng `coin_balance` hoặc `spendable_xp` riêng.
+
+### FR-XP-003 — Streak
+
+- Streak dựa trên ngày hoạt động hợp lệ theo múi giờ cấu hình.
+- Quy tắc duy trì, mất và khôi phục streak phải nhất quán và có thể kiểm thử.
+
+## 5.10. Parent Dashboard
+
+### FR-PARENT-001 — Chọn tài khoản con
+
+- Parent có nhiều liên kết được chọn một Student hợp lệ.
+- Backend kiểm tra liên kết tại mọi request.
+
+### FR-PARENT-002 — Báo cáo
+
+- Hiển thị tiến độ, quiz gần đây, chủ đề mạnh/yếu, streak và hoạt động theo phạm vi cho phép.
+- Dữ liệu tổng hợp phải ghi rõ khoảng thời gian.
+
+### FR-PARENT-003 — Cảnh báo
+
+- Parent nhận cảnh báo về điểm thấp liên tục, bài cần chú ý, tài khoản hoặc subscription theo cấu hình.
+- Cảnh báo hành vi nhạy cảm phải tuân theo chính sách kiểm duyệt, không tự động kết luận Student vi phạm nếu chưa đủ bằng chứng.
+
+## 5.11. Notification
+
+### FR-NOTIFY-001 — Notification trong ứng dụng
+
+- Notification được lưu trong database.
+- Người dùng xem danh sách, đánh dấu đã đọc và quản lý trạng thái.
+
+### FR-NOTIFY-002 — Push Notification
+
+- Push được gửi qua background job.
+- Job có retry/backoff và chống gửi trùng.
+- Token thiết bị không hợp lệ phải được vô hiệu hóa.
+
+### FR-NOTIFY-003 — Tùy chọn thông báo
+
+- Người dùng được bật/tắt các loại thông báo không bắt buộc.
+- Thông báo bảo mật bắt buộc không bị tắt nếu chính sách yêu cầu.
+
+## 5.12. Admin Dashboard
+
+### FR-ADMIN-001 — Quản lý người dùng
+
+- Tìm kiếm, lọc, xem trạng thái, khóa/mở khóa theo permission.
+- Không hiển thị password hash, refresh token hoặc secret.
+
+### FR-ADMIN-002 — Xác minh Teacher
+
+- Admin được cấp quyền xem hồ sơ xác minh và phê duyệt/từ chối.
+- Phải lưu lý do và audit log.
+
+### FR-ADMIN-003 — Quản lý dữ liệu gốc
+
+- Quản lý môn học, khối lớp, mục tiêu học tập và trạng thái sử dụng.
+
+### FR-ADMIN-004 — Kiểm duyệt nội dung
+
+- Admin có permission xem báo cáo nội dung và thực hiện hành động kiểm duyệt.
+- Không mặc định đọc hội thoại riêng tư nếu không có case, quyền và lý do hợp lệ.
+
+### FR-ADMIN-005 — AI Analytics
+
+- Hiển thị token, chi phí ước tính, latency, tỷ lệ lỗi theo thời gian/provider/use case.
+- Không hiển thị secret trên UI.
+
+### FR-ADMIN-006 — Audit Log
+
+- Cho phép tìm kiếm theo actor, action, resource, thời gian và kết quả.
+- Audit log không được chỉnh sửa bởi người dùng thông thường.
+
+## 5.13. Module giai đoạn sau
+
+### FR-PAY-001 — Subscription và thanh toán
+
+- Chỉ triển khai khi module được phê duyệt.
+- Parent hoặc tài khoản đủ điều kiện là chủ thể thanh toán mặc định.
+- Chỉ webhook hợp lệ mới được cấp quyền subscription.
+- Webhook phải idempotent và lưu kết quả xác minh.
+
+### FR-OCR-001 — OCR thời khóa biểu
+
+- Chỉ triển khai ở giai đoạn sau.
+- OCR phải cho người dùng xem và sửa kết quả trước khi lưu chính thức.
+
+### FR-SOCIAL-001 — Kết bạn và nhắn tin
+
+- Chỉ triển khai sau khi có thiết kế chặn, báo cáo, kiểm duyệt, lưu bằng chứng và bảo vệ trẻ em.
+- Không cho phép truy cập tùy ý vào tin nhắn riêng.
+
+---
+
+# 6. BUSINESS RULES
+
+## BR-AUTH-001 — Session
+
+- Access token có thời hạn ngắn.
+- Refresh token hỗ trợ rotation, revoke và chỉ lưu hash khi cần đối chiếu.
+- Đổi mật khẩu, khóa tài khoản hoặc phát hiện xâm phạm phải thu hồi session liên quan.
+
+## BR-AUTH-002 — Token theo nền tảng
+
+- Web không lưu token trong `localStorage`.
+- Web ưu tiên cookie `httpOnly`, `Secure`; `SameSite` theo kiến trúc domain và luồng thanh toán.
+- Mobile dùng Keychain/Keystore/secure storage, không dùng AsyncStorage cho token nhạy cảm.
+- Browser flow dùng cookie phải chống CSRF cho thao tác thay đổi trạng thái.
+
+## BR-USER-001 — Quyền resource
+
+- Mọi API theo ID phải kiểm tra ownership hoặc scope ở Backend.
+- Không tin cậy role, user ID hoặc trạng thái do client gửi.
+
+## BR-LINK-001 — Parent–Student
+
+- Token liên kết có thời hạn, chỉ dùng một lần và có thể revoke.
+- Chỉ Parent có liên kết hoạt động mới truy cập được dữ liệu Student.
+
+## BR-CLASS-001 — Tham gia và quản lý lớp
+
+- Mã lớp phải duy nhất, có trạng thái và có thể có thời hạn.
+- Student chỉ tham gia lớp khi mã hợp lệ và đáp ứng quy trình duyệt của lớp.
+- Teacher chỉ quản lý lớp mình phụ trách.
+- Rời hoặc bị xóa khỏi lớp không được tự động xóa lịch sử bài làm nếu dữ liệu cần báo cáo hoặc audit.
+
+## BR-DOC-001 — Tài liệu
+
+- Chỉ tài liệu xử lý thành công và đã xuất bản mới được dùng cho Student RAG.
+- Truy vấn phải lọc scope trước similarity ranking.
+
+## BR-RAG-001 — Grounding
+
+- Câu trả lời phải có citation khi sử dụng tài liệu.
+- Thiếu bằng chứng phải trả lời không đủ thông tin.
+- Nội dung tài liệu và input người dùng không được coi là system instruction.
+
+## BR-RAG-002 — An toàn nội dung AI
+
+- Phải có biện pháp giảm prompt injection từ tài liệu và câu hỏi người dùng.
+- Input/output phải được kiểm duyệt phù hợp độ tuổi và phạm vi giáo dục.
+- Student phải có cơ chế báo cáo câu trả lời sai hoặc không phù hợp.
+- Việc lưu model, prompt version, citation, token và latency không được làm lộ dữ liệu nhạy cảm không cần thiết.
+
+## BR-QUIZ-001 — Nội dung AI
+
+- AI-generated quiz luôn là nháp.
+- Teacher phải duyệt trước khi giao.
+
+## BR-QUIZ-002 — Submit
+
+- Attempt chỉ được nộp/chấm một lần theo cơ chế idempotent.
+- Thời gian do server xác định.
+- Không cộng XP trùng.
+
+## BR-LEVEL-001 — Cấp độ
+
+- `academic_grade` và `learning_level` là hai khái niệm riêng.
+- Đỗ bài thi chỉ tự động nâng `learning_level`.
+
+## BR-XP-001 — Điểm thưởng
+
+- `lifetime_xp` không phải số dư có thể tiêu.
+- Mọi thay đổi XP/coin phải có ledger.
+
+## BR-PAYMENT-001 — Thanh toán
+
+- Không cấp VIP dựa trên frontend redirect.
+- Chỉ webhook xác minh hợp lệ được thay đổi giao dịch thành công.
+- Tiền không dùng `FLOAT`.
+
+## BR-SOCIAL-001 — Chức năng xã hội
+
+- Kết bạn và direct message không thuộc MVP mặc định.
+- Không triển khai khi chưa có quy trình chặn, báo cáo, kiểm duyệt, lưu bằng chứng và bảo vệ trẻ em.
+- Teacher/Admin không được đọc tùy ý tin nhắn riêng; việc truy cập phải có case, quyền cụ thể, lý do và audit log.
+
+## BR-NOTIFY-001 — Gửi thông báo
+
+- Push thất bại không rollback nghiệp vụ chính.
+- Job phải retry và tránh gửi trùng.
+
+## BR-PRIVACY-001 — Dữ liệu học sinh
+
+- Chỉ thu thập dữ liệu cần thiết.
+- Không sử dụng dữ liệu học sinh cho quảng cáo.
+- Không gửi PII không cần thiết tới AI provider.
+- Phải có chính sách đồng ý, lưu trữ, xóa và truy xuất dữ liệu phù hợp với thị trường triển khai.
+
+---
+
+# 7. LUỒNG NGHIỆP VỤ CHÍNH
+
+## 7.1. Luồng Teacher upload tài liệu
+
+1. Teacher đăng nhập và chọn lớp/môn/khối.
+2. Client kiểm tra sơ bộ định dạng và dung lượng.
+3. Backend xác thực quyền và kiểm tra lại file.
+4. Backend lưu metadata và file, tạo job xử lý.
+5. Worker trích xuất text, chia chunk, tạo embedding.
+6. Worker lưu chunk/vector và cập nhật `SUCCESS`.
+7. Teacher xem kết quả và chủ động xuất bản.
+8. Sau khi xuất bản, Student có quyền mới được truy xuất.
+
+**Ngoại lệ:**
+
+- File không hợp lệ: từ chối trước khi tạo job.
+- Trích xuất thất bại: trạng thái `FAILED`, lưu mã lỗi an toàn và cho phép thử lại.
+- Embedding provider lỗi: retry có giới hạn; không xuất bản tài liệu chưa hoàn tất.
+
+## 7.2. Luồng Student hỏi AI
+
+1. Student gửi câu hỏi trong phiên chat.
+2. Backend xác thực session, trạng thái tài khoản và quota.
+3. Backend xác định lớp, môn, khối và tài liệu được phép.
+4. Vector search chỉ chạy trong scope đã lọc.
+5. Backend tạo prompt có context và quy tắc an toàn.
+6. LLM trả nội dung theo stream.
+7. Backend lưu message, citation và usage.
+8. Student có thể đánh giá hoặc report.
+
+**Ngoại lệ:**
+
+- Không có nguồn phù hợp: trả lời không tìm thấy thông tin.
+- Vượt quota: trả lỗi nghiệp vụ rõ ràng, không gọi LLM.
+- Provider timeout: kết thúc stream an toàn và cho phép thử lại.
+- Nội dung không phù hợp: từ chối hoặc chuyển sang phản hồi an toàn.
+
+## 7.3. Luồng AI sinh quiz
+
+1. Teacher chọn tài liệu đủ điều kiện.
+2. Teacher nhập số câu, loại câu và độ khó.
+3. Backend kiểm tra quyền và quota.
+4. AI trả structured output.
+5. Backend validate schema và lưu quiz nháp.
+6. Teacher xem, sửa và duyệt từng câu.
+7. Teacher xuất bản và tạo assignment.
+
+AI không được tự động giao quiz ngay sau khi sinh.
+
+## 7.4. Luồng làm và nộp quiz
+
+1. Student mở assignment.
+2. Backend kiểm tra enrollment, thời gian và số lượt làm.
+3. Backend tạo attempt `IN_PROGRESS` và thời hạn server.
+4. Student lưu câu trả lời.
+5. Student nộp bài hoặc hệ thống xử lý hết giờ.
+6. Backend khóa attempt, chấm phần tự động và ghi điểm.
+7. XP được cộng một lần qua idempotency key.
+8. Kết quả được công bố theo chính sách assignment.
+
+## 7.5. Luồng liên kết Parent–Student
+
+1. Hệ thống tạo token/QR ngẫu nhiên, có thời hạn.
+2. Parent quét hoặc nhập token.
+3. Backend xác thực token và tài khoản.
+4. Hệ thống thực hiện bước đồng ý/xác nhận nếu được yêu cầu.
+5. Tạo liên kết hoạt động và vô hiệu hóa token.
+6. Parent truy cập dashboard của Student trong scope được phép.
+
+## 7.6. Luồng khóa tài khoản
+
+1. Admin có permission chọn tài khoản và nhập lý do.
+2. Backend cập nhật trạng thái tài khoản trong transaction.
+3. Thu hồi session liên quan.
+4. Ghi audit log.
+5. Gửi thông báo nếu chính sách yêu cầu.
+
+## 7.7. Luồng thanh toán giai đoạn sau
+
+1. Parent tạo giao dịch `PENDING`.
+2. Backend tạo payment request với gateway.
+3. Parent hoàn tất thanh toán ngoài hệ thống.
+4. Gateway gửi webhook.
+5. Backend xác minh chữ ký và idempotency.
+6. Chỉ webhook hợp lệ mới cập nhật `SUCCESS` và cấp subscription.
+7. Redirect phía client chỉ hiển thị trạng thái, không cấp quyền.
+
+---
+
+# 8. MÔ HÌNH DỮ LIỆU LOGIC
+
+## 8.1. Quy ước dữ liệu
+
+- Primary key dùng UUID hoặc chuẩn thống nhất toàn dự án.
+- Thời gian dùng `TIMESTAMPTZ` khi cần thống nhất múi giờ.
+- Bảng nghiệp vụ có `created_at`, `updated_at` khi phù hợp.
+- Số tiền dùng `NUMERIC` hoặc integer minor unit.
+- Bảng quan hệ phải có primary key hoặc unique constraint chống trùng.
+- Trạng thái dùng enum/check constraint hoặc bảng danh mục được quản lý.
+- Mọi thay đổi schema phải qua migration.
+
+## 8.2. User và RBAC
+
+### `users`
+
+- `id`, `email`, `password_hash`, `full_name`.
+- `status`, `email_verified_at`, `last_login_at`.
+- `created_at`, `updated_at`, `deleted_at` nếu áp dụng.
+
+### `roles`, `permissions`, `user_roles`, `role_permissions`
+
+- Hỗ trợ RBAC và permission cụ thể.
+- Có unique constraint chống gán trùng.
+
+### `user_sessions`
+
+- `id`, `user_id`, `refresh_token_hash`.
+- `device_id`, `ip_address`, `user_agent`.
+- `expires_at`, `revoked_at`, `replaced_by_session_id`.
+
+### `user_devices`
+
+- `id`, `user_id`, `fcm_token`, `platform`.
+- `last_active_at`, `disabled_at`.
+
+### `students`
+
+- `id`, `user_id`.
+- `academic_grade_id`, `learning_level`.
+- `lifetime_xp`, `streak`, `last_learning_activity_date`.
+
+### `teachers`
+
+- `id`, `user_id`, `school_name`.
+- `verification_status`, `verified_at`, `verified_by`.
+
+### `parents`
+
+- `id`, `user_id`, `phone_number`.
+
+## 8.3. Dữ liệu gốc và lớp học
+
+### `subjects`
+
+- `id`, `code`, `name`, `status`.
+
+### `grade_levels`
+
+- `id`, `code`, `name`, `sort_order`, `status`.
+
+### `teacher_subjects`
+
+- `teacher_id`, `subject_id`, `grade_level_id` tùy nghiệp vụ.
+
+### `classes`
+
+- `id`, `owner_teacher_id`, `subject_id`, `grade_level_id`.
+- `name`, `invite_code`, `invite_expires_at`, `status`.
+
+### `class_enrollments`
+
+- `id`, `class_id`, `student_id`.
+- `status`: `PENDING`, `ACTIVE`, `REJECTED`, `LEFT`, `REMOVED`.
+- `joined_at`, `ended_at`.
+
+## 8.4. Liên kết Parent–Student
+
+### `parent_student_link_tokens`
+
+- `id`, `student_id`, `token_hash`.
+- `expires_at`, `used_at`, `revoked_at`.
+
+### `parent_student_links`
+
+- `id`, `parent_id`, `student_id`.
+- `relationship_type`, `status`.
+- `consented_at`, `linked_at`, `revoked_at`.
+
+## 8.5. Tài liệu và RAG
+
+### `documents`
+
+- `id`, `teacher_id`, `subject_id`, `grade_level_id`, `class_id` nếu giới hạn theo lớp.
+- `title`, `file_key`, `mime_type`, `size_bytes`, `page_count`.
+- `processing_status`: `PENDING`, `PROCESSING`, `SUCCESS`, `FAILED`.
+- `publication_status`: `DRAFT`, `PUBLISHED`, `UNPUBLISHED`, `ARCHIVED`.
+- `published_at`, `created_at`, `updated_at`.
+
+### `document_chunks`
+
+- `id`, `document_id`, `chunk_index`, `page_number`.
+- `content`, `token_count`, `metadata`.
+
+### `vector_embeddings`
+
+- `id`, `chunk_id`, `embedding`.
+- `embedding_model`, `embedding_dimension`, `created_at`.
+
+Không hardcode `VECTOR(1536)` nếu model chưa được khóa. Vector dimension phải thống nhất với embedding model và index.
+
+### `chat_sessions`
+
+- `id`, `student_id`, `title`, `created_at`, `updated_at`.
+
+### `chat_messages`
+
+- `id`, `session_id`, `sender_type`, `content`.
+- `model`, `prompt_version`, `status`, `latency_ms`.
+- `created_at`.
+
+### `chat_message_citations`
+
+- `id`, `message_id`, `document_id`, `chunk_id`.
+- `page_number`, `quote_preview` nếu được phép.
+
+### `ai_feedback_reports`
+
+- `id`, `message_id`, `student_id`, `feedback_type`, `reason`, `status`.
+
+## 8.6. Quiz
+
+### `quizzes`
+
+- `id`, `teacher_id`, `title`, `description`.
+- `content_status`: `DRAFT`, `PUBLISHED`, `ARCHIVED`.
+- `source_type`: `MANUAL`, `AI_GENERATED`, `MIXED`.
+
+### `quiz_questions`
+
+- `id`, `quiz_id`, `question_type`, `question_text`.
+- `points`, `sort_order`, `explanation`.
+
+### `quiz_options`
+
+- `id`, `question_id`, `option_text`, `is_correct`, `sort_order`.
+
+### `quiz_answer_keys`
+
+- Dùng cho đáp án điền khuyết hoặc cấu trúc chấm không phù hợp với option.
+
+### `quiz_assignments`
+
+- `id`, `quiz_id`, `class_id` hoặc phạm vi Student.
+- `open_at`, `due_at`, `time_limit_minutes`, `max_attempts`.
+- `result_release_policy`, `status`: `SCHEDULED`, `OPEN`, `CLOSED`.
+
+### `quiz_attempts`
+
+- `id`, `assignment_id`, `student_id`, `attempt_number`.
+- `status`: `IN_PROGRESS`, `SUBMITTED`, `EXPIRED`, `GRADED`, `CANCELLED`.
+- `started_at`, `expires_at`, `submitted_at`, `graded_at`.
+- `score`, `max_score`, `earned_xp`, `idempotency_key`.
+
+### `student_answers`
+
+- `id`, `attempt_id`, `question_id`.
+- `selected_option_id`, `text_answer`, `is_correct`, `awarded_points`.
+- `teacher_feedback` nếu áp dụng.
+
+### `grade_change_logs`
+
+- Lưu thay đổi điểm thủ công: điểm cũ, điểm mới, lý do, actor và thời gian.
+
+### `level_up_exams`, `level_up_attempts`, `learning_level_histories`
+
+- Quản lý thi vượt cấp học tập và lịch sử thay đổi `learning_level`.
+
+## 8.7. Tiến độ và cá nhân hóa
+
+### `topics`
+
+- `id`, `subject_id`, `grade_level_id`, `name`, `status`.
+
+### `learning_objectives`
+
+- `id`, `topic_id`, `code`, `description`.
+
+### `question_objectives`
+
+- Liên kết câu hỏi với mục tiêu học tập.
+
+### `student_mastery`
+
+- `student_id`, `objective_id`, `mastery_score`.
+- `evidence_count`, `last_evaluated_at`, `calculation_version`.
+
+### `learning_recommendations`
+
+- `id`, `student_id`, `objective_id`, `resource_type`, `resource_id`.
+- `reason`, `status`, `created_at`.
+
+## 8.8. XP và gamification
+
+### `xp_transactions`
+
+- `id`, `student_id`, `event_type`, `amount`.
+- `idempotency_key`, `reference_type`, `reference_id`, `created_at`.
+
+### `student_wallets`
+
+- `student_id`, `coin_balance`, `updated_at`.
+
+Shop và inventory chỉ bổ sung khi module giai đoạn sau được triển khai.
+
+## 8.9. Notification
+
+### `notifications`
+
+- `id`, `user_id`, `type`, `title`, `body`, `data`.
+- `is_read`, `read_at`, `created_at`.
+
+### `notification_deliveries`
+
+- `id`, `notification_id`, `device_id`, `channel`.
+- `status`, `attempt_count`, `last_error_code`, `sent_at`.
+
+### `notification_preferences`
+
+- `user_id`, `notification_type`, `channel`, `enabled`.
+
+## 8.10. Thanh toán giai đoạn sau
+
+### `subscription_plans`
+
+- `id`, `name`, `price`, `currency`, `duration_days`, `status`.
+
+### `user_subscriptions`
+
+- `id`, `beneficiary_user_id`, `purchased_by_user_id`, `plan_id`.
+- `status`, `starts_at`, `ends_at`.
+
+### `transactions`
+
+- `id`, `payer_user_id`, `beneficiary_user_id`.
+- `amount`, `currency`, `payment_method`, `gateway_reference`.
+- `idempotency_key`, `status`, `paid_at`, `failed_reason`.
+
+### `payment_webhook_events`
+
+- `id`, `provider`, `provider_event_id`, `signature_verified`.
+- `payload_hash`, `processing_status`, `processed_at`.
+
+## 8.11. Vận hành và kiểm duyệt
+
+### `ai_token_usages`
+
+- `user_id`, `use_case`, `provider`, `model`.
+- `input_tokens`, `output_tokens`, `estimated_cost`, `latency_ms`, `status`, `created_at`.
+
+### `audit_logs`
+
+- `actor_user_id`, `action`, `resource_type`, `resource_id`.
+- `result`, `reason`, `metadata`, `created_at`.
+- Không lưu secret hoặc PII không cần thiết.
+
+### `content_reports`, `moderation_cases`
+
+- Quản lý report và quy trình kiểm duyệt khi module liên quan được bật.
+
+### `outbox_events`
+
+- SHOULD sử dụng cho sự kiện quan trọng cần đồng bộ đáng tin cậy giữa transaction database và background job.
+
+---
+
+# 9. TRẠNG THÁI NGHIỆP VỤ
+
+## 9.1. Document
+
+```text
+PENDING -> PROCESSING -> SUCCESS
+                      -> FAILED -> PROCESSING (retry)
+```
+
+Publication:
+
+```text
+DRAFT -> PUBLISHED -> UNPUBLISHED -> PUBLISHED
+                   -> ARCHIVED
+```
+
+## 9.2. Class enrollment
+
+```text
+PENDING -> ACTIVE -> LEFT
+                  -> REMOVED
+PENDING -> REJECTED
+```
+
+## 9.3. Quiz assignment
+
+```text
+SCHEDULED -> OPEN -> CLOSED
+```
+
+## 9.4. Quiz attempt
+
+```text
+IN_PROGRESS -> SUBMITTED -> GRADED
+IN_PROGRESS -> EXPIRED -> GRADED
+IN_PROGRESS -> CANCELLED
+```
+
+## 9.5. Transaction giai đoạn sau
+
+```text
+PENDING -> SUCCESS
+        -> FAILED
+        -> CANCELLED
+SUCCESS -> REFUND_PENDING -> REFUNDED
+```
+
+Mọi chuyển trạng thái phải được kiểm tra ở Backend. Client không được gửi tùy ý trạng thái đích để Backend cập nhật trực tiếp.
+
+---
+
+# 10. BẢO MẬT VÀ QUYỀN RIÊNG TƯ
+
+## 10.1. Xác thực
+
+- Toàn bộ API và WebSocket dùng HTTPS/WSS với TLS phù hợp.
+- Password được hash bằng thuật toán và cost phù hợp.
+- Refresh token hỗ trợ rotation/revoke và không lưu rõ nếu cần đối chiếu.
+- Web dùng cookie an toàn theo kiến trúc; Mobile dùng secure storage.
+- Admin và Teacher dùng 2FA/OTP theo chính sách.
+
+## 10.2. Authorization
+
+- RBAC kết hợp kiểm tra ownership/scope.
+- Kiểm tra quyền tại service/use case hoặc policy layer ở Backend.
+- Có test từ chối truy cập chéo lớp, chéo Student và chéo Parent link.
+
+## 10.3. Bảo vệ API
+
+- CORS allowlist theo môi trường.
+- CSRF protection cho cookie-based browser flow.
+- Rate limit theo endpoint, user và IP tùy rủi ro.
+- Security headers cho Web.
+- Validation và giới hạn payload.
+- Không dùng thông báo lỗi làm lộ tài khoản, schema hoặc stack trace ở production.
+
+## 10.4. Secret
+
+- Secret lưu trong environment/secret manager.
+- Không commit `.env`.
+- Admin UI không hiển thị giá trị API key.
+- Không ghi secret, token hoặc password vào log.
+
+## 10.5. File upload
+
+- Kiểm tra phần mở rộng, MIME, chữ ký file, dung lượng và số trang.
+- Không tin filename từ client.
+- Tên object storage phải được tạo ở server.
+- File lỗi hoặc không an toàn không được chuyển sang bước embedding.
+
+## 10.6. Dữ liệu trẻ em
+
+- Chỉ thu thập dữ liệu cần thiết cho chức năng giáo dục.
+- Không sử dụng dữ liệu học sinh cho quảng cáo.
+- Phải có quy trình đồng ý, thu hồi đồng ý, truy xuất và xóa/ẩn danh.
+- Chỉ gửi dữ liệu tối thiểu cần thiết tới AI provider.
+- Chính sách pháp lý cụ thể phải được xác nhận theo thị trường triển khai; tài liệu này không tự tuyên bố tuân thủ pháp lý hoàn chỉnh.
+
+## 10.7. AI Safety
+
+- Input và tài liệu upload là untrusted content.
+- Giảm prompt injection và data exfiltration.
+- Kiểm duyệt input/output phù hợp độ tuổi.
+- Không tự động xuất bản nội dung AI.
+- Có report, review và audit cho phản hồi có vấn đề.
+
+---
+
+# 11. YÊU CẦU PHI CHỨC NĂNG
+
+## 11.1. Hiệu năng mục tiêu MVP
+
+| Mã | Chỉ tiêu | Mục tiêu |
+|---|---|---|
+| NFR-PERF-001 | API thông thường | p95 ≤ 800 ms với 100 người dùng đồng thời, không gồm AI/upload |
+| NFR-PERF-002 | AI TTFT | p95 ≤ 3 giây khi provider hoạt động bình thường và mạng ổn định |
+| NFR-PERF-003 | Tiếp nhận upload | API xác nhận tiếp nhận p95 ≤ 2 giây; xử lý nội dung bất đồng bộ |
+| NFR-PERF-004 | Notification trong ứng dụng | Có thể truy xuất qua API ngay sau khi transaction hoàn tất |
+| NFR-PERF-005 | Near real-time event | p95 ≤ 10 giây khi WebSocket/Push hoạt động bình thường |
+
+Các chỉ tiêu phải được đo trong môi trường kiểm thử tải có cấu hình được ghi nhận. Thời gian AI phụ thuộc provider phải được tách khỏi thời gian xử lý nội bộ.
+
+## 11.2. Khả dụng và phục hồi
+
+- Availability mục tiêu MVP: 99,5% theo tháng, không tính bảo trì có thông báo.
+- Backup database tối thiểu mỗi ngày trong MVP.
+- Mục tiêu ban đầu: RPO ≤ 24 giờ, RTO ≤ 8 giờ.
+- Trước production phải kiểm thử restore, không chỉ kiểm tra việc tạo backup.
+- Queue job lỗi phải có retry giới hạn và dead-letter/failed-job handling.
+
+## 11.3. Khả năng mở rộng
+
+- API stateless khi có thể.
+- Worker có thể scale độc lập với API.
+- Vector index và query phải có filter/index phù hợp.
+- Danh sách phải pagination; không tải toàn bộ dữ liệu lớn.
+
+## 11.4. Tương thích
+
+- Hỗ trợ các phiên bản trình duyệt và hệ điều hành được Product Owner phê duyệt.
+- Trước khi phát hành phải lập compatibility matrix cụ thể.
+- Giao diện Web responsive; Mobile hỗ trợ kích thước màn hình mục tiêu.
+
+## 11.5. Accessibility và UX
+
+- Thành phần tương tác có label và trạng thái focus.
+- Màu sắc có độ tương phản phù hợp.
+- Vùng chạm Mobile đủ lớn.
+- Màn hình bất đồng bộ có loading, empty, error và retry.
+- Không chỉ dùng màu sắc để truyền đạt trạng thái.
+
+## 11.6. Quan sát hệ thống
+
+- Log có request/correlation ID.
+- Có metrics cho latency, error rate, queue, AI usage và notification delivery.
+- Có alert cho tỷ lệ lỗi tăng, queue backlog và chi phí AI bất thường.
+- Log không chứa secret hoặc PII không cần thiết.
+
+## 11.7. Retention
+
+- Thời gian lưu chat, audit, payment và dữ liệu học tập phải cấu hình theo chính sách được phê duyệt.
+- Job xóa/ẩn danh phải có log và khả năng kiểm tra.
+
+---
+
+# 12. GIAO DIỆN TÍCH HỢP
+
+## 12.1. API
+
+- REST API là mặc định.
+- Request được validate bằng DTO/schema.
+- Response không trả trực tiếp entity nếu làm lộ trường nội bộ.
+- API danh sách có pagination và giới hạn page size.
+- Error response có mã lỗi nghiệp vụ ổn định.
+- API contract được cập nhật trong OpenAPI/Swagger.
+
+## 12.2. WebSocket
+
+- Dùng cho streaming chat hoặc sự kiện được phê duyệt.
+- Xác thực kết nối và tái kiểm tra quyền resource.
+- Có heartbeat/reconnect và đồng bộ lại bằng REST.
+
+## 12.3. AI Provider
+
+- Dùng adapter để cô lập provider/model.
+- Có timeout và retry giới hạn.
+- Validate structured output.
+- Theo dõi token, latency, status và chi phí.
+- Thay embedding model phải có kế hoạch re-embedding.
+
+## 12.4. Firebase Cloud Messaging
+
+- Gửi qua background job.
+- Token không hợp lệ được vô hiệu hóa.
+- Push payload không chứa dữ liệu nhạy cảm không cần thiết.
+
+## 12.5. Object Storage
+
+- Truy cập qua service abstraction.
+- URL tải lên/tải xuống có thời hạn khi cần.
+- Không công khai bucket chứa tài liệu riêng tư.
+
+## 12.6. Payment Gateway giai đoạn sau
+
+- Xác minh chữ ký webhook.
+- Dùng provider event ID/idempotency key chống xử lý trùng.
+- Không tin trạng thái do client gửi.
+
+---
+
+# 13. XỬ LÝ LỖI VÀ AUDIT
+
+## 13.1. Nguyên tắc lỗi
+
+- Client nhận error code ổn định và thông báo phù hợp.
+- Production không trả stack trace hoặc SQL error.
+- Lỗi external provider được phân biệt timeout, rate limit, invalid request và service unavailable.
+- Retry chỉ dùng cho lỗi có khả năng phục hồi; không retry vô hạn.
+
+## 13.2. Các thao tác bắt buộc audit
+
+- Đăng nhập bất thường, revoke session và thay đổi bảo mật.
+- Khóa/mở khóa tài khoản.
+- Thay đổi role/permission.
+- Xác minh Teacher.
+- Xuất bản/gỡ/xóa tài liệu.
+- Sửa điểm thủ công.
+- Thay đổi `academic_grade` hoặc `learning_level` thủ công.
+- Truy cập dữ liệu nhạy cảm theo case kiểm duyệt.
+- Thay đổi cấu hình AI/quota.
+- Xử lý thanh toán và hoàn tiền ở giai đoạn sau.
+
+Audit log phải ghi actor, action, resource, thời gian, kết quả và lý do; không ghi secret.
+
+---
+
+# 14. KIỂM THỬ VÀ NGHIỆM THU
+
+## 14.1. Kiểm thử bắt buộc
+
+- Unit test cho business rule quan trọng.
+- Integration test cho authorization, transaction và idempotency.
+- E2E test cho các luồng MVP chính.
+- Regression test khi sửa lỗi nếu khả thi.
+- Security test cho IDOR, input validation, session và file upload.
+- Load test theo chỉ tiêu NFR.
+- Restore test cho backup trước production.
+
+## 14.2. Luồng E2E tối thiểu
+
+1. Teacher đăng ký, được xác minh và tạo lớp.
+2. Student tham gia lớp.
+3. Teacher upload, xử lý và xuất bản tài liệu.
+4. Student chat AI và nhận citation đúng phạm vi.
+5. Student không truy cập được tài liệu lớp khác.
+6. Teacher dùng AI sinh quiz, duyệt và giao bài.
+7. Student làm/nộp bài; gửi lại request không tạo điểm/XP trùng.
+8. Parent liên kết và xem đúng dữ liệu của con.
+9. Parent không xem được Student chưa liên kết.
+10. Admin khóa tài khoản, session bị revoke và audit được ghi.
+
+## 14.3. Definition of Done
+
+Một yêu cầu chỉ hoàn thành khi:
+
+- Đáp ứng yêu cầu chức năng và business rule liên quan.
+- Không mở rộng ngoài phạm vi.
+- Authorization được kiểm tra ở Backend.
+- Validation và error handling đầy đủ.
+- Có migration nếu schema thay đổi.
+- Test liên quan được thêm/cập nhật và chạy thành công.
+- Lint, type-check và build không phát sinh lỗi mới.
+- Không lộ secret hoặc dữ liệu nhạy cảm.
+- API/documentation được cập nhật nếu contract thay đổi.
+- Phần chưa xác minh được và rủi ro còn lại được ghi rõ.
+
+---
+
+# 15. MA TRẬN TRUY VẾT RÚT GỌN
+
+| Mục tiêu | Functional Requirement | Business Rule | Test chính |
+|---|---|---|---|
+| Xác thực an toàn | FR-AUTH-001..005 | BR-AUTH-001..002 | Auth/session E2E |
+| Không truy cập chéo | FR-USER-001, FR-CLASS-003 | BR-USER-001 | Authorization integration |
+| Liên kết phụ huynh | FR-LINK-001..003 | BR-LINK-001 | Parent link E2E |
+| RAG đúng phạm vi | FR-RAG-001..005 | BR-DOC-001, BR-RAG-001 | RAG scope/citation E2E |
+| Quiz có kiểm duyệt | FR-QUIZ-001..007 | BR-QUIZ-001..002 | Quiz E2E/idempotency |
+| Tách khối và cấp độ | FR-LEVEL-001 | BR-LEVEL-001 | Level transition test |
+| XP không bị cộng trùng | FR-XP-001..003 | BR-XP-001 | XP transaction test |
+| Push không phá nghiệp vụ | FR-NOTIFY-001..003 | BR-NOTIFY-001 | Queue retry test |
+| Thanh toán an toàn | FR-PAY-001 | BR-PAYMENT-001 | Webhook signature/idempotency |
+
+---
+
+# 16. CÁC QUYẾT ĐỊNH CÒN MỞ
+
+Các quyết định sau phải được chốt trước khi triển khai module tương ứng:
+
+| Mã | Quyết định | Ảnh hưởng |
+|---|---|---|
+| OD-001 | Parent dùng Web, Mobile hay cả hai trong MVP | Phạm vi frontend |
+| OD-002 | Object Storage chính thức | Cấu hình hạ tầng |
+| OD-003 | LLM và Embedding model đầu tiên | Chi phí, vector dimension |
+| OD-004 | Giới hạn dung lượng/số trang tài liệu | Upload và worker capacity |
+| OD-005 | Chính sách tuổi và đồng ý của Parent | Đăng ký và quyền riêng tư |
+| OD-006 | Cách tính mastery score | Báo cáo cá nhân hóa |
+| OD-007 | Quy tắc XP và streak cụ thể | Gamification |
+| OD-008 | Payment gateway đầu tiên | Module giai đoạn sau |
+| OD-009 | Thời gian retention từng loại dữ liệu | Privacy và chi phí lưu trữ |
+
+Các mục còn mở không cho phép nhóm phát triển tự mặc định nếu quyết định có thể làm thay đổi nghiệp vụ, chi phí hoặc quyền riêng tư.
+
+---
+
+# 17. KẾT LUẬN
+
+Phiên bản SRS này xác định AI Tutor là hệ thống giáo dục lấy RAG có nguồn, quiz có giáo viên kiểm duyệt, theo dõi tiến độ và bảo vệ dữ liệu học sinh làm trọng tâm.
+
+Hệ thống phải ưu tiên tính đúng đắn, khả năng kiểm thử, phân quyền và quyền riêng tư trước số lượng tính năng. Các chức năng thanh toán, shop, social, OCR nâng cao và multi-provider được giữ ở giai đoạn sau, không thuộc MVP mặc định.

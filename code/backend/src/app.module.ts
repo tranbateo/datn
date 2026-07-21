@@ -21,6 +21,7 @@ import { AdminModule } from './admin/admin.module';
 import { TeacherModule } from './teacher/teacher.module';
 import { MessagesModule } from './messages/messages.module';
 import { ProposalsModule } from './proposals/proposals.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ProposalsModule } from './proposals/proposals.module';
       },
     }),
     PrismaModule,
+    AuditLogModule,
     AuthModule,
     UsersModule,
     CoursesModule,

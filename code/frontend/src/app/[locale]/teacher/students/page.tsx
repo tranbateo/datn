@@ -179,18 +179,8 @@ export default function TeacherStudentsPage() {
             </table>
           </div>
 
-          {/* Pagination */}
           <div className="border-t border-gray-100 dark:border-card-border p-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-            <div>{t('showing')}</div>
-            <div className="flex items-center gap-1">
-              <button className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-primary text-white font-medium shadow-sm">1</button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 font-medium transition-colors">2</button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 font-medium transition-colors">3</button>
-              <span className="px-1">...</span>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 font-medium transition-colors">125</button>
-              <button className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-300"><ChevronRight className="w-4 h-4" /></button>
-            </div>
+            <div>Hiển thị {students.length} học sinh</div>
           </div>
         </div>
       </div>

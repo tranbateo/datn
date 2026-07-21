@@ -97,7 +97,7 @@ export default function TeacherQuestionBankPage() {
             </select>
           </div>
           <div className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
-            Showing 1-10 of 1,245 questions
+            Hiển thị {quizzes.length} đề thi
           </div>
         </div>
 

@@ -131,7 +131,7 @@ export class AdminService {
   async getAnalyticsStats() {
     const totalUsers = await this.prisma.user.count();
     const activeProfiles = await this.prisma.gamificationProfile.count({
-      where: { xp: { gt: 0 } },
+      where: { lifetimeXp: { gt: 0 } },
     });
 
     const totalQuizzes = await this.prisma.quiz.count();
@@ -195,7 +195,7 @@ export class AdminService {
         isActive: true,
         createdAt: true,
         gamificationProfile: {
-          select: { xp: true, level: true },
+          select: { lifetimeXp: true, level: true },
         },
       },
       orderBy: { createdAt: 'desc' },
