@@ -24,6 +24,7 @@ export async function updateSession(request: NextRequest, response: NextResponse
   const isAdminLoginRoute = /^\/(vi|en)\/admin\/login/.test(pathname);
   const isStudentAuthRoute = /^\/(vi|en)\/(login|register)/.test(pathname);
   const isTeacherRoute = /^\/(vi|en)\/teacher/.test(pathname);
+  const isParentRoute = /^\/(vi|en)\/parent/.test(pathname);
 
   // 1. Admin Route Protection
   if (isAdminRoute) {
@@ -57,6 +58,7 @@ export async function updateSession(request: NextRequest, response: NextResponse
     const url = request.nextUrl.clone();
     if (userRole === 'admin') url.pathname = `${locale}/admin`;
     else if (userRole === 'teacher') url.pathname = `${locale}/teacher`;
+    else if (userRole === 'parent') url.pathname = `${locale}/parent`;
     else url.pathname = `${locale}/dashboard`;
     return NextResponse.redirect(url);
   }
@@ -79,6 +81,11 @@ export async function updateSession(request: NextRequest, response: NextResponse
       url.pathname = `${locale}/teacher`;
       return NextResponse.redirect(url);
     }
+    if (userRole === 'parent') {
+      const url = request.nextUrl.clone();
+      url.pathname = `${locale}/parent`;
+      return NextResponse.redirect(url);
+    }
   }
 
   // 5. Teacher Route Protection
@@ -90,7 +97,21 @@ export async function updateSession(request: NextRequest, response: NextResponse
     }
     if (userRole !== 'teacher') {
       const url = request.nextUrl.clone();
-      url.pathname = userRole === 'admin' ? `${locale}/admin` : `${locale}/dashboard`;
+      url.pathname = userRole === 'admin' ? `${locale}/admin` : userRole === 'parent' ? `${locale}/parent` : `${locale}/dashboard`;
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // 6. Parent Route Protection
+  if (isParentRoute) {
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = `${locale}/login`;
+      return NextResponse.redirect(url);
+    }
+    if (userRole !== 'parent') {
+      const url = request.nextUrl.clone();
+      url.pathname = userRole === 'admin' ? `${locale}/admin` : userRole === 'teacher' ? `${locale}/teacher` : `${locale}/dashboard`;
       return NextResponse.redirect(url);
     }
   }

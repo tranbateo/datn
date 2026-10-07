@@ -4,16 +4,16 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  const pepper =
-    process.env.PASSWORD_PEPPER || 'A_VERY_SECRET_PEPPER_FOR_AITUTOR';
-  const password = 'password123';
+  // Xóa toàn bộ dữ liệu cũ
+  await prisma.user.deleteMany({});
+  
+  const pepper = process.env.PASSWORD_PEPPER || 'A_VERY_SECRET_PEPPER_FOR_AITUTOR';
+  const password = '123456';
   const passwordHash = await bcrypt.hash(password + pepper, 10);
 
   // 1. Create Student
-  const student = await prisma.user.upsert({
-    where: { email: 'student@eduai.com' },
-    update: { passwordHash, isActive: true },
-    create: {
+  const student = await prisma.user.create({
+    data: {
       email: 'student@eduai.com',
       fullName: 'Học sinh Demo',
       role: Role.STUDENT,
@@ -24,17 +24,13 @@ async function main() {
   });
 
   // Gamification profile for student
-  await prisma.gamificationProfile.upsert({
-    where: { userId: student.id },
-    update: {},
-    create: { userId: student.id, lifetimeXp: 500, spendableXp: 500, level: 2 },
+  await prisma.gamificationProfile.create({
+    data: { userId: student.id, lifetimeXp: 500, spendableXp: 500, level: 2 },
   });
 
   // 2. Create Teacher
-  await prisma.user.upsert({
-    where: { email: 'teacher@eduai.com' },
-    update: { passwordHash, isActive: true },
-    create: {
+  await prisma.user.create({
+    data: {
       email: 'teacher@eduai.com',
       fullName: 'Giáo viên Demo',
       role: Role.TEACHER,
@@ -44,10 +40,8 @@ async function main() {
   });
 
   // 3. Create Parent
-  const parent = await prisma.user.upsert({
-    where: { email: 'parent@eduai.com' },
-    update: { passwordHash, isActive: true },
-    create: {
+  const parent = await prisma.user.create({
+    data: {
       email: 'parent@eduai.com',
       fullName: 'Phụ huynh Demo',
       role: Role.PARENT,
@@ -57,22 +51,30 @@ async function main() {
   });
 
   // Link Parent to Student
-  await prisma.parentStudentLink.upsert({
-    where: {
-      parentId_studentId: { parentId: parent.id, studentId: student.id },
-    },
-    update: {},
-    create: {
+  await prisma.parentStudentLink.create({
+    data: {
       parentId: parent.id,
       studentId: student.id,
       linkCode: 'DEMO-LINK-123',
     },
   });
 
-  console.log('Created accounts successfully!');
-  console.log('Student: student@eduai.com / password123');
-  console.log('Teacher: teacher@eduai.com / password123');
-  console.log('Parent: parent@eduai.com / password123');
+  // 4. Create Admin
+  await prisma.user.create({
+    data: {
+      email: 'admin@eduai.com',
+      fullName: 'Quản trị viên',
+      role: Role.ADMIN,
+      passwordHash,
+      isActive: true,
+    },
+  });
+
+  console.log('Đã xóa user cũ và tạo 4 tài khoản mới thành công!');
+  console.log('Student: student@eduai.com / 123456');
+  console.log('Teacher: teacher@eduai.com / 123456');
+  console.log('Parent: parent@eduai.com / 123456');
+  console.log('Admin: admin@eduai.com / 123456');
 }
 
 main()
