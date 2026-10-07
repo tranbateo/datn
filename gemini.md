@@ -57,10 +57,11 @@ Khi xác định yêu cầu, sử dụng thứ tự sau:
 
 AI Tutor là nền tảng giáo dục thông minh dành cho học sinh Việt Nam, hỗ trợ học tập theo chương trình giáo dục được cấu hình trong hệ thống. Nền tảng kết nối bốn nhóm người dùng:
 
-- **Student**: học tập, hỏi đáp với AI, làm bài và theo dõi tiến độ.
-- **Teacher**: quản lý lớp, tài liệu, bài tập và kết quả học sinh.
+- **Student**: học sinh thuộc một trường học cụ thể (Tiểu học, THCS, THPT).
+- **Teacher**: giáo viên thuộc một trường học, quản lý lớp và nội dung.
 - **Parent**: liên kết với con, theo dõi tiến độ và nhận cảnh báo.
-- **Admin**: quản trị người dùng, dữ liệu gốc, nội dung và vận hành hệ thống.
+- **School Admin**: quản trị cấp trường, quản lý giáo viên, học sinh, và lớp học của trường mình.
+- **System Admin**: quản trị tổng thể, quản lý danh sách các trường học (khách hàng B2B) và hệ thống.
 
 ### 3.2. Nền tảng
 
@@ -166,22 +167,21 @@ Parent có quyền đọc đối với dữ liệu học tập của các tài k
 
 Parent không được sửa điểm, bài làm, XP hoặc dữ liệu lớp học của con.
 
-### 5.4. Admin
+### 5.4. School Admin
 
-Admin được phân quyền theo nguyên tắc **least privilege**, không mặc định có quyền truy cập không giới hạn vào mọi dữ liệu riêng tư.
+School Admin quản lý các hoạt động nội bộ của trường mình:
+- Quản lý danh sách Teacher, Student (thêm, sửa, import).
+- Quản lý lớp học và phân công giáo viên.
+- Xem báo cáo tổng quan của toàn trường.
+- Không thể truy cập dữ liệu của trường khác.
 
-Admin có thể được cấp quyền:
+### 5.5. System Admin
 
-- Quản lý tài khoản và trạng thái hoạt động.
-- Xác minh Teacher.
-- Quản lý môn học, khối lớp và dữ liệu gốc.
-- Kiểm duyệt nội dung.
+System Admin được phân quyền theo nguyên tắc **least privilege**.
+- Quản lý danh sách trường học (tạo mới, cấp School Admin).
+- Quản lý môn học, khối lớp chuẩn và dữ liệu gốc.
+- Kiểm duyệt nội dung toàn hệ thống theo quyền.
 - Xem audit log, chỉ số vận hành và AI usage.
-- Quản lý cấu hình không chứa secret.
-
-Mọi thao tác nhạy cảm của Admin phải được ghi audit log.
-
----
 
 ## 6. Business rules bắt buộc
 
