@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -15,7 +15,31 @@ enum Role {
   STUDENT
   TEACHER
   ADMIN
+  SCHOOL_ADMIN
   PARENT
+}
+
+enum SchoolLevel {
+  PRIMARY
+  MIDDLE
+  HIGH
+  ALL
+}
+
+model School {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  code      String      @unique
+  level     SchoolLevel @default(ALL)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  users        User[]
+  courses      Course[]
+  documents    Document[]
+  quizzes      Quiz[]
+  chatSessions ChatSession[]
 }
 
 enum SubscriptionTier {
@@ -24,66 +48,68 @@ enum SubscriptionTier {
 }
 
 model User {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email     String   @unique
-  fullName  String?
-  avatarUrl String?
-  role      Role     @default(STUDENT)
-  tier      SubscriptionTier @default(FREE)
-  passwordHash String?
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String?          @db.Uuid
+  school           School?          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  email            String           @unique
+  fullName         String?
+  avatarUrl        String?
+  role             Role             @default(STUDENT)
+  tier             SubscriptionTier @default(FREE)
+  passwordHash     String?
   refreshTokenHash String?
-  isActive  Boolean  @default(true)
-  deviceToken String? // For Firebase Push Notifications
-  grade     Int?     // 1 to 12
-  linkCode  String?  @unique // For parents to link
-  linkExpiresAt DateTime? // Token expiration
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive         Boolean          @default(true)
+  deviceToken      String? // For Firebase Push Notifications
+  grade            Int? // 1 to 12
+  linkCode         String?          @unique // For parents to link
+  linkExpiresAt    DateTime? // Token expiration
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   // Relationships
   gamificationProfile GamificationProfile?
   chatSessions        ChatSession[]
   quizAttempts        QuizAttempt[]
-  courses             Course[]       @relation("TeacherCourses")
+  courses             Course[]             @relation("TeacherCourses")
   calendarEvents      CalendarEvent[]
   notifications       Notification[]
-  parentLinks         ParentStudentLink[] @relation("ParentLinks")
-  studentLinks        ParentStudentLink[] @relation("StudentLinks")
+  parentLinks         ParentStudentLink[]  @relation("ParentLinks")
+  studentLinks        ParentStudentLink[]  @relation("StudentLinks")
   aiTokenUsages       AiTokenUsage[]
   transactions        Transaction[]
   auditLogs           AuditLog[]
-  
+
   // Messaging & Proposals
-  conversationsAsParticipant1 Conversation[] @relation("Participant1")
-  conversationsAsParticipant2 Conversation[] @relation("Participant2")
+  conversationsAsParticipant1 Conversation[]  @relation("Participant1")
+  conversationsAsParticipant2 Conversation[]  @relation("Participant2")
   sentMessages                DirectMessage[] @relation("MessageSender")
-  parentProposals             Proposal[]     @relation("ParentProposals")
-  teacherProposals            Proposal[]     @relation("TeacherProposals")
-  studentProposals            Proposal[]     @relation("StudentProposals")
+  parentProposals             Proposal[]      @relation("ParentProposals")
+  teacherProposals            Proposal[]      @relation("TeacherProposals")
+  studentProposals            Proposal[]      @relation("StudentProposals")
 
   // Enrollments
-  enrollments                 Enrollment[]
+  enrollments Enrollment[]
 
   // Feedback
-  feedbacks                   Feedback[]
+  feedbacks Feedback[]
 }
 
 // -----------------------------------------------------------------------
 // 1.5 Curriculum & Subjects
 // -----------------------------------------------------------------------
 model Subject {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String   // "Toán học", "Ngữ văn", "Hóa học"
-  grade       Int      // 1 to 12
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String // "Toán học", "Ngữ văn", "Hóa học"
+  grade       Int // 1 to 12
   description String?
-  
+
   // Relations
   courses      Course[]
   quizzes      Quiz[]
   chatSessions ChatSession[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([name, grade])
 }
@@ -93,6 +119,8 @@ model Subject {
 // -----------------------------------------------------------------------
 model Course {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId    String?  @db.Uuid
+  school      School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   title       String
   description String?
   grade       Int?
@@ -121,43 +149,45 @@ model Enrollment {
 }
 
 model Document {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  courseId  String   @db.Uuid
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  fileName  String
-  type      String
-  size      String?
-  status    String   @default("Pending") // Pending, Processing, Embedded, Failed
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId   String?  @db.Uuid
+  school     School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  courseId   String   @db.Uuid
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  fileName   String
+  type       String
+  size       String?
+  status     String   @default("Pending") // Pending, Processing, Embedded, Failed
   uploadedAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt  DateTime @updatedAt
 }
 
 model Lesson {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  courseId    String   @db.Uuid
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  title       String
-  videoUrl    String?
-  content     String?
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId  String   @db.Uuid
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title     String
+  videoUrl  String?
+  content   String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // -----------------------------------------------------------------------
 // 2. Gamification System
 // -----------------------------------------------------------------------
 model GamificationProfile {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId       String   @unique @db.Uuid
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lifetimeXp   Int      @default(0)
-  spendableXp  Int      @default(0)
-  level        Int      @default(1)
-  currentStreak Int     @default(0)
-  longestStreak Int     @default(0)
-  lastActiveAt DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @unique @db.Uuid
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lifetimeXp    Int      @default(0)
+  spendableXp   Int      @default(0)
+  level         Int      @default(1)
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  lastActiveAt  DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relationships
   badges UserBadge[]
@@ -176,12 +206,12 @@ model Badge {
 }
 
 model UserBadge {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profileId String   @db.Uuid
+  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId String              @db.Uuid
   profile   GamificationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  badgeId   String   @db.Uuid
-  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
-  earnedAt  DateTime @default(now())
+  badgeId   String              @db.Uuid
+  badge     Badge               @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  earnedAt  DateTime            @default(now())
 
   @@unique([profileId, badgeId])
 }
@@ -191,6 +221,8 @@ model UserBadge {
 // -----------------------------------------------------------------------
 model ChatSession {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String?  @db.Uuid
+  school    School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   userId    String   @db.Uuid
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   subjectId String?  @db.Uuid
@@ -199,63 +231,65 @@ model ChatSession {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  messages  ChatMessage[]
+  messages ChatMessage[]
 }
 
 model ChatMessage {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId     String   @db.Uuid
-  session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  role          String   // "user" | "assistant" | "system"
-  content       String
-  isAudio       Boolean  @default(false)
-  audioUrl      String?
-  imageUrl      String?  // For Vision AI
-  citations     Json?    // Array of sources used by AI
-  createdAt     DateTime @default(now())
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId String      @db.Uuid
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String // "user" | "assistant" | "system"
+  content   String
+  isAudio   Boolean     @default(false)
+  audioUrl  String?
+  imageUrl  String? // For Vision AI
+  citations Json? // Array of sources used by AI
+  createdAt DateTime    @default(now())
 }
 
 // -----------------------------------------------------------------------
 // 4. Quizzes & Practice
 // -----------------------------------------------------------------------
 model Quiz {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title       String
-  description String?
-  grade       Int?
-  subjectId   String?  @db.Uuid
-  subject     Subject? @relation(fields: [subjectId], references: [id])
-  duration    Int?     // in minutes
-  isGraduation Boolean @default(false)
-  status      String   @default("DRAFT") // DRAFT, PUBLISHED, ASSIGNED, CLOSED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String?  @db.Uuid
+  school       School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  grade        Int?
+  subjectId    String?  @db.Uuid
+  subject      Subject? @relation(fields: [subjectId], references: [id])
+  duration     Int? // in minutes
+  isGraduation Boolean  @default(false)
+  status       String   @default("DRAFT") // DRAFT, PUBLISHED, ASSIGNED, CLOSED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  questions   QuizQuestion[]
-  attempts    QuizAttempt[]
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
 }
 
 model QuizQuestion {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  quizId        String   @db.Uuid
-  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quizId        String  @db.Uuid
+  quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
   content       String
-  options       Json     // Array of options
+  options       Json // Array of options
   correctOption String
   explanation   String?
 }
 
 model QuizAttempt {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  quizId      String   @db.Uuid
-  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  userId      String   @db.Uuid
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  score       Int      @default(0)
-  totalQuestions Int   @default(0)
-  answers     Json     // User's answers
-  startedAt   DateTime @default(now())
-  completedAt DateTime?
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quizId         String    @db.Uuid
+  quiz           Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  userId         String    @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score          Int       @default(0)
+  totalQuestions Int       @default(0)
+  answers        Json // User's answers
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
 }
 
 // -----------------------------------------------------------------------
@@ -267,12 +301,12 @@ model CalendarEvent {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
   description String?
-  type        String   // "CLASS", "EXAM", "ASSIGNMENT", "MEETING"
+  type        String // "CLASS", "EXAM", "ASSIGNMENT", "MEETING"
   startTime   DateTime
   endTime     DateTime
   locationUrl String?
   isCompleted Boolean  @default(false)
-  color       String?  // For frontend UI e.g., "border-blue-500"
+  color       String? // For frontend UI e.g., "border-blue-500"
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -294,14 +328,14 @@ model Notification {
 // 7. Parents & Links
 // -----------------------------------------------------------------------
 model ParentStudentLink {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  parentId  String   @db.Uuid
-  parent    User     @relation("ParentLinks", fields: [parentId], references: [id], onDelete: Cascade)
-  studentId String   @db.Uuid
-  student   User     @relation("StudentLinks", fields: [studentId], references: [id], onDelete: Cascade)
-  linkCode  String   @unique
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentId  String    @db.Uuid
+  parent    User      @relation("ParentLinks", fields: [parentId], references: [id], onDelete: Cascade)
+  studentId String    @db.Uuid
+  student   User      @relation("StudentLinks", fields: [studentId], references: [id], onDelete: Cascade)
+  linkCode  String    @unique
   expiresAt DateTime?
-  linkedAt  DateTime @default(now())
+  linkedAt  DateTime  @default(now())
 
   @@unique([parentId, studentId])
 }
@@ -310,13 +344,13 @@ model ParentStudentLink {
 // 8. AI Token Usage & Quotas
 // -----------------------------------------------------------------------
 model AiTokenUsage {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId      String   @db.Uuid
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date        DateTime @db.Date
-  tokensUsed  Int      @default(0)
-  messageCount Int     @default(0)
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date         DateTime @db.Date
+  tokensUsed   Int      @default(0)
+  messageCount Int      @default(0)
+  updatedAt    DateTime @updatedAt
 
   @@unique([userId, date])
 }
@@ -330,7 +364,7 @@ model Transaction {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   amount        Decimal
   paymentMethod String
-  status        String   // PENDING, SUCCESS, FAILED
+  status        String // PENDING, SUCCESS, FAILED
   description   String?
   createdAt     DateTime @default(now())
 }
@@ -347,35 +381,35 @@ model Conversation {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  messages       DirectMessage[]
+  messages DirectMessage[]
 
   @@unique([participant1Id, participant2Id])
 }
 
 model DirectMessage {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  conversationId String   @db.Uuid
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String       @db.Uuid
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId       String   @db.Uuid
-  sender         User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId       String       @db.Uuid
+  sender         User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   content        String
-  isRead         Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
 }
 
 model Proposal {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  parentId    String   @db.Uuid
-  parent      User     @relation("ParentProposals", fields: [parentId], references: [id], onDelete: Cascade)
-  teacherId   String   @db.Uuid
-  teacher     User     @relation("TeacherProposals", fields: [teacherId], references: [id], onDelete: Cascade)
-  studentId   String?  @db.Uuid
-  student     User?    @relation("StudentProposals", fields: [studentId], references: [id], onDelete: SetNull)
-  title       String
-  content     String
-  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentId  String   @db.Uuid
+  parent    User     @relation("ParentProposals", fields: [parentId], references: [id], onDelete: Cascade)
+  teacherId String   @db.Uuid
+  teacher   User     @relation("TeacherProposals", fields: [teacherId], references: [id], onDelete: Cascade)
+  studentId String?  @db.Uuid
+  student   User?    @relation("StudentProposals", fields: [studentId], references: [id], onDelete: SetNull)
+  title     String
+  content   String
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // -----------------------------------------------------------------------
@@ -388,14 +422,14 @@ enum FeedbackCategory {
 }
 
 model Feedback {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId      String   @db.Uuid
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category    FeedbackCategory
-  content     String
-  status      String   @default("PENDING") // PENDING, RESOLVED, IGNORED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String           @db.Uuid
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category  FeedbackCategory
+  content   String
+  status    String           @default("PENDING") // PENDING, RESOLVED, IGNORED
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 }
 
 // -----------------------------------------------------------------------

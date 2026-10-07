@@ -24,14 +24,15 @@ Tài liệu được dùng để:
 
 ## 1.2. Phạm vi sản phẩm
 
-AI Tutor là nền tảng giáo dục thông minh dành cho học sinh Việt Nam. Hệ thống hỗ trợ học tập cá nhân hóa dựa trên tài liệu được giáo viên cung cấp, kết hợp RAG, bài kiểm tra, theo dõi tiến độ và kết nối phụ huynh – giáo viên – học sinh.
+AI Tutor là nền tảng giáo dục thông minh cung cấp giải pháp B2B cho các trường học. Nền tảng được phân phối (bán bản quyền/subscription) cho các trường để quản lý và hỗ trợ học tập cho học sinh của trường mình, bao quát 3 cấp học: Tiểu học (Lớp 1-5), Trung học cơ sở (THCS, Lớp 6-9), và Trung học phổ thông (THPT, Lớp 10-12). Hệ thống hỗ trợ học tập cá nhân hóa dựa trên tài liệu được giáo viên cung cấp, kết hợp RAG, bài kiểm tra, theo dõi tiến độ và kết nối phụ huynh – giáo viên – học sinh trong phạm vi nội bộ trường học.
 
-Hệ thống có bốn nhóm người dùng chính:
+Hệ thống có năm nhóm người dùng chính:
 
-- **Student**: người học chính.
-- **Teacher**: người quản lý lớp và nội dung học tập.
+- **Student**: người học chính, trực thuộc một trường cụ thể.
+- **Teacher**: người quản lý lớp và nội dung học tập, trực thuộc một trường.
 - **Parent**: người liên kết, giám sát và đồng hành với học sinh.
-- **Admin**: người quản trị và vận hành hệ thống.
+- **School Admin**: người quản trị cấp trường, quản lý giáo viên, học sinh và lớp học của trường mình.
+- **System Admin**: người quản trị và vận hành tổng thể nền tảng, quản lý danh sách các trường (khách hàng).
 
 ## 1.3. Mục tiêu sản phẩm
 
@@ -43,7 +44,8 @@ Hệ thống hướng tới các mục tiêu:
 4. Hỗ trợ AI sinh câu hỏi nhưng bắt buộc giáo viên duyệt trước khi giao.
 5. Theo dõi chủ đề mạnh/yếu và đề xuất nội dung ôn tập cơ bản.
 6. Cho phép phụ huynh theo dõi tài khoản con đã liên kết hợp lệ.
-7. Cho phép Admin quản lý hệ thống theo nguyên tắc phân quyền tối thiểu.
+7. Cho phép School Admin quản lý toàn diện hoạt động của trường mình một cách độc lập.
+8. Cho phép System Admin quản lý khách hàng (trường học) và hệ thống theo nguyên tắc phân quyền tối thiểu.
 
 ## 1.4. Thuật ngữ và viết tắt
 
@@ -102,7 +104,7 @@ Khi phát hiện mâu thuẫn ảnh hưởng đến quyền, dữ liệu, điể
 ### 2.1.2. Teacher
 
 - Tạo và quản lý lớp phụ trách.
-- Quản lý thành viên lớp theo quyền.
+- Quản lý thành viên lớp theo phân công của trường.
 - Tải, xử lý, xuất bản và gỡ tài liệu.
 - Tạo hoặc dùng AI sinh quiz.
 - Duyệt nội dung do AI sinh trước khi giao.
@@ -115,16 +117,24 @@ Khi phát hiện mâu thuẫn ảnh hưởng đến quyền, dữ liệu, điể
 - Nhận cảnh báo và cấu hình thông báo.
 - Thanh toán hộ nếu module thanh toán được bật.
 
-### 2.1.4. Admin
+### 2.1.4. School Admin
 
-- Quản lý tài khoản và trạng thái hoạt động.
-- Xác minh Teacher.
-- Quản lý môn học, khối lớp và dữ liệu gốc.
-- Kiểm duyệt nội dung theo quyền.
-- Xem audit log, thống kê vận hành và chi phí AI.
+- Cấu hình thông tin trường học (cấp học: Tiểu học, THCS, THPT).
+- Tạo mới hoặc import danh sách Teacher, Student từ file.
+- Quản lý lớp học, phân công Teacher chủ nhiệm/bộ môn.
+- Theo dõi báo cáo học tập, điểm số và vi phạm của toàn trường.
+- Quản lý quota AI được cấp cho trường.
+
+### 2.1.5. System Admin
+
+- Quản lý danh sách các trường học, thiết lập gói dịch vụ và cấp tài khoản School Admin.
+- Quản lý tài khoản vận hành nội bộ.
+- Quản lý môn học, khối lớp chuẩn và dữ liệu gốc.
+- Kiểm duyệt nội dung theo quyền (khi có báo cáo leo thang).
+- Xem audit log, thống kê vận hành và chi phí AI tổng thể.
 - Quản lý cấu hình không chứa secret.
 
-### 2.1.5. Hệ thống bên ngoài
+### 2.1.6. Hệ thống bên ngoài
 
 - AI/Embedding Provider.
 - Firebase Cloud Messaging.
@@ -220,22 +230,22 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 ## 4.1. Ma trận quyền tổng quát
 
-| Chức năng | Student | Teacher | Parent | Admin |
-|---|---:|---:|---:|---:|
-| Xem hồ sơ của chính mình | Có | Có | Có | Theo quyền |
-| Quản lý lớp | Không | Lớp phụ trách | Không | Theo quyền |
-| Tham gia lớp | Có | Không | Không | Không |
-| Upload tài liệu | Không | Có | Không | Không mặc định |
-| Xuất bản tài liệu | Không | Tài liệu của mình | Không | Kiểm duyệt theo quyền |
-| Chat AI | Có | Có thể dùng công cụ hỗ trợ | Không mặc định | Không mặc định |
-| Làm quiz | Có | Không | Không | Không |
-| Tạo quiz | Không | Có | Không | Theo quyền đặc biệt |
-| Xem kết quả Student | Chính mình | Học sinh trong lớp | Con đã liên kết | Theo quyền/audit |
-| Sửa điểm thủ công | Không | Theo chính sách lớp | Không | Theo quyền đặc biệt |
-| Liên kết Parent–Student | Xác nhận nếu yêu cầu | Không | Có | Hỗ trợ theo quyền |
-| Thanh toán | Không mặc định | Không | Có khi module bật | Không |
-| Quản lý user/role | Không | Không | Không | Theo quyền |
-| Xem audit log | Không | Không | Không | Theo quyền |
+| Chức năng | Student | Teacher | Parent | School Admin | System Admin |
+|---|---:|---:|---:|---:|---:|
+| Xem hồ sơ của chính mình | Có | Có | Có | Có | Theo quyền |
+| Quản lý lớp | Không | Lớp phụ trách | Không | Toàn trường | Không |
+| Tham gia lớp | Có | Không | Không | Không | Không |
+| Upload tài liệu | Không | Có | Không | Có | Không mặc định |
+| Xuất bản tài liệu | Không | Tài liệu của mình | Không | Toàn trường | Kiểm duyệt |
+| Chat AI | Có | Có thể dùng công cụ hỗ trợ | Không mặc định | Không | Không mặc định |
+| Làm quiz | Có | Không | Không | Không | Không |
+| Tạo quiz | Không | Có | Không | Theo quyền đặc biệt | Không |
+| Xem kết quả Student | Chính mình | Học sinh trong lớp | Con đã liên kết | Toàn trường | Theo quyền/audit |
+| Sửa điểm thủ công | Không | Theo chính sách lớp | Không | Cho phép | Theo quyền đặc biệt |
+| Liên kết Parent–Student | Xác nhận nếu yêu cầu | Không | Có | Hỗ trợ (cấp trường) | Không |
+| Thanh toán (giai đoạn sau) | Không mặc định | Không | Có khi module bật | Thanh toán gói trường | Không |
+| Quản lý user/role | Không | Không | Không | User trong trường | User hệ thống/Trường |
+| Xem audit log | Không | Không | Không | Audit log trường | Toàn hệ thống |
 
 ## 4.2. Nguyên tắc phân quyền
 
@@ -244,7 +254,8 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 - Teacher chỉ truy cập lớp mình phụ trách.
 - Parent chỉ truy cập Student đã liên kết hợp lệ.
 - Student chỉ truy cập dữ liệu của chính mình và lớp đang tham gia.
-- Admin dùng permission cụ thể; không mặc định được đọc mọi dữ liệu riêng tư.
+- School Admin chỉ quản lý dữ liệu thuộc trường của mình. Không thấy dữ liệu trường khác.
+- System Admin dùng permission cụ thể; không mặc định được đọc mọi dữ liệu riêng tư của trường.
 - Thao tác nhạy cảm phải ghi audit log.
 
 ---
@@ -255,10 +266,10 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 ### FR-AUTH-001 — Đăng ký tài khoản
 
-- Hệ thống cho phép đăng ký Student, Parent và Teacher theo chính sách sản phẩm.
-- Email hoặc định danh đăng nhập phải duy nhất.
-- Teacher mới đăng ký có trạng thái chờ xác minh và chưa được xuất bản nội dung.
-- Student thuộc độ tuổi yêu cầu đồng ý phải hoàn tất quy trình đồng ý của Parent trước khi sử dụng đầy đủ.
+- System Admin cấp tài khoản School Admin.
+- School Admin tạo/import tài khoản Teacher, Student. Teacher/Student có thể nhận email kích hoạt hoặc mật khẩu mặc định.
+- Tùy cấu hình, trường có thể cho phép Student tự đăng ký bằng mã nội bộ của trường.
+- Parent có thể tự đăng ký để tiến hành liên kết với Student.
 
 **Tiêu chí nghiệm thu:**
 
@@ -326,18 +337,30 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 - Hủy liên kết phải chấm dứt quyền xem dữ liệu tương lai của Parent.
 - Thao tác phải ghi audit log.
 
-## 5.4. Môn học, khối lớp và lớp học
+## 5.4. Trường học, Môn học, Khối lớp và Lớp học
+
+### FR-SCHOOL-001 — Quản lý trường học (B2B)
+
+- System Admin tạo, cập nhật thông tin trường học (Tên trường, cấp học: Tiểu học, THCS, THPT).
+- Mỗi trường được cấp một School Admin đầu tiên.
+- Khóa trường học sẽ vô hiệu hóa đăng nhập của mọi user thuộc trường.
+
+### FR-SCHOOL-002 — Quản lý nhân sự và học sinh (School Admin)
+
+- School Admin quản lý danh sách giáo viên, học sinh (thêm, sửa, khóa tài khoản, import từ Excel).
+- Phân bổ học sinh vào các khối/lớp dựa trên cấu trúc của trường.
 
 ### FR-MASTER-001 — Quản lý môn học và khối lớp
 
 - Admin có permission được tạo, sửa, kích hoạt hoặc ngừng sử dụng môn học/khối lớp.
 - Dữ liệu đã được tham chiếu không được xóa cứng nếu làm hỏng lịch sử.
 
-### FR-CLASS-001 — Tạo lớp
+### FR-CLASS-001 — Tạo và phân công lớp
 
-- Teacher đã xác minh được tạo lớp.
-- Lớp phải có tên, môn học, khối lớp, chủ sở hữu và trạng thái.
-- Hệ thống sinh mã lớp duy nhất.
+- School Admin hoặc Teacher được ủy quyền có thể tạo lớp.
+- Lớp phải gắn với một trường, một khối lớp cụ thể (tương ứng cấp học của trường).
+- Lớp có thể có Teacher chủ nhiệm và nhiều Teacher bộ môn.
+- Có thể import danh sách học sinh vào lớp hàng loạt.
 
 ### FR-CLASS-002 — Tham gia lớp
 
@@ -534,14 +557,23 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 - Người dùng được bật/tắt các loại thông báo không bắt buộc.
 - Thông báo bảo mật bắt buộc không bị tắt nếu chính sách yêu cầu.
 
-## 5.12. Admin Dashboard
+## 5.12. Dashboards Quản trị (School Admin & System Admin)
 
-### FR-ADMIN-001 — Quản lý người dùng
+### FR-SCHOOLADMIN-001 — Tổng quan trường học
+- Xem thống kê số lượng giáo viên, học sinh, lớp học.
+- Báo cáo kết quả học tập trung bình theo khối, môn.
+- Giám sát AI usage của trường để không vượt gói đã mua.
+
+### FR-SYSADMIN-001 — Quản lý khách hàng (Trường học)
+- Quản lý danh sách trường, gói subscription B2B (tính năng, quota token).
+- Kích hoạt/Vô hiệu hóa trường học.
+
+### FR-ADMIN-001 — Quản lý người dùng hệ thống
 
 - Tìm kiếm, lọc, xem trạng thái, khóa/mở khóa theo permission.
 - Không hiển thị password hash, refresh token hoặc secret.
 
-### FR-ADMIN-002 — Xác minh Teacher
+### FR-ADMIN-002 — Xác minh Teacher (Không áp dụng nếu School Admin tạo)
 
 - Admin được cấp quyền xem hồ sơ xác minh và phê duyệt/từ chối.
 - Phải lưu lý do và audit log.

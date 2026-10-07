@@ -30,6 +30,11 @@ export class RegisterDto {
   @IsEnum(Role)
   @IsOptional()
   role?: Role;
+
+  @ApiProperty({ example: 'SCHOOL-123', required: false, description: 'Mã trường học để liên kết' })
+  @IsString()
+  @IsOptional()
+  schoolCode?: string;
 }
 
 export class VerifyOtpDto {

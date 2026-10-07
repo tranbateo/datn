@@ -52,7 +52,7 @@ export class AuthService {
   }
 
   async sendEmailOtp(dto: RegisterDto) {
-    const { email, password, fullName, role } = dto;
+    const { email, password, fullName, role, schoolCode } = dto as any;
 
     // Check if user already exists
     const existingUser = await this.prisma.user.findUnique({
@@ -70,7 +70,7 @@ export class AuthService {
     this.otpStore.set(email, {
       otp,
       expiresAt,
-      userData: { email, password, fullName, role },
+      userData: { email, password, fullName, role, schoolCode },
     });
 
     try {
@@ -113,14 +113,23 @@ export class AuthService {
     }
 
     // Create User
-    const { password, fullName, role } = record.userData;
+    const { password, fullName, role, schoolCode } = record.userData;
+
+    let schoolId = null;
+    if (schoolCode) {
+      const school = await this.prisma.school.findUnique({ where: { code: schoolCode } });
+      if (!school) {
+        throw new BadRequestException('INVALID_SCHOOL_CODE');
+      }
+      schoolId = school.id;
+    }
 
     // Bcrypt + Pepper
     const pepper =
       this.configService.get<string>('PASSWORD_PEPPER') || 'DEFAULT_PEPPER';
     const passwordHash = await bcrypt.hash(password + pepper, 10);
 
-    if (role === 'ADMIN') {
+    if (role === 'ADMIN' || role === 'SCHOOL_ADMIN') {
       throw new BadRequestException('UNAUTHORIZED_ADMIN_REGISTRATION');
     }
 
@@ -131,6 +140,7 @@ export class AuthService {
         fullName,
         role: role || 'STUDENT',
         isActive: role === 'TEACHER' ? false : true,
+        schoolId,
       },
     });
 
@@ -142,6 +152,7 @@ export class AuthService {
       sub: newUser.id,
       email: newUser.email,
       role: newUser.role,
+      schoolId: newUser.schoolId,
     };
     const plainToken = crypto.randomBytes(32).toString('hex');
     const refreshToken = `${newUser.id}.${plainToken}`;
@@ -160,6 +171,7 @@ export class AuthService {
         email: newUser.email,
         fullName: newUser.fullName,
         role: newUser.role,
+        schoolId: newUser.schoolId,
       },
     };
   }
@@ -187,8 +199,8 @@ export class AuthService {
       throw new UnauthorizedException('INVALID_CREDENTIALS');
     }
 
-    // Require OTP for ADMIN and TEACHER roles
-    if (user.role === 'ADMIN' || user.role === 'TEACHER') {
+    // Require OTP for ADMIN and TEACHER roles (and SCHOOL_ADMIN)
+    if (user.role === 'ADMIN' || user.role === 'SCHOOL_ADMIN' || user.role === 'TEACHER') {
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
@@ -225,7 +237,7 @@ export class AuthService {
     }
 
     // Generate tokens for STUDENT and PARENT roles
-    return this.generateTokens(user.id, user.email, user.role, user.fullName);
+    return this.generateTokens(user.id, user.email, user.role, user.fullName, user.schoolId);
   }
 
   async verifyLoginOtp(dto: VerifyOtpDto) {
@@ -257,7 +269,7 @@ export class AuthService {
     // Cleanup
     this.loginOtpStore.delete(email);
 
-    return this.generateTokens(user.id, user.email, user.role, user.fullName);
+    return this.generateTokens(user.id, user.email, user.role, user.fullName, user.schoolId);
   }
 
   private async generateTokens(
@@ -265,8 +277,9 @@ export class AuthService {
     email: string,
     role: string,
     fullName: string | null,
+    schoolId: string | null,
   ) {
-    const payload = { sub: userId, email, role };
+    const payload = { sub: userId, email, role, schoolId };
     const plainToken = crypto.randomBytes(32).toString('hex');
     const refreshToken = `${userId}.${plainToken}`;
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
@@ -284,6 +297,7 @@ export class AuthService {
         email,
         fullName,
         role,
+        schoolId,
       },
     };
   }
@@ -307,7 +321,7 @@ export class AuthService {
     }
 
     // Generate new tokens (Rotation)
-    const payload = { sub: user.id, email: user.email, role: user.role };
+    const payload = { sub: user.id, email: user.email, role: user.role, schoolId: user.schoolId };
     const plainToken = crypto.randomBytes(32).toString('hex');
     const newRefreshToken = `${user.id}.${plainToken}`;
     const newRefreshTokenHash = await bcrypt.hash(newRefreshToken, 10);
