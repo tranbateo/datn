@@ -1,16 +1,20 @@
 "use client";
- 
 
-import { Search, Filter, Calendar, ChevronLeft, ChevronRight, Users, MoreVertical, TrendingUp, AlertTriangle } from "lucide-react";
+import { Search, Filter, Download, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { teacherService } from "@/services/teacher.service";
 
 interface StudentData {
   id: string;
   name: string;
+  studentCode?: string | null;
   email: string;
   grade: string;
+  classId?: string | null;
+  className?: string | null;
+  isHomeroomTeacher?: boolean;
+  subjects?: string[];
   level?: number;
   streak?: number;
   initials: string;
@@ -25,6 +29,9 @@ export default function TeacherStudentsPage() {
   const t = useTranslations("Teacher.Students");
   const [students, setStudents] = useState<StudentData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedClass, setSelectedClass] = useState("all");
+  const [selectedStatus, setSelectedStatus] = useState("all");
 
   // Derive quick stats
   const activeToday = students.filter(s => s.lastActivity && new Date(s.lastActivity).toDateString() === new Date().toDateString()).length;
@@ -47,6 +54,42 @@ export default function TeacherStudentsPage() {
     loadStudents();
   }, []);
 
+  const classOptions = useMemo(() => {
+    const set = new Set<string>();
+    students.forEach((s) => {
+      if (s.className) set.add(s.className);
+      else if (s.grade) set.add(s.grade);
+    });
+    return Array.from(set);
+  }, [students]);
+
+  const filteredStudents = useMemo(() => {
+    return students.filter((s) => {
+      const matchesSearch =
+        !searchTerm ||
+        s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.studentCode?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesClass =
+        selectedClass === "all" ||
+        s.className === selectedClass ||
+        s.grade === selectedClass;
+
+      const matchesStatus =
+        selectedStatus === "all" ||
+        s.status === selectedStatus;
+
+      return matchesSearch && matchesClass && matchesStatus;
+    });
+  }, [students, searchTerm, selectedClass, selectedStatus]);
+
+  const handleExportHomeroomCredentials = () => {
+    const homeroomStudent = students.find((s) => s.isHomeroomTeacher && s.classId);
+    const query = homeroomStudent?.classId ? `?classId=${homeroomStudent.classId}` : '';
+    window.open(`/api/proxy/schools/export/credentials${query}`, '_blank');
+  };
+
   return (
     <div className="flex flex-col lg:flex-row gap-8">
       {/* Main Content - Table */}
@@ -61,10 +104,21 @@ export default function TeacherStudentsPage() {
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input 
                 type="text" 
-                placeholder={t('search')}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Tìm tên, mã HS, email..."
                 className="pl-9 pr-4 py-2 w-full sm:w-64 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
+            {students.some((s) => s.isHomeroomTeacher) && (
+              <button
+                onClick={handleExportHomeroomCredentials}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap shadow-sm"
+                title="Xuất danh sách tài khoản lớp chủ nhiệm"
+              >
+                <Download className="w-4 h-4" /> Xuất TK Lớp CN
+              </button>
+            )}
           </div>
         </div>
 
@@ -72,24 +126,37 @@ export default function TeacherStudentsPage() {
           {/* Filters */}
           <div className="border-b border-gray-100 dark:border-card-border p-4 flex items-center justify-between overflow-x-auto scrollbar-hide">
             <div className="flex items-center gap-2">
-              <button className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+              <span className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg">
                 <Filter className="w-4 h-4" /> {t('filter')}
-              </button>
-              <select className="text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none min-w-[120px]">
-                <option>{t('allGrades')}</option>
-                <option>Lớp 9</option>
-                <option>Lớp 10</option>
+              </span>
+              <select
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+                className="text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 min-w-[140px]"
+              >
+                <option value="all">Tất cả lớp</option>
+                {classOptions.map((cls) => (
+                  <option key={cls} value={cls}>{cls}</option>
+                ))}
               </select>
-              <select className="text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none min-w-[120px]">
-                <option>{t('anyStatus')}</option>
-                <option>{t('active')}</option>
-                <option>{t('atRisk')}</option>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 min-w-[120px]"
+              >
+                <option value="all">{t('anyStatus')}</option>
+                <option value="Active">{t('active')}</option>
+                <option value="At Risk">{t('atRisk')}</option>
               </select>
-              <button className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                <Calendar className="w-4 h-4" /> {t('registrationDate')}
-              </button>
             </div>
-            <button className="text-sm font-medium text-primary hover:text-primary-hover px-2">
+            <button
+              onClick={() => {
+                setSearchTerm("");
+                setSelectedClass("all");
+                setSelectedStatus("all");
+              }}
+              className="text-sm font-medium text-primary hover:text-primary-hover px-2"
+            >
               {t('clearFilters')}
             </button>
           </div>
@@ -99,44 +166,67 @@ export default function TeacherStudentsPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-card-border text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold bg-gray-50/50 dark:bg-gray-800/20">
-                  <th className="px-6 py-4 w-12"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></th>
                   <th className="px-6 py-4">{t('studentName')}</th>
-                  <th className="px-6 py-4">{t('grade')}</th>
+                  <th className="px-6 py-4">Lớp / Vai trò GV</th>
                   <th className="px-6 py-4">Level & Streak</th>
                   <th className="px-6 py-4">{t('lastActivity')}</th>
-                  <th className="px-6 py-4">{t('progress')}</th>
+                  <th className="px-6 py-4">Điểm TB ({t('progress')})</th>
                   <th className="px-6 py-4">{t('status')}</th>
-                  <th className="px-6 py-4 w-12"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-card-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                       Đang tải danh sách học sinh...
                     </td>
                   </tr>
-                ) : students.length === 0 ? (
+                ) : filteredStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                      Chưa có học sinh nào.
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                      Chưa có học sinh nào phù hợp.
                     </td>
                   </tr>
-                ) : students.map((student) => (
+                ) : filteredStudents.map((student) => (
                   <tr key={student.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group">
-                    <td className="px-6 py-4"><input type="checkbox" className="rounded border-gray-300 text-primary focus:ring-primary/20" /></td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-full ${student.color || 'bg-indigo-500'} flex items-center justify-center text-white text-xs font-bold shadow-sm`}>
                           {student.initials || 'HS'}
                         </div>
                         <div>
-                          <div className="font-semibold text-gray-900 dark:text-white text-sm">{student.name}</div>
+                          <div className="font-semibold text-gray-900 dark:text-white text-sm flex items-center gap-2">
+                            {student.name}
+                            {student.studentCode && (
+                              <span className="text-[11px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                                {student.studentCode}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">{student.email}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{student.grade}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm text-gray-700 dark:text-gray-200 font-semibold">
+                          {student.className || student.grade}
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {student.isHomeroomTeacher ? (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                              GVCN (Toàn bộ môn)
+                            </span>
+                          ) : (
+                            student.subjects?.map((subj, idx) => (
+                              <span key={idx} className="text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                GVBM: {subj}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">Lv {student.level || 1}</span>
@@ -146,7 +236,7 @@ export default function TeacherStudentsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                      {student.lastActivity ? new Date(student.lastActivity).toLocaleDateString() : 'Chưa có'}
+                      {student.lastActivity ? new Date(student.lastActivity).toLocaleDateString('vi-VN') : 'Chưa có'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -168,11 +258,6 @@ export default function TeacherStudentsPage() {
                         {student.status === 'Active' ? t('active') : student.status === 'At Risk' ? t('atRisk') : t('inactive')}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
-                      <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <MoreVertical className="w-5 h-5" />
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -180,7 +265,7 @@ export default function TeacherStudentsPage() {
           </div>
 
           <div className="border-t border-gray-100 dark:border-card-border p-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-            <div>Hiển thị {students.length} học sinh</div>
+            <div>Hiển thị {filteredStudents.length} / {students.length} học sinh</div>
           </div>
         </div>
       </div>
@@ -218,9 +303,6 @@ export default function TeacherStudentsPage() {
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t('studentsAtRisk')}</p>
           <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">{studentsAtRisk}</h3>
-          <a href="#" className="text-sm font-medium text-primary hover:text-primary-hover flex items-center gap-1 transition-colors">
-            {t('viewActionPlan')}
-          </a>
         </div>
       </div>
     </div>

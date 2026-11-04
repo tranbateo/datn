@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateUserDto,
@@ -7,6 +11,7 @@ import {
   AdminUpdateUserDto,
 } from './dto/users.dto';
 import { ConfigService } from '@nestjs/config';
+import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -25,7 +30,7 @@ export class UsersService {
           email,
           role,
           gamificationProfile: {
-            create: {}, // creates default profile
+            create: {},
           },
         },
       });
@@ -35,7 +40,7 @@ export class UsersService {
     return user;
   }
 
-  async create(dto: CreateUserDto) {
+  async create(dto: CreateUserDto, schoolId?: string | null) {
     const { password, ...rest } = dto;
     let passwordHash = null;
     if (password) {
@@ -46,6 +51,7 @@ export class UsersService {
     const user = await this.prisma.user.create({
       data: {
         ...rest,
+        schoolId: schoolId || null,
         passwordHash,
       },
     });
@@ -54,8 +60,9 @@ export class UsersService {
     return user;
   }
 
-  async findAll() {
+  async findAll(schoolId?: string | null) {
     const users = await this.prisma.user.findMany({
+      where: schoolId ? { schoolId } : {},
       orderBy: { createdAt: 'desc' },
     });
     return users.map((user) => {
@@ -65,22 +72,74 @@ export class UsersService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, requester?: { id: string; role: Role; schoolId: string | null }) {
     const user = await this.prisma.user.findUnique({
       where: { id },
+      include: {
+        school: {
+          select: { id: true, name: true, code: true, level: true },
+        },
+        classEnrollments: {
+          where: { status: 'ACTIVE' },
+          include: {
+            class: {
+              select: {
+                id: true,
+                name: true,
+                grade: true,
+                homeroomTeacher: {
+                  select: { id: true, fullName: true, email: true, phone: true },
+                },
+              },
+            },
+          },
+        },
+        homeroomClasses: {
+          select: { id: true, name: true, grade: true },
+        },
+        subjectClasses: {
+          include: {
+            class: { select: { id: true, name: true, grade: true } },
+            subject: { select: { id: true, name: true, grade: true } },
+          },
+        },
+      },
     });
     if (!user) throw new NotFoundException('User not found');
+
+    // Ownership & School Isolation check (BR-USER-001)
+    if (requester && requester.id !== id && requester.role !== Role.ADMIN) {
+      if (
+        requester.role === Role.STUDENT ||
+        requester.role === Role.PARENT ||
+        (requester.schoolId && user.schoolId !== requester.schoolId)
+      ) {
+        throw new ForbiddenException('Không có quyền truy cập hồ sơ người dùng khác.');
+      }
+    }
+
     delete (user as any).passwordHash;
     delete (user as any).refreshTokenHash;
     return user;
   }
 
-  async update(id: string, dto: UpdateUserDto | AdminUpdateUserDto) {
+  async update(
+    id: string,
+    dto: UpdateUserDto | AdminUpdateUserDto,
+    requesterRole?: Role,
+  ) {
     const data: any = { ...dto };
+
+    // BR-LEVEL-001: Student cannot self-change official academic grade
+    if (requesterRole === Role.STUDENT && 'grade' in data) {
+      delete data.grade;
+    }
+
     if ('password' in data && data.password) {
       const pepper =
         this.configService.get<string>('PASSWORD_PEPPER') || 'DEFAULT_PEPPER';
       data.passwordHash = await bcrypt.hash(data.password + pepper, 10);
+      data.mustChangePassword = false;
       delete data.password;
     }
 

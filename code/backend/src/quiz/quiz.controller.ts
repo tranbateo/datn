@@ -13,12 +13,50 @@ import {
   Request,
 } from '@nestjs/common';
 import { QuizService } from './quiz.service';
-import { Prisma, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { SubmitQuizDto } from './dto/submit-quiz.dto';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
+import { Allow, IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+
+export class CreateQuizInputDto {
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsNumber()
+  grade?: number;
+
+  @IsOptional()
+  @IsString()
+  subjectId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  duration?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isGraduation?: boolean;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @Allow()
+  subject?: { connect?: { id: string } };
+
+  @IsOptional()
+  @Allow()
+  questions?: any;
+}
 
 @Controller('quiz')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -26,43 +64,43 @@ export class QuizController {
   constructor(private readonly quizService: QuizService) {}
 
   @Post()
-  @Roles(Role.TEACHER, Role.ADMIN)
-  create(@Body() createQuizDto: Prisma.QuizCreateInput) {
-    return this.quizService.create(createQuizDto);
+  @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
+  create(@Request() req: any, @Body() createQuizDto: CreateQuizInputDto) {
+    return this.quizService.create(createQuizDto as any, req.user);
   }
 
   @Get()
-  findAll() {
-    return this.quizService.findAll();
+  findAll(@Request() req: any) {
+    return this.quizService.findAll(req.user);
   }
 
   @Get('subject/:subjectId')
-  findBySubject(@Param('subjectId') subjectId: string) {
-    return this.quizService.findBySubject(subjectId);
+  findBySubject(@Request() req: any, @Param('subjectId') subjectId: string) {
+    return this.quizService.findBySubject(subjectId, req.user);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.quizService.findOne(id);
+  findOne(@Request() req: any, @Param('id') id: string) {
+    return this.quizService.findOne(id, req.user);
   }
 
   @Patch(':id')
-  @Roles(Role.TEACHER, Role.ADMIN)
+  @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
   update(
     @Param('id') id: string,
-    @Body() updateQuizDto: Prisma.QuizUpdateInput,
+    @Body() updateQuizDto: Partial<CreateQuizInputDto>,
   ) {
-    return this.quizService.update(id, updateQuizDto);
+    return this.quizService.update(id, updateQuizDto as any);
   }
 
   @Delete(':id')
-  @Roles(Role.TEACHER, Role.ADMIN)
+  @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
   remove(@Param('id') id: string) {
     return this.quizService.remove(id);
   }
 
   @Post('generate-ai-quiz')
-  @Roles(Role.TEACHER, Role.ADMIN)
+  @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
   async generateAiQuiz(@Body() generateQuizDto: GenerateQuizDto) {
     return this.quizService.generateAiQuiz(generateQuizDto);
   }
@@ -74,13 +112,7 @@ export class QuizController {
     @Body() submitQuizDto: SubmitQuizDto,
     @Request() req: any,
   ) {
-    let userId = req.user.userId; // assuming JwtAuthGuard sets user on req
-    if (userId === 'student1@test.com') {
-      const user = await this.quizService['prisma'].user.findUnique({
-        where: { email: 'student1@test.com' },
-      });
-      if (user) userId = user.id;
-    }
+    const userId = req.user.id || req.user.userId;
     return this.quizService.submitQuiz(id, userId, submitQuizDto);
   }
 }

@@ -11,9 +11,20 @@ import { Role, SubscriptionTier } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateUserDto {
-  @ApiProperty()
+  @ApiProperty({ required: false })
   @IsEmail()
-  email: string;
+  @IsOptional()
+  email?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  studentCode?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  phone?: string;
 
   @ApiProperty({ required: false })
   @IsString()
@@ -44,9 +55,20 @@ export class UpdateUserDto {
   avatarUrl?: string;
 
   @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @ApiProperty({ required: false })
   @IsNumber()
   @IsOptional()
   grade?: number;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  @MinLength(6)
+  password?: string;
 
   @ApiProperty({ required: false })
   @IsString()

@@ -5,6 +5,7 @@ import {
   Post,
   Body,
   Patch,
+  Put,
   Param,
   Delete,
   UseGuards,
@@ -35,60 +36,75 @@ export class UsersController {
   @ApiOperation({ summary: 'Sync user from third-party provider' })
   @Post('sync')
   syncUser(@Request() req: any) {
-    const user = req.user; // from JwtStrategy
+    const user = req.user;
     const userId = user.id || user.userId;
     return this.usersService.syncUser(userId, user.email, user.role);
   }
 
   @ApiOperation({ summary: 'Create user manually (Admin only)' })
   @Post()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SCHOOL_ADMIN)
   async create(@Request() req: any, @Body() createUserDto: CreateUserDto) {
     const adminId = req.user.id || req.user.userId;
-    const user = await this.usersService.create(createUserDto);
+    const user = await this.usersService.create(
+      createUserDto,
+      req.user.schoolId,
+    );
     await this.auditLogService.logAction(adminId, 'CREATE_USER', 'User', {
       targetUserId: user.id,
     });
     return user;
   }
 
-  @ApiOperation({ summary: 'List all users' })
+  @ApiOperation({ summary: 'List all users in school' })
   @Get()
-  @Roles(Role.ADMIN, Role.TEACHER)
-  findAll() {
-    return this.usersService.findAll();
+  @Roles(Role.ADMIN, Role.SCHOOL_ADMIN)
+  findAll(@Request() req: any) {
+    return this.usersService.findAll(req.user.schoolId);
   }
 
   @ApiOperation({ summary: 'Get current user profile' })
   @Get('profile')
   getProfile(@Request() req: any) {
     const userId = req.user.id || req.user.userId;
-    return this.usersService.findOne(userId);
+    return this.usersService.findOne(userId, req.user);
   }
 
   @ApiOperation({ summary: 'Get user by id' })
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  @Roles(Role.ADMIN, Role.SCHOOL_ADMIN, Role.TEACHER)
+  findOne(@Request() req: any, @Param('id') id: string) {
+    return this.usersService.findOne(id, req.user);
   }
 
-  @ApiOperation({ summary: 'Update current user profile' })
+  @ApiOperation({ summary: 'Update current user profile (PATCH)' })
   @Patch('profile')
   updateProfile(@Request() req: any, @Body() updateUserDto: UpdateUserDto) {
     const userId = req.user.id || req.user.userId;
-    return this.usersService.update(userId, updateUserDto);
+    return this.usersService.update(userId, updateUserDto, req.user.role);
+  }
+
+  @ApiOperation({ summary: 'Update current user profile (PUT)' })
+  @Put('profile')
+  updateProfilePut(@Request() req: any, @Body() updateUserDto: UpdateUserDto) {
+    const userId = req.user.id || req.user.userId;
+    return this.usersService.update(userId, updateUserDto, req.user.role);
   }
 
   @ApiOperation({ summary: 'Update any user profile (Admin only)' })
   @Patch(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SCHOOL_ADMIN)
   async update(
     @Request() req: any,
     @Param('id') id: string,
     @Body() adminUpdateUserDto: AdminUpdateUserDto,
   ) {
     const adminId = req.user.id || req.user.userId;
-    const user = await this.usersService.update(id, adminUpdateUserDto);
+    const user = await this.usersService.update(
+      id,
+      adminUpdateUserDto,
+      req.user.role,
+    );
     await this.auditLogService.logAction(adminId, 'UPDATE_USER', 'User', {
       targetUserId: id,
       changes: adminUpdateUserDto,
@@ -98,7 +114,7 @@ export class UsersController {
 
   @ApiOperation({ summary: 'Delete user (Admin only)' })
   @Delete(':id')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SCHOOL_ADMIN)
   async remove(@Request() req: any, @Param('id') id: string) {
     const adminId = req.user.id || req.user.userId;
     const user = await this.usersService.remove(id);

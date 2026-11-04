@@ -5,6 +5,7 @@ import {
   Body,
   Param,
   Put,
+  Query,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -74,22 +75,29 @@ export class SchoolsController {
   @Roles(Role.ADMIN, Role.SCHOOL_ADMIN)
   @ApiOperation({ summary: 'Get current school license & AI quota status' })
   @Get('license/me')
-  getMySchoolLicense(@Req() req: RequestWithUser) {
-    const schoolId = req.user.schoolId;
-    if (!schoolId) {
-      throw new BadRequestException('Tài khoản không thuộc trường học nào.');
-    }
+  async getMySchoolLicense(
+    @Req() req: RequestWithUser,
+    @Query('schoolId') querySchoolId?: string,
+  ) {
+    const schoolId = await this.schoolsService.resolveSchoolId(
+      req.user.schoolId,
+      querySchoolId,
+    );
     return this.schoolsService.getLicense(schoolId);
   }
 
-  @Roles(Role.SCHOOL_ADMIN)
+  @Roles(Role.SCHOOL_ADMIN, Role.ADMIN)
   @ApiOperation({ summary: 'Update BYOK API key (Bring Your Own Key)' })
   @Put('license/byok')
-  updateByokKey(@Req() req: RequestWithUser, @Body() dto: UpdateByokKeyDto) {
-    const schoolId = req.user.schoolId;
-    if (!schoolId) {
-      throw new BadRequestException('Tài khoản không thuộc trường học nào.');
-    }
+  async updateByokKey(
+    @Req() req: RequestWithUser,
+    @Body() dto: UpdateByokKeyDto,
+    @Query('schoolId') querySchoolId?: string,
+  ) {
+    const schoolId = await this.schoolsService.resolveSchoolId(
+      req.user.schoolId,
+      querySchoolId,
+    );
     return this.schoolsService.updateByokKey(schoolId, dto);
   }
 
@@ -105,7 +113,8 @@ export class SchoolsController {
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename=Template_Import_TruongHoc.xlsx',
+      'Content-Disposition':
+        'attachment; filename=Template_Import_TruongHoc.xlsx',
       'Content-Length': buffer.length,
     });
 
@@ -120,14 +129,15 @@ export class SchoolsController {
   async previewImport(
     @Req() req: RequestWithUser,
     @UploadedFile() file: Express.Multer.File,
+    @Query('schoolId') querySchoolId?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Vui lòng chọn file Excel để kiểm tra.');
     }
-    const schoolId = req.user.schoolId;
-    if (!schoolId) {
-      throw new BadRequestException('Tài khoản không thuộc trường học nào.');
-    }
+    const schoolId = await this.schoolsService.resolveSchoolId(
+      req.user.schoolId,
+      querySchoolId,
+    );
     return this.schoolsImportService.previewImport(schoolId, file.buffer);
   }
 
@@ -139,29 +149,31 @@ export class SchoolsController {
   async executeImport(
     @Req() req: RequestWithUser,
     @UploadedFile() file: Express.Multer.File,
+    @Query('schoolId') querySchoolId?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Vui lòng chọn file Excel để import.');
     }
-    const schoolId = req.user.schoolId;
-    if (!schoolId) {
-      throw new BadRequestException('Tài khoản không thuộc trường học nào.');
-    }
+    const schoolId = await this.schoolsService.resolveSchoolId(
+      req.user.schoolId,
+      querySchoolId,
+    );
     return this.schoolsImportService.executeImport(schoolId, file.buffer);
   }
 
-  @Roles(Role.SCHOOL_ADMIN, Role.ADMIN)
+  @Roles(Role.SCHOOL_ADMIN, Role.ADMIN, Role.TEACHER)
   @ApiOperation({ summary: 'Export issued account credentials for classes' })
   @Get('export/credentials')
   async exportCredentials(
     @Req() req: RequestWithUser,
     @Res() res: Response,
-    @Param('classId') classId?: string,
+    @Query('classId') classId?: string,
+    @Query('schoolId') querySchoolId?: string,
   ) {
-    const schoolId = req.user.schoolId;
-    if (!schoolId) {
-      throw new BadRequestException('Tài khoản không thuộc trường học nào.');
-    }
+    const schoolId = await this.schoolsService.resolveSchoolId(
+      req.user.schoolId,
+      querySchoolId,
+    );
     const buffer = await this.schoolsImportService.exportCredentials(
       schoolId,
       classId,
@@ -191,10 +203,17 @@ export class SchoolsController {
     return this.schoolsService.findOne(id);
   }
 
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Update school status/name (System Admin)' })
+  @Roles(Role.ADMIN, Role.SCHOOL_ADMIN)
+  @ApiOperation({ summary: 'Update school status/name' })
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateSchoolDto) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateSchoolDto,
+    @Req() req: RequestWithUser,
+  ) {
+    if (req.user.role === Role.SCHOOL_ADMIN && req.user.schoolId !== id) {
+      throw new ForbiddenException('Không có quyền chỉnh sửa trường học khác.');
+    }
     return this.schoolsService.update(id, dto);
   }
 }

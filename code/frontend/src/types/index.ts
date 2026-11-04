@@ -4,7 +4,10 @@ export interface User {
   fullName: string;
   role: string;
   avatarUrl?: string;
-  grade?: string | null;
+  grade?: string | number | null;
+  studentCode?: string | null;
+  phoneNumber?: string | null;
+  schoolId?: string | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -17,10 +20,22 @@ export interface GamificationProfile {
 
 export interface Student extends User {
   gamificationProfile?: GamificationProfile;
+  classEnrollments?: Array<{
+    class?: {
+      id: string;
+      name: string;
+      grade?: number | null;
+    };
+  }>;
 }
 
 export interface Teacher extends User {
   courses?: Course[];
+  homeroomClasses?: Array<{ id: string; name: string }>;
+  subjectClasses?: Array<{
+    class?: { id: string; name: string };
+    subject?: { id: string; name: string };
+  }>;
 }
 
 export interface Course {

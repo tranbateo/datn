@@ -1,17 +1,18 @@
- 
 import { NextResponse, type NextRequest } from 'next/server';
 import { decodeJwt } from 'jose';
 
 export async function updateSession(request: NextRequest, response: NextResponse) {
   const token = request.cookies.get('auth-token')?.value;
-  
+
   let userRole = 'student';
+  let mustChangePassword = false;
   let user: any | null = null;
 
   if (token) {
     try {
       user = decodeJwt(token);
       userRole = (user.role as string)?.toLowerCase() || 'student';
+      mustChangePassword = Boolean(user.mustChangePassword);
     } catch {
       // Invalid token
     }
@@ -19,71 +20,82 @@ export async function updateSession(request: NextRequest, response: NextResponse
 
   const pathname = request.nextUrl.pathname;
   const locale = pathname.startsWith('/en') ? '/en' : '/vi';
+  const isAdminLike = userRole === 'admin' || userRole === 'school_admin';
 
+  const isChangePasswordRoute = /^\/(vi|en)\/change-password/.test(pathname);
   const isAdminRoute = /^\/(vi|en)\/admin(?!\/login)/.test(pathname);
   const isAdminLoginRoute = /^\/(vi|en)\/admin\/login/.test(pathname);
   const isStudentAuthRoute = /^\/(vi|en)\/(login|register)/.test(pathname);
   const isTeacherRoute = /^\/(vi|en)\/teacher/.test(pathname);
   const isParentRoute = /^\/(vi|en)\/parent/.test(pathname);
+  const isDashboardRoute = /^\/(vi|en)\/dashboard/.test(pathname);
 
-  // 1. Admin Route Protection
+  const getHomeForRole = (role: string) => {
+    if (role === 'admin' || role === 'school_admin') return `${locale}/admin`;
+    if (role === 'teacher') return `${locale}/teacher`;
+    if (role === 'parent') return `${locale}/parent`;
+    return `${locale}/dashboard`;
+  };
+
+  // 0. Enforce First-time Password Change (BR-AUTH-003)
+  if (user && mustChangePassword && !isChangePasswordRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = `${locale}/change-password`;
+    return NextResponse.redirect(url);
+  }
+
+  if (isChangePasswordRoute) {
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = `${locale}/login`;
+      return NextResponse.redirect(url);
+    }
+    if (!mustChangePassword) {
+      const url = request.nextUrl.clone();
+      url.pathname = getHomeForRole(userRole);
+      return NextResponse.redirect(url);
+    }
+    return response;
+  }
+
+  // 1. Admin & School Admin Route Protection
   if (isAdminRoute) {
     if (!user) {
       const url = request.nextUrl.clone();
       url.pathname = `${locale}/admin/login`;
       return NextResponse.redirect(url);
     }
-    if (userRole !== 'admin') {
+    if (!isAdminLike) {
       const url = request.nextUrl.clone();
-      url.pathname = `${locale}/`;
+      url.pathname = getHomeForRole(userRole);
       return NextResponse.redirect(url);
     }
   }
 
   // 2. Admin Login Route Protection
   if (isAdminLoginRoute && user) {
-    if (userRole === 'admin') {
-      const url = request.nextUrl.clone();
-      url.pathname = `${locale}/admin`;
-      return NextResponse.redirect(url);
-    } else {
-      const url = request.nextUrl.clone();
-      url.pathname = `${locale}/`;
-      return NextResponse.redirect(url);
-    }
+    const url = request.nextUrl.clone();
+    url.pathname = getHomeForRole(userRole);
+    return NextResponse.redirect(url);
   }
 
   // 3. Student Auth Route Protection
   if (isStudentAuthRoute && user) {
     const url = request.nextUrl.clone();
-    if (userRole === 'admin') url.pathname = `${locale}/admin`;
-    else if (userRole === 'teacher') url.pathname = `${locale}/teacher`;
-    else if (userRole === 'parent') url.pathname = `${locale}/parent`;
-    else url.pathname = `${locale}/dashboard`;
+    url.pathname = getHomeForRole(userRole);
     return NextResponse.redirect(url);
   }
 
   // 4. Student Dashboard Route Protection
-  const isDashboardRoute = /^\/(vi|en)\/dashboard/.test(pathname);
   if (isDashboardRoute) {
     if (!user) {
       const url = request.nextUrl.clone();
       url.pathname = `${locale}/login`;
       return NextResponse.redirect(url);
     }
-    if (userRole === 'admin') {
+    if (userRole !== 'student') {
       const url = request.nextUrl.clone();
-      url.pathname = `${locale}/admin`;
-      return NextResponse.redirect(url);
-    }
-    if (userRole === 'teacher') {
-      const url = request.nextUrl.clone();
-      url.pathname = `${locale}/teacher`;
-      return NextResponse.redirect(url);
-    }
-    if (userRole === 'parent') {
-      const url = request.nextUrl.clone();
-      url.pathname = `${locale}/parent`;
+      url.pathname = getHomeForRole(userRole);
       return NextResponse.redirect(url);
     }
   }
@@ -97,7 +109,7 @@ export async function updateSession(request: NextRequest, response: NextResponse
     }
     if (userRole !== 'teacher') {
       const url = request.nextUrl.clone();
-      url.pathname = userRole === 'admin' ? `${locale}/admin` : userRole === 'parent' ? `${locale}/parent` : `${locale}/dashboard`;
+      url.pathname = getHomeForRole(userRole);
       return NextResponse.redirect(url);
     }
   }
@@ -111,18 +123,17 @@ export async function updateSession(request: NextRequest, response: NextResponse
     }
     if (userRole !== 'parent') {
       const url = request.nextUrl.clone();
-      url.pathname = userRole === 'admin' ? `${locale}/admin` : userRole === 'teacher' ? `${locale}/teacher` : `${locale}/dashboard`;
+      url.pathname = getHomeForRole(userRole);
       return NextResponse.redirect(url);
     }
   }
 
-  // 6. Prevent Admin from accessing Student/Marketing routes
-  if (user && userRole === 'admin' && !isAdminRoute && !isAdminLoginRoute) {
+  // 7. Prevent Admin / School Admin from staying on Student/Marketing routes
+  if (user && isAdminLike && !isAdminRoute && !isAdminLoginRoute) {
     const url = request.nextUrl.clone();
     url.pathname = `${locale}/admin`;
     return NextResponse.redirect(url);
   }
 
-  // Return the intlResponse passed from proxy.ts
   return response;
 }

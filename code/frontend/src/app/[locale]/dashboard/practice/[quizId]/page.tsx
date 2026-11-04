@@ -3,7 +3,7 @@
 import { APP_ROUTES } from '@/constants/routes';
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { quizService, Quiz } from "@/services/quiz.service";
+import { quizService, Quiz, QuestionResult } from "@/services/quiz.service";
 import { Loader2, ArrowLeft, Clock, CheckCircle, XCircle } from "lucide-react";
 import { Link } from "@/i18n/routing";
 
@@ -15,7 +15,12 @@ export default function TakeQuizPage() {
   const [loading, setLoading] = useState(true);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ score: number; total: number; xp: number } | null>(null);
+  const [result, setResult] = useState<{
+    score: number;
+    total: number;
+    xp: number;
+    questionResults?: Record<string, QuestionResult>;
+  } | null>(null);
   
   const [timeLeft, setTimeLeft] = useState(0);
 
@@ -23,7 +28,7 @@ export default function TakeQuizPage() {
     quizService.getQuizById(quizId)
       .then(q => {
         setQuiz(q);
-        setTimeLeft(q.duration * 60);
+        setTimeLeft((q.duration || 15) * 60);
         setLoading(false);
       })
       .catch(err => {
@@ -40,14 +45,13 @@ export default function TakeQuizPage() {
   }, [timeLeft, result]);
 
   const handleOptionSelect = (questionId: string, option: string) => {
-    if (result) return; // Prevent changing answer after submit
+    if (result) return;
     setAnswers(prev => ({ ...prev, [questionId]: option }));
   };
 
   const handleSubmit = async () => {
     if (!quiz) return;
     
-    // Check if all questions are answered
     if (Object.keys(answers).length < (quiz.questions?.length || 0)) {
       if (!confirm("Bạn chưa hoàn thành tất cả câu hỏi. Bạn có chắc chắn muốn nộp bài?")) {
         return;
@@ -62,10 +66,17 @@ export default function TakeQuizPage() {
 
     try {
       const res = await quizService.submitQuiz(quiz.id, formattedAnswers);
+      const resultMap: Record<string, QuestionResult> = {};
+      if (Array.isArray(res.questionResults)) {
+        res.questionResults.forEach((qr) => {
+          resultMap[qr.questionId] = qr;
+        });
+      }
       setResult({
         score: res.score,
         total: res.totalQuestions,
-        xp: res.xpEarned
+        xp: res.xpEarned,
+        questionResults: resultMap,
       });
     } catch (err) {
       console.error(err);
@@ -135,12 +146,16 @@ export default function TakeQuizPage() {
       {/* Questions */}
       <div className="space-y-6">
         {quiz.questions?.map((q, index) => {
-          let options = [];
+          let options: string[] = [];
           try {
-            options = JSON.parse(q.options);
+            options = typeof q.options === 'string' ? JSON.parse(q.options) : q.options;
           } catch {
-            options = [q.options]; // fallback
+            options = [String(q.options)];
           }
+
+          const qr = result?.questionResults?.[q.id];
+          const correctOption = qr?.correctOption ?? q.correctOption;
+          const explanation = qr?.explanation ?? q.explanation;
 
           return (
             <div key={q.id} className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
@@ -156,7 +171,7 @@ export default function TakeQuizPage() {
                   let icon = null;
 
                   if (result) {
-                    const isCorrect = q.correctOption === opt;
+                    const isCorrect = correctOption === opt;
                     if (isCorrect) {
                       optionClass = "border-green-500 bg-green-50 dark:bg-green-900/20";
                       icon = <CheckCircle className="w-5 h-5 text-green-500 ml-auto" />;
@@ -180,7 +195,7 @@ export default function TakeQuizPage() {
                         isSelected ? 'border-indigo-500' : 'border-gray-300'
                       }`}>
                         {isSelected && !result && <div className="w-3 h-3 bg-indigo-500 rounded-full" />}
-                        {isSelected && result && <div className={`w-3 h-3 rounded-full ${q.correctOption === opt ? 'bg-green-500' : 'bg-red-500'}`} />}
+                        {isSelected && result && <div className={`w-3 h-3 rounded-full ${correctOption === opt ? 'bg-green-500' : 'bg-red-500'}`} />}
                       </div>
                       <span className={`text-gray-700 dark:text-gray-200 ${isSelected ? 'font-medium' : ''}`}>
                         {opt}
@@ -191,10 +206,10 @@ export default function TakeQuizPage() {
                 })}
               </div>
 
-              {result && q.explanation && (
+              {result && explanation && (
                 <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800">
                   <p className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-1">Giải thích:</p>
-                  <p className="text-sm text-blue-700 dark:text-blue-400">{q.explanation}</p>
+                  <p className="text-sm text-blue-700 dark:text-blue-400">{explanation}</p>
                 </div>
               )}
             </div>

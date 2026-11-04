@@ -18,13 +18,45 @@ export class QuotaGuard implements CanActivate {
 
     if (!user) return false;
 
+    // 1. Check School License & AI Quota (BR-AI-QUOTA / FR-RAG-005 Graceful Degradation)
+    if (user.schoolId) {
+      const school = await this.prisma.school.findUnique({
+        where: { id: user.schoolId as string },
+      });
+
+      if (school) {
+        if (!school.isActive) {
+          throw new ForbiddenException(
+            'Trường học hiện đang tạm ngưng hoạt động. Vui lòng liên hệ Ban giám hiệu.',
+          );
+        }
+
+        if (
+          school.licenseExpiresAt &&
+          new Date() > school.licenseExpiresAt
+        ) {
+          throw new ForbiddenException(
+            'Bản quyền hệ thống của nhà trường đã hết hạn. Vui lòng liên hệ Ban giám hiệu để gia hạn.',
+          );
+        }
+
+        // If school uses SYSTEM token package (not BYOK) and quota is exhausted -> Graceful Degradation
+        const isByokActive =
+          school.aiProvider === 'BYOK' &&
+          Boolean(school.customApiKey && school.customApiKey.trim());
+
+        if (!isByokActive && school.aiTokensUsed >= school.aiTokenQuota) {
+          throw new ForbiddenException(
+            'Hạn mức AI của nhà trường đã tạm hết, vui lòng liên hệ Ban giám hiệu.',
+          );
+        }
+      }
+    }
+
+    // 2. Daily student message limit tracking
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (user.role !== 'STUDENT') return true;
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    if (user.tier === 'PRO') return true;
-
-    // Free tier logic: max 10 messages per day
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -50,9 +82,9 @@ export class QuotaGuard implements CanActivate {
       });
     }
 
-    if (usage.messageCount >= 10) {
+    if (usage.messageCount >= 50) {
       throw new ForbiddenException(
-        'Bạn đã hết lượt chat miễn phí hôm nay (10/10). Vui lòng nâng cấp VIP để tiếp tục sử dụng.',
+        'Bạn đã sử dụng hết hạn mức 50 câu hỏi AI trong ngày hôm nay. Vui lòng quay lại vào ngày mai nhé!',
       );
     }
 

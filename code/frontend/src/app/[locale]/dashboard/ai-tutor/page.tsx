@@ -1,19 +1,32 @@
 "use client";
 
 import { API_ENDPOINTS } from '@/constants/api';
-
-
 import { useState, useRef, useEffect } from "react";
-import { Search, Edit, Send, Mic, ChevronLeft, Bot, User, Flag, X } from "lucide-react";
+import { Search, Edit, Send, Mic, ChevronLeft, Bot, User, Flag, X, BookOpen, MessageSquare } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { fetchApi, fetchApiStream } from "@/lib/api-client";
 import ReactMarkdown from "react-markdown";
+
+interface Citation {
+  documentId: string;
+  fileName: string;
+  page?: number | null;
+  snippet?: string;
+}
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  citations?: Citation[];
   createdAt?: string;
+}
+
+interface ChatSessionItem {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 // Minimal types for SpeechRecognition
@@ -49,6 +62,8 @@ interface WindowWithSpeech extends Window {
 
 export default function AITutorPage() {
   const [showHistory, setShowHistory] = useState(false);
+  const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
+  const [historySearch, setHistorySearch] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -69,11 +84,49 @@ export default function AITutorPage() {
     scrollToBottom();
   }, [messages, loading]);
 
+  const loadSessions = async () => {
+    try {
+      const data = await fetchApi<ChatSessionItem[]>("/chat/sessions");
+      if (Array.isArray(data)) {
+        setSessions(data);
+      }
+    } catch (err) {
+      console.error("Failed to load chat sessions:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadSessions();
+  }, []);
+
+  const handleSelectSession = async (id: string) => {
+    setSessionId(id);
+    setShowHistory(false);
+    setLoading(true);
+    try {
+      const data = await fetchApi<{ id: string; messages: any[] }>(`/chat/session/${id}`);
+      if (data?.messages) {
+        setMessages(
+          data.messages.map((m: any) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            citations: Array.isArray(m.citations) ? m.citations : undefined,
+            createdAt: m.createdAt,
+          })),
+        );
+      }
+    } catch (err) {
+      console.error("Failed to load session messages:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
-    // Initialize SpeechRecognition if available
     if (typeof window !== 'undefined') {
       const windowWithSpeech = window as unknown as WindowWithSpeech;
       const SpeechRecognitionConstructor = windowWithSpeech.SpeechRecognition || windowWithSpeech.webkitSpeechRecognition;
@@ -81,7 +134,7 @@ export default function AITutorPage() {
         recognitionRef.current = new SpeechRecognitionConstructor();
         recognitionRef.current.continuous = false;
         recognitionRef.current.interimResults = false;
-        recognitionRef.current.lang = 'vi-VN'; // Vietnamese
+        recognitionRef.current.lang = 'vi-VN';
 
         recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
           const transcript = event.results[0][0].transcript;
@@ -115,7 +168,7 @@ export default function AITutorPage() {
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || loading) return;
-// ... (rest of handleSendMessage remains unchanged)
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -128,7 +181,6 @@ export default function AITutorPage() {
 
     const aiMsgId = (Date.now() + 1).toString();
 
-    // Add empty AI message that will be filled by stream
     setMessages(prev => [...prev, {
       id: aiMsgId,
       role: 'assistant',
@@ -138,19 +190,18 @@ export default function AITutorPage() {
     try {
       let currentSessionId = sessionId;
 
-      // Create a session if one doesn't exist
       if (!currentSessionId) {
-        const session = await fetchApi<{ id: string }>(API_ENDPOINTS.CHAT.SESSION, {
+        const session = await fetchApi<{ id: string; title: string; createdAt: string }>(API_ENDPOINTS.CHAT.SESSION, {
           method: 'POST',
           body: JSON.stringify({ 
-            title: userMessage.content.substring(0, 50) + "..."
+            title: userMessage.content.substring(0, 50)
           }),
         });
         currentSessionId = session.id;
         setSessionId(session.id);
+        setSessions(prev => [{ id: session.id, title: session.title, createdAt: session.createdAt }, ...prev]);
       }
 
-      // Fetch the stream
       const response = await fetchApiStream(`/chat/session/${currentSessionId}/message-stream`, {
         method: 'POST',
         body: JSON.stringify({
@@ -183,7 +234,15 @@ export default function AITutorPage() {
                   aiText += data.content;
                   setMessages(prev => 
                     prev.map(msg => 
-                      msg.id === aiMsgId ? { ...msg, content: aiText } : msg
+                      msg.id === aiMsgId
+                        ? { ...msg, content: aiText, citations: data.citations || msg.citations }
+                        : msg
+                    )
+                  );
+                } else if (data.citations) {
+                  setMessages(prev =>
+                    prev.map(msg =>
+                      msg.id === aiMsgId ? { ...msg, citations: data.citations } : msg
                     )
                   );
                 }
@@ -194,11 +253,12 @@ export default function AITutorPage() {
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat error:", error);
+      const errMessage = error?.message || "Xin lỗi, đã xảy ra lỗi trong quá trình kết nối với AI. Vui lòng thử lại sau.";
       setMessages(prev => 
         prev.map(msg => 
-          msg.id === aiMsgId ? { ...msg, content: "Xin lỗi, đã xảy ra lỗi trong quá trình kết nối với AI. Vui lòng thử lại sau." } : msg
+          msg.id === aiMsgId ? { ...msg, content: errMessage } : msg
         )
       );
     } finally {
@@ -232,6 +292,10 @@ export default function AITutorPage() {
       setFeedbackContent('');
     }
   };
+
+  const filteredSessions = sessions.filter((s) =>
+    !historySearch || s.title?.toLowerCase().includes(historySearch.toLowerCase()),
+  );
 
   return (
     <div className="h-[calc(100vh-theme(spacing.16))] md:h-screen flex flex-col md:flex-row bg-gray-50 dark:bg-[#0f111a]">
@@ -269,6 +333,8 @@ export default function AITutorPage() {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input 
                 type="text" 
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
                 placeholder={t('searchHistory')} 
                 className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800/50 border border-transparent focus:border-blue-500 rounded-lg text-sm outline-none transition-colors dark:text-white"
               />
@@ -276,16 +342,26 @@ export default function AITutorPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {/* Hardcoded History for UI */}
-            <div className="p-3 bg-gray-100 dark:bg-gray-800/80 rounded-lg cursor-pointer text-sm font-medium text-gray-900 dark:text-white truncate">
-              Chào Gia sư, giúp mình...
-            </div>
-            <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg cursor-pointer text-sm text-gray-600 dark:text-gray-400 transition-colors truncate">
-              Đạo hàm hàm lượng giác
-            </div>
-            <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg cursor-pointer text-sm text-gray-600 dark:text-gray-400 transition-colors truncate">
-              Luyện thi IELTS Speaking
-            </div>
+            {filteredSessions.length === 0 ? (
+              <div className="p-4 text-center text-xs text-gray-400">
+                Chưa có lịch sử trò chuyện
+              </div>
+            ) : (
+              filteredSessions.map((sess) => (
+                <div
+                  key={sess.id}
+                  onClick={() => handleSelectSession(sess.id)}
+                  className={`p-3 rounded-lg cursor-pointer text-sm flex items-center gap-2.5 transition-colors truncate ${
+                    sessionId === sess.id
+                      ? 'bg-blue-50 dark:bg-blue-900/30 font-semibold text-blue-700 dark:text-blue-300'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-600 dark:text-gray-400'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{sess.title}</span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -301,8 +377,10 @@ export default function AITutorPage() {
                   <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mb-6 shadow-sm">
                     <Bot className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Tôi có thể giúp gì cho bạn?</h2>
-                  <p className="text-gray-500 dark:text-gray-400 max-w-md">Hãy đặt câu hỏi về bài giảng, bài tập hoặc bất kỳ kiến thức nào bạn đang thắc mắc.</p>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Gia sư AI (RAG Trường học)</h2>
+                  <p className="text-gray-500 dark:text-gray-400 max-w-md">
+                    Đặt câu hỏi về bài giảng, tài liệu của lớp bạn. Mọi câu trả lời từ tài liệu đều đi kèm trích dẫn nguồn (BR-RAG-001).
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-8">
@@ -322,6 +400,27 @@ export default function AITutorPage() {
                         {msg.role === 'assistant' ? (
                           <div className="prose prose-sm dark:prose-invert max-w-none">
                             <ReactMarkdown>{msg.content}</ReactMarkdown>
+
+                            {/* Citations block (BR-RAG-001) */}
+                            {msg.citations && msg.citations.length > 0 && (
+                              <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/60 space-y-2 not-prose">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                                  <BookOpen className="w-3.5 h-3.5" /> Nguồn tài liệu tham khảo:
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {msg.citations.map((cit, cIdx) => (
+                                    <div
+                                      key={cIdx}
+                                      className="text-xs bg-blue-50/70 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-lg px-2.5 py-1.5 text-blue-800 dark:text-blue-300"
+                                      title={cit.snippet || ''}
+                                    >
+                                      <span className="font-semibold">{cit.fileName}</span>
+                                      {cit.page ? <span className="ml-1 opacity-75">(Trang {cit.page})</span> : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             
                             <div className="mt-4 flex justify-end">
                               <button 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { parentService, ParentDashboardData } from '@/services/parent.service';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Calendar, Bell, Clock, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Loader2, Calendar, Bell, Clock, TrendingUp, AlertTriangle, School, UserCheck } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslations } from 'next-intl';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -53,15 +53,14 @@ export default function ParentDashboardPage() {
         {data.students.length > 1 && (
           <TabsList className="mb-6 flex overflow-x-auto">
             {data.students.map(({ student }) => (
-              <TabsTrigger key={student.id} value={student.id} className="min-w-[120px]">
-                {student.fullName}
+              <TabsTrigger key={student.id} value={student.id} className="min-w-[140px]">
+                {student.fullName} {student.className ? `(${student.className})` : ''}
               </TabsTrigger>
             ))}
           </TabsList>
         )}
 
         {data.students.map(({ student, recentQuizzes, upcomingEvents, recentNotifications }) => {
-          // Format chart data
           const chartData = recentQuizzes.map((q) => ({
             name: q.quiz?.title || 'Bài tập',
             score: q.score,
@@ -71,17 +70,36 @@ export default function ParentDashboardPage() {
           return (
             <TabsContent key={student.id} value={student.id} className="space-y-6 mt-0 focus-visible:outline-none focus-visible:ring-0">
               {/* Student Header */}
-              <div className="bg-indigo-600 dark:bg-indigo-900 rounded-3xl p-6 flex items-center gap-6 shadow-lg relative overflow-hidden">
+              <div className="bg-indigo-600 dark:bg-indigo-900 rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center gap-6 shadow-lg relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-8 opacity-10">
                   <TrendingUp className="w-48 h-48" />
                 </div>
                 <div className="relative z-10 w-20 h-20 bg-white rounded-full flex items-center justify-center text-indigo-600 text-3xl font-bold border-4 border-indigo-400/30 shadow-inner shrink-0">
                   {student.fullName.charAt(0)}
                 </div>
-                <div className="relative z-10 text-white">
-                  <h2 className="text-2xl font-bold mb-1">{student.fullName}</h2>
-                  <div className="flex flex-wrap gap-3 text-indigo-100 text-sm font-medium">
-                    <span className="bg-white/20 px-3 py-1 rounded-full">{t("grade")} {student.grade || '?'}</span>
+                <div className="relative z-10 text-white space-y-2">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h2 className="text-2xl font-bold">{student.fullName}</h2>
+                    {student.studentCode && (
+                      <span className="bg-white/20 px-2.5 py-0.5 rounded-md text-xs font-mono font-bold">
+                        Mã HS: {student.studentCode}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2.5 text-indigo-100 text-sm font-medium">
+                    {student.school?.name && (
+                      <span className="bg-white/15 px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <School className="w-3.5 h-3.5" /> {student.school.name}
+                      </span>
+                    )}
+                    <span className="bg-white/20 px-3 py-1 rounded-full">
+                      {student.className || `${t("grade")} ${student.grade || '?'}`}
+                    </span>
+                    {student.homeroomTeacher && (
+                      <span className="bg-white/15 px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5" /> GVCN: {student.homeroomTeacher.fullName}
+                      </span>
+                    )}
                     <span className="bg-white/20 px-3 py-1 rounded-full">{t("level")} {student.gamificationProfile?.level || 1}</span>
                     <span className="bg-white/20 px-3 py-1 rounded-full">{student.gamificationProfile?.xp || 0} XP</span>
                   </div>

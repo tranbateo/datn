@@ -10,10 +10,54 @@ import {
   Req,
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
-import { Prisma, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { IsNumber, IsOptional, IsString, Allow } from 'class-validator';
+
+export class CreateCourseDto {
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsNumber()
+  grade?: number;
+
+  @IsOptional()
+  @IsString()
+  subjectId?: string;
+
+  @IsOptional()
+  @Allow()
+  subject?: { connect?: { id: string } };
+}
+
+export class UpdateCourseDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsNumber()
+  grade?: number;
+
+  @IsOptional()
+  @IsString()
+  subjectId?: string;
+
+  @IsOptional()
+  @Allow()
+  subject?: { connect?: { id: string } };
+}
 
 interface RequestWithUser {
   user: {
@@ -31,10 +75,10 @@ export class CoursesController {
   @Post()
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
   create(
-    @Body() createCourseDto: Prisma.CourseCreateInput,
+    @Body() createCourseDto: CreateCourseDto,
     @Req() req: RequestWithUser,
   ) {
-    return this.coursesService.create(createCourseDto, req.user);
+    return this.coursesService.create(createCourseDto as any, req.user);
   }
 
   @Get()
@@ -57,10 +101,10 @@ export class CoursesController {
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
   update(
     @Param('id') id: string,
-    @Body() updateCourseDto: Prisma.CourseUpdateInput,
-    @Req() req: RequestWithUser
+    @Body() updateCourseDto: UpdateCourseDto,
+    @Req() req: RequestWithUser,
   ) {
-    return this.coursesService.update(id, updateCourseDto, req.user);
+    return this.coursesService.update(id, updateCourseDto as any, req.user);
   }
 
   @Delete(':id')

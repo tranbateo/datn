@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { parentService } from '@/services/parent.service';
+import { useState, useEffect } from 'react';
+import { parentService, ParentDashboardData } from '@/services/parent.service';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, Link as LinkIcon, Loader2 } from 'lucide-react';
+import { CheckCircle2, Link as LinkIcon, Loader2, Unlink, Users } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 export default function ParentLinkPage() {
@@ -14,7 +14,23 @@ export default function ParentLinkPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [linkedStudents, setLinkedStudents] = useState<ParentDashboardData['students']>([]);
   const t = useTranslations("ParentUI.Link");
+
+  const loadLinkedStudents = async () => {
+    try {
+      const res = await parentService.getDashboard();
+      if (res?.students) {
+        setLinkedStudents(res.students);
+      }
+    } catch (err) {
+      console.error('Failed to load linked students:', err);
+    }
+  };
+
+  useEffect(() => {
+    void loadLinkedStudents();
+  }, []);
 
   const handleLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,6 +46,7 @@ export default function ParentLinkPage() {
       await parentService.linkStudent(linkCode);
       setSuccess(true);
       setLinkCode('');
+      await loadLinkedStudents();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Không thể liên kết tài khoản. Vui lòng kiểm tra lại mã.');
     } finally {
@@ -37,9 +54,56 @@ export default function ParentLinkPage() {
     }
   };
 
+  const handleUnlink = async (studentId: string, fullName: string) => {
+    if (!confirm(`Bạn có chắc chắn muốn hủy liên kết với học sinh ${fullName}?`)) return;
+    try {
+      await parentService.unlinkStudent(studentId);
+      await loadLinkedStudents();
+    } catch (err: any) {
+      alert(err?.message || 'Hủy liên kết thất bại.');
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in duration-500 py-8">
       
+      {/* Linked Students List (BR-LINK-001) */}
+      {linkedStudents.length > 0 && (
+        <Card className="rounded-3xl shadow-sm border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8">
+          <div className="flex items-center gap-3 mb-4">
+            <Users className="w-5 h-5 text-indigo-600" />
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+              Tài khoản con đang liên kết ({linkedStudents.length})
+            </h2>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {linkedStudents.map(({ student }) => (
+              <div key={student.id} className="py-3.5 flex items-center justify-between gap-4">
+                <div>
+                  <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    {student.fullName}
+                    {student.studentCode && (
+                      <span className="text-xs font-mono bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 px-2 py-0.5 rounded">
+                        {student.studentCode}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {student.className || `Khối ${student.grade}`} {student.school?.name ? `• ${student.school.name}` : ''}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleUnlink(student.id, student.fullName)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 transition-colors"
+                >
+                  <Unlink className="w-3.5 h-3.5" /> Hủy liên kết
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* Success State */}
       {success && (
         <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-3xl p-6 flex items-start gap-4 mb-8">
@@ -66,7 +130,7 @@ export default function ParentLinkPage() {
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t("title")}</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm leading-relaxed">
-            {t("subtitle")}
+            {t("subtitle")} (Mã liên kết gồm 6 chữ số có hiệu lực trong 15 phút và chỉ dùng một lần).
           </p>
 
           <form onSubmit={handleLink} className="mt-8 space-y-6">

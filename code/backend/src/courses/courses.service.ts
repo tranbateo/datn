@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, Role } from '@prisma/client';
@@ -18,10 +19,11 @@ interface UserContext {
 export class CoursesService {
   constructor(private prisma: PrismaService) {}
 
-  async create(data: Prisma.CourseCreateInput, user: UserContext) {
-    if (data.grade && data.subject?.connect?.id) {
+  async create(data: any, user: UserContext) {
+    const subjectId = data.subjectId || data.subject?.connect?.id;
+    if (data.grade && subjectId) {
       const subject = await this.prisma.subject.findUnique({
-        where: { id: data.subject.connect.id },
+        where: { id: subjectId },
       });
       if (subject && subject.grade !== data.grade) {
         throw new BadRequestException(
@@ -30,13 +32,16 @@ export class CoursesService {
       }
     }
 
-    data.teacher = { connect: { id: user.id } };
-    
-    if (user.schoolId) {
-      data.school = { connect: { id: user.schoolId } };
-    }
+    const createData: Prisma.CourseCreateInput = {
+      title: data.title,
+      description: data.description,
+      grade: data.grade,
+      teacher: { connect: { id: user.id } },
+      ...(subjectId ? { subject: { connect: { id: subjectId } } } : {}),
+      ...(user.schoolId ? { school: { connect: { id: user.schoolId } } } : {}),
+    };
 
-    return this.prisma.course.create({ data });
+    return this.prisma.course.create({ data: createData });
   }
 
   async findAll(user: UserContext) {
@@ -47,7 +52,12 @@ export class CoursesService {
 
     return this.prisma.course.findMany({
       where,
-      include: { teacher: true, lessons: true },
+      include: {
+        teacher: { select: { id: true, fullName: true, email: true } },
+        subject: true,
+        lessons: true,
+        _count: { select: { enrollments: true, documents: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -60,20 +70,29 @@ export class CoursesService {
 
     const course = await this.prisma.course.findFirst({
       where,
-      include: { teacher: true, lessons: true },
+      include: {
+        teacher: { select: { id: true, fullName: true, email: true } },
+        subject: true,
+        lessons: true,
+        documents: true,
+      },
     });
-    
-    if (!course) throw new NotFoundException('Course not found or access denied');
+
+    if (!course) {
+      throw new NotFoundException('Không tìm thấy học phần hoặc không có quyền truy cập.');
+    }
     return course;
   }
 
-  async update(id: string, data: Prisma.CourseUpdateInput, user: UserContext) {
-    const course = await this.findOne(id, user); // Will throw if not found or access denied
+  async update(id: string, data: any, user: UserContext) {
+    const course = await this.findOne(id, user);
+    if (user.role === Role.TEACHER && course.teacherId !== user.id) {
+      throw new ForbiddenException('Bạn chỉ được chỉnh sửa học phần do mình phụ trách.');
+    }
 
-    if (data.grade || data.subject?.connect?.id) {
+    const newSubjectId = data.subjectId || data.subject?.connect?.id;
+    if (data.grade || newSubjectId) {
       const newGrade = data.grade !== undefined ? data.grade : course.grade;
-      const newSubjectId = data.subject?.connect?.id;
-
       if (newGrade && newSubjectId) {
         const subject = await this.prisma.subject.findUnique({
           where: { id: newSubjectId },
@@ -85,22 +104,32 @@ export class CoursesService {
         }
       }
     }
-    
+
+    const updateData: Prisma.CourseUpdateInput = {
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.grade !== undefined ? { grade: data.grade } : {}),
+      ...(newSubjectId ? { subject: { connect: { id: newSubjectId } } } : {}),
+    };
+
     return this.prisma.course.update({
       where: { id },
-      data,
+      data: updateData,
     });
   }
 
   async remove(id: string, user: UserContext) {
-    await this.findOne(id, user); // Check existence and permissions
+    const course = await this.findOne(id, user);
+    if (user.role === Role.TEACHER && course.teacherId !== user.id) {
+      throw new ForbiddenException('Bạn chỉ được xóa học phần do mình phụ trách.');
+    }
     return this.prisma.course.delete({
       where: { id },
     });
   }
 
   async enrollCourse(courseId: string, user: UserContext) {
-    const course = await this.findOne(courseId, user); // Ensures student can only enroll in courses in their school
+    await this.findOne(courseId, user);
 
     const existing = await this.prisma.enrollment.findUnique({
       where: {
@@ -112,7 +141,7 @@ export class CoursesService {
     });
 
     if (existing) {
-      throw new BadRequestException('Bạn đã đăng ký khóa học này rồi');
+      throw new BadRequestException('Bạn đã tham gia học phần này rồi.');
     }
 
     return this.prisma.enrollment.create({

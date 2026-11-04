@@ -9,53 +9,88 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ParentsService {
   constructor(private prisma: PrismaService) {}
 
-  // 1. Generate link code for student
+  // 1. Generate fallback one-time link code for student (valid for 15 minutes - BR-LINK-001)
   async generateLinkCode(studentId: string) {
     const student = await this.prisma.user.findUnique({
       where: { id: studentId },
     });
-    if (!student) throw new NotFoundException('Student not found');
+    if (!student) throw new NotFoundException('Không tìm thấy học sinh.');
 
-    // If already has code, return it. Otherwise generate.
-    if (student.linkCode) return { linkCode: student.linkCode };
+    const now = new Date();
+    if (
+      student.linkCode &&
+      student.linkExpiresAt &&
+      student.linkExpiresAt > now
+    ) {
+      return {
+        linkCode: student.linkCode,
+        expiresAt: student.linkExpiresAt,
+      };
+    }
 
     const linkCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const linkExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes
 
     await this.prisma.user.update({
       where: { id: studentId },
-      data: { linkCode },
+      data: { linkCode, linkExpiresAt },
     });
 
-    return { linkCode };
+    return { linkCode, expiresAt: linkExpiresAt };
   }
 
-  // 2. Parent links to a student using code
+  // 2. Parent links to a student using fallback one-time code (BR-LINK-001)
   async linkStudent(parentId: string, linkCode: string) {
-    const student = await this.prisma.user.findUnique({ where: { linkCode } });
-    if (!student)
-      throw new NotFoundException('Mã liên kết không hợp lệ hoặc đã hết hạn');
+    if (!linkCode || !linkCode.trim()) {
+      throw new BadRequestException('Vui lòng nhập mã liên kết.');
+    }
 
-    // Check if already linked
+    const student = await this.prisma.user.findUnique({
+      where: { linkCode: linkCode.trim() },
+    });
+
+    if (
+      !student ||
+      (student.linkExpiresAt && new Date() > student.linkExpiresAt)
+    ) {
+      throw new NotFoundException('Mã liên kết không hợp lệ hoặc đã hết hạn.');
+    }
+
     const existing = await this.prisma.parentStudentLink.findUnique({
       where: {
         parentId_studentId: { parentId, studentId: student.id },
       },
     });
 
-    if (existing)
-      throw new BadRequestException('Bạn đã liên kết với học sinh này rồi');
+    if (existing) {
+      throw new BadRequestException('Bạn đã liên kết với học sinh này rồi.');
+    }
 
-    await this.prisma.parentStudentLink.create({
-      data: {
-        parentId,
-        studentId: student.id,
-        linkCode,
-      },
-    });
+    // Create link and invalidate one-time token in transaction
+    await this.prisma.$transaction([
+      this.prisma.parentStudentLink.create({
+        data: {
+          parentId,
+          studentId: student.id,
+          relationship: 'Phụ huynh',
+        },
+      }),
+      this.prisma.user.update({
+        where: { id: student.id },
+        data: {
+          linkCode: null,
+          linkExpiresAt: null,
+        },
+      }),
+    ]);
 
     return {
       success: true,
-      student: { id: student.id, fullName: student.fullName },
+      student: {
+        id: student.id,
+        fullName: student.fullName,
+        studentCode: student.studentCode,
+      },
     };
   }
 
@@ -67,7 +102,7 @@ export class ParentsService {
     });
 
     if (!existing) {
-      throw new NotFoundException('Liên kết không tồn tại');
+      throw new NotFoundException('Liên kết không tồn tại.');
     }
 
     await this.prisma.parentStudentLink.delete({
@@ -87,9 +122,30 @@ export class ParentsService {
         student: {
           select: {
             id: true,
+            studentCode: true,
             fullName: true,
             email: true,
             grade: true,
+            school: {
+              select: { id: true, name: true, code: true },
+            },
+            classEnrollments: {
+              where: { status: 'ACTIVE' },
+              include: {
+                class: {
+                  include: {
+                    homeroomTeacher: {
+                      select: {
+                        id: true,
+                        fullName: true,
+                        email: true,
+                        phone: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
             gamificationProfile: true,
           },
         },
@@ -100,15 +156,17 @@ export class ParentsService {
       links.map(async (link) => {
         const studentId = link.studentId;
 
-        // 1. Recent Quizzes
         const recentQuizzes = await this.prisma.quizAttempt.findMany({
           where: { userId: studentId },
           take: 5,
           orderBy: { startedAt: 'desc' },
-          include: { quiz: true },
+          include: {
+            quiz: {
+              include: { subject: true },
+            },
+          },
         });
 
-        // 2. Upcoming Calendar Events (Next 7 Days)
         const now = new Date();
         const next7Days = new Date();
         next7Days.setDate(now.getDate() + 7);
@@ -124,15 +182,21 @@ export class ParentsService {
           orderBy: { startTime: 'asc' },
         });
 
-        // 3. Recent Notifications / Alerts
         const recentNotifications = await this.prisma.notification.findMany({
           where: { userId: studentId },
           take: 5,
           orderBy: { createdAt: 'desc' },
         });
 
+        const activeClass = link.student.classEnrollments?.[0]?.class || null;
+
         return {
-          student: link.student,
+          relationship: link.relationship || 'Phụ huynh',
+          student: {
+            ...link.student,
+            className: activeClass?.name || null,
+            homeroomTeacher: activeClass?.homeroomTeacher || null,
+          },
           recentQuizzes,
           upcomingEvents,
           recentNotifications,
@@ -143,21 +207,59 @@ export class ParentsService {
     return { students: studentsStats };
   }
 
-  // 4. Get Teachers for Parent's students
+  // 4. Get Teachers (both GVCN & GVBM) for Parent's linked students
   async getTeachers(parentId: string) {
     const links = await this.prisma.parentStudentLink.findMany({
       where: { parentId },
       include: {
         student: {
           include: {
-            courses: {
+            classEnrollments: {
+              where: { status: 'ACTIVE' },
               include: {
-                teacher: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    email: true,
-                    avatarUrl: true,
+                class: {
+                  include: {
+                    homeroomTeacher: {
+                      select: {
+                        id: true,
+                        fullName: true,
+                        email: true,
+                        phone: true,
+                        avatarUrl: true,
+                      },
+                    },
+                    subjectTeachers: {
+                      include: {
+                        subject: true,
+                        teacher: {
+                          select: {
+                            id: true,
+                            fullName: true,
+                            email: true,
+                            phone: true,
+                            avatarUrl: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            enrollments: {
+              include: {
+                course: {
+                  include: {
+                    subject: true,
+                    teacher: {
+                      select: {
+                        id: true,
+                        fullName: true,
+                        email: true,
+                        phone: true,
+                        avatarUrl: true,
+                      },
+                    },
                   },
                 },
               },
@@ -167,16 +269,61 @@ export class ParentsService {
       },
     });
 
-    // Extract unique teachers
-    const teachersMap = new Map();
+    const teachersMap = new Map<string, any>();
+
     links.forEach((link) => {
-      link.student.courses.forEach((course) => {
-        if (course.teacher) {
-          teachersMap.set(course.teacher.id, course.teacher);
+      const studentName = link.student.fullName || 'Học sinh';
+
+      // 1. From Official School Classes (GVCN & GVBM)
+      link.student.classEnrollments.forEach((ce) => {
+        const cls = ce.class;
+        if (cls.homeroomTeacher) {
+          const t = cls.homeroomTeacher;
+          const existing = teachersMap.get(t.id) || {
+            ...t,
+            roles: [],
+          };
+          existing.roles.push(`GVCN ${cls.name} (${studentName})`);
+          teachersMap.set(t.id, existing);
+        }
+
+        cls.subjectTeachers.forEach((st) => {
+          if (st.teacher) {
+            const t = st.teacher;
+            const existing = teachersMap.get(t.id) || {
+              ...t,
+              roles: [],
+            };
+            existing.roles.push(
+              `GV Bộ môn ${st.subject.name} - ${cls.name} (${studentName})`,
+            );
+            teachersMap.set(t.id, existing);
+          }
+        });
+      });
+
+      // 2. From Course Enrollments
+      link.student.enrollments.forEach((enr) => {
+        const t = enr.course?.teacher;
+        if (t) {
+          const existing = teachersMap.get(t.id) || {
+            ...t,
+            roles: [],
+          };
+          const roleLabel = `GV ${enr.course.title} (${studentName})`;
+          if (!existing.roles.includes(roleLabel)) {
+            existing.roles.push(roleLabel);
+          }
+          teachersMap.set(t.id, existing);
         }
       });
     });
 
-    return { teachers: Array.from(teachersMap.values()) };
+    const teachers = Array.from(teachersMap.values()).map((t) => ({
+      ...t,
+      roleSummary: Array.from(new Set(t.roles)).join(' • '),
+    }));
+
+    return { teachers };
   }
 }

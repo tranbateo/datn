@@ -12,12 +12,12 @@ export class DocumentsService {
 
   constructor(private readonly prisma: PrismaService) {
     const client = createClient(
-      process.env.SUPABASE_URL || '',
-      process.env.SUPABASE_PRIVATE_KEY || '',
+      process.env.SUPABASE_URL || 'https://placeholder.supabase.co',
+      process.env.SUPABASE_PRIVATE_KEY || 'placeholder-key',
     );
 
     const embeddings = new GoogleGenerativeAIEmbeddings({
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
     });
 
     this.vectorStore = new SupabaseVectorStore(embeddings, {
@@ -29,31 +29,34 @@ export class DocumentsService {
 
   async processAndIngestDocument(file: Express.Multer.File, courseId: string) {
     try {
-      // 1. Parse PDF using Blob
+      const course = await this.prisma.course.findUnique({
+        where: { id: courseId },
+      });
+
       const blob = new Blob([new Uint8Array(file.buffer)], {
         type: 'application/pdf',
       });
       const loader = new PDFLoader(blob);
       const rawDocs = await loader.load();
 
-      // 2. Add metadata (courseId and filename)
       const docsWithMetadata = rawDocs.map((doc) => {
         doc.metadata = {
           ...doc.metadata,
           courseId,
+          schoolId: course?.schoolId || null,
+          subjectId: course?.subjectId || null,
+          grade: course?.grade || null,
           fileName: file.originalname,
         };
         return doc;
       });
 
-      // 3. Chunk text (1000 chars, 200 overlap)
       const splitter = new RecursiveCharacterTextSplitter({
         chunkSize: 1000,
         chunkOverlap: 200,
       });
       const splitDocs = await splitter.splitDocuments(docsWithMetadata);
 
-      // 4. Ingest to Vector Store (this will call Gemini to create embeddings and save to Supabase)
       await this.vectorStore.addDocuments(splitDocs);
 
       return {
@@ -71,9 +74,11 @@ export class DocumentsService {
     fileName: string,
     type: string,
     size: string,
+    schoolId?: string | null,
   ) {
     return this.prisma.document.create({
       data: {
+        schoolId: schoolId || null,
         courseId,
         fileName,
         type,
@@ -97,8 +102,12 @@ export class DocumentsService {
     });
   }
 
-  async findAll() {
+  async findAll(schoolId?: string | null) {
     return this.prisma.document.findMany({
+      where: schoolId ? { schoolId } : {},
+      include: {
+        course: { select: { id: true, title: true } },
+      },
       orderBy: { uploadedAt: 'desc' },
     });
   }

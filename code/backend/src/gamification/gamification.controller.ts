@@ -12,20 +12,16 @@ export class GamificationController {
 
   @Get('profile')
   async getProfile(@Req() req: any) {
-    let userId = req.user.userId || req.user.id;
-    // Bổ sung logic lấy ID thực từ DB cho Mock User (test UI)
-    if (userId === 'student1@test.com') {
-      const user = await this.gamificationService['prisma'].user.findUnique({
-        where: { email: 'student1@test.com' },
-      });
-      if (user) userId = user.id;
-    }
-    return this.gamificationService.getProfile(userId);
+    const userId = req.user.id || req.user.userId;
+    return this.gamificationService.getProfile(userId, req.user.schoolId);
   }
 
   @Get('leaderboard')
-  async getLeaderboard(@Query('limit') limit: string) {
-    const parsedLimit = limit ? parseInt(limit, 10) : 10;
-    return this.gamificationService.getLeaderboard(parsedLimit);
+  async getLeaderboard(@Req() req: any, @Query('limit') limit: string) {
+    const parsedLimit = Math.min(50, limit ? parseInt(limit, 10) : 10);
+    return this.gamificationService.getLeaderboard(
+      parsedLimit,
+      req.user.schoolId,
+    );
   }
 }

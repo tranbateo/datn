@@ -1,22 +1,16 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class GamificationService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Tính toán Level dựa trên Option 2: Level = floor(sqrt(XP / 100)) + 1
-   */
   private calculateLevel(xp: number): number {
     return Math.floor(Math.sqrt(xp / 100)) + 1;
   }
 
-  /**
-   * Tính toán lại chuỗi Streak
-   */
   private calculateStreak(
     currentStreak: number,
     longestStreak: number,
@@ -35,13 +29,11 @@ export class GamificationService {
     let newLongestStreak = longestStreak;
 
     if (diffDays === 1) {
-      // Đăng nhập vào ngày hôm sau
       newCurrentStreak += 1;
       if (newCurrentStreak > newLongestStreak) {
         newLongestStreak = newCurrentStreak;
       }
     } else if (diffDays > 1) {
-      // Bỏ lỡ ít nhất 1 ngày -> reset
       newCurrentStreak = 1;
     }
 
@@ -52,10 +44,7 @@ export class GamificationService {
     };
   }
 
-  /**
-   * Lấy Profile, nếu chưa có thì tạo mới (Lazy Initialization)
-   */
-  async getProfile(userId: string) {
+  async getProfile(userId: string, schoolId?: string | null) {
     let profile = await this.prisma.gamificationProfile.findUnique({
       where: { userId },
       include: { badges: { include: { badge: true } } },
@@ -67,7 +56,6 @@ export class GamificationService {
         include: { badges: { include: { badge: true } } },
       });
     } else {
-      // Cập nhật streak khi get profile (như một hành động login/hoạt động)
       const streakData = this.calculateStreak(
         profile.currentStreak,
         profile.longestStreak,
@@ -93,15 +81,16 @@ export class GamificationService {
           lifetimeXp: {
             gt: profile.lifetimeXp,
           },
+          user: {
+            role: Role.STUDENT,
+            ...(schoolId ? { schoolId } : {}),
+          },
         },
       })) + 1;
 
     return { ...profile, rank };
   }
 
-  /**
-   * Cộng XP và cập nhật Level / Streak
-   */
   async addXp(userId: string, amount: number) {
     if (amount <= 0) return null;
 
@@ -135,16 +124,25 @@ export class GamificationService {
     });
   }
 
-  /**
-   * Lấy bảng xếp hạng (Leaderboard) theo XP
-   */
-  async getLeaderboard(limit: number = 10) {
+  async getLeaderboard(limit: number = 10, schoolId?: string | null) {
     return this.prisma.gamificationProfile.findMany({
+      where: {
+        user: {
+          role: Role.STUDENT,
+          ...(schoolId ? { schoolId } : {}),
+        },
+      },
       take: limit,
       orderBy: { lifetimeXp: 'desc' },
       include: {
         user: {
-          select: { fullName: true, avatarUrl: true, email: true },
+          select: {
+            fullName: true,
+            studentCode: true,
+            grade: true,
+            avatarUrl: true,
+            email: true,
+          },
         },
       },
     });

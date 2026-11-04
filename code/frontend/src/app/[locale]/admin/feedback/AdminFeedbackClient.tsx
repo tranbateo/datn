@@ -1,16 +1,46 @@
 "use client";
- 
- 
 
-import { Search, CheckCircle2, XCircle, Eye, Clock, Check } from "lucide-react";
-import Image from "next/image";
+import { Search, CheckCircle2, XCircle, Clock, Check } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { fetchApi } from "@/lib/api-client";
 
 export default function AdminFeedbackClient({ initialData }: { initialData: any[] }) {
   const t = useTranslations("Admin.Feedback");
   const [activeStatus, setActiveStatus] = useState("all");
-  const [mockFeedback] = useState<any[]>(initialData.length > 0 ? initialData : []);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [feedbackList, setFeedbackList] = useState<any[]>(initialData || []);
+
+  const filteredFeedback = useMemo(() => {
+    return feedbackList.filter((item) => {
+      const matchesStatus =
+        activeStatus === "all" ||
+        item.status?.toLowerCase() === activeStatus.toLowerCase();
+
+      const matchesSearch =
+        !searchTerm ||
+        item.content?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.user?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.user?.email?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [feedbackList, activeStatus, searchTerm]);
+
+  const handleUpdateStatus = async (id: string, status: "RESOLVED" | "IGNORED") => {
+    try {
+      await fetchApi(`/admin/feedback/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      setFeedbackList((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, status } : item)),
+      );
+    } catch (error) {
+      console.error(error);
+      alert("Cập nhật trạng thái phản hồi thất bại.");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -56,6 +86,8 @@ export default function AdminFeedbackClient({ initialData }: { initialData: any[
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input 
               type="text" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={t('searchPlaceholder')}
               className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors dark:text-white placeholder:text-gray-400"
             />
@@ -64,9 +96,9 @@ export default function AdminFeedbackClient({ initialData }: { initialData: any[
 
         {/* Table */}
         <div className="overflow-x-auto">
-          {mockFeedback.length === 0 ? (
+          {filteredFeedback.length === 0 ? (
             <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-              Chưa có dữ liệu phản hồi
+              Chưa có dữ liệu phản hồi phù hợp
             </div>
           ) : (
             <table className="w-full text-left text-sm">
@@ -81,7 +113,7 @@ export default function AdminFeedbackClient({ initialData }: { initialData: any[
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                {mockFeedback.map((item: any) => (
+                {filteredFeedback.map((item: any) => (
                   <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -103,6 +135,7 @@ export default function AdminFeedbackClient({ initialData }: { initialData: any[
                         {item.category === 'AI_ERROR' && 'Lỗi AI'}
                         {item.category === 'CONTENT_ERROR' && 'Lỗi nội dung'}
                         {item.category === 'SYSTEM_BUG' && 'Lỗi hệ thống'}
+                        {!['AI_ERROR', 'CONTENT_ERROR', 'SYSTEM_BUG'].includes(item.category) && item.category}
                       </span>
                     </td>
                     <td className="px-6 py-4 max-w-md">
@@ -114,23 +147,28 @@ export default function AdminFeedbackClient({ initialData }: { initialData: any[
                       {item.status === 'IGNORED' && <div className="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-xs font-semibold bg-gray-100 dark:bg-gray-800 px-2.5 py-1 rounded-full"><XCircle className="w-3.5 h-3.5"/> {t('ignored')}</div>}
                     </td>
                     <td className="px-6 py-4 text-gray-500 dark:text-gray-400 text-xs">
-                      {new Date(item.createdAt).toLocaleDateString()} {new Date(item.createdAt).toLocaleTimeString()}
+                      {new Date(item.createdAt).toLocaleDateString('vi-VN')} {new Date(item.createdAt).toLocaleTimeString('vi-VN')}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-end gap-2">
                         {item.status === 'PENDING' && (
                           <>
-                            <button className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-md transition-colors tooltip" title="Mark as Resolved">
+                            <button
+                              onClick={() => handleUpdateStatus(item.id, 'RESOLVED')}
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-md transition-colors"
+                              title="Đánh dấu đã xử lý"
+                            >
                               <Check className="w-4 h-4" />
                             </button>
-                            <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors tooltip" title="Ignore">
+                            <button
+                              onClick={() => handleUpdateStatus(item.id, 'IGNORED')}
+                              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+                              title="Bỏ qua"
+                            >
                               <XCircle className="w-4 h-4" />
                             </button>
                           </>
                         )}
-                        <button className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors tooltip" title="View Details">
-                          <Eye className="w-4 h-4" />
-                        </button>
                       </div>
                     </td>
                   </tr>

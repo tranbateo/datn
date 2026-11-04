@@ -21,19 +21,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    console.log('=== JWT VALIDATION ===');
-    console.log('Payload:', payload);
-
-    if (!payload.sub) {
-      console.error('Invalid payload:', payload);
+    if (!payload || !payload.sub) {
       throw new UnauthorizedException('Invalid token payload');
     }
 
     return {
       id: payload.sub,
+      userId: payload.sub,
       email: payload.email,
       role: payload.role || Role.STUDENT,
       schoolId: payload.schoolId || null,
+      mustChangePassword: Boolean(payload.mustChangePassword),
     };
   }
 }

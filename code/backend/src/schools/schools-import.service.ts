@@ -36,12 +36,13 @@ export class SchoolsImportService {
   generateTemplate(): Buffer {
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: Lớp & Giáo viên
+    // Sheet 1: Lớp & Giáo viên (hỗ trợ cả GVCN và GVBM)
     const classesData = [
       [
         'Mã Lớp',
         'Tên Lớp',
         'Khối',
+        'Vai Trò',
         'Mã GVCN',
         'Họ Tên GVCN',
         'Email GVCN',
@@ -52,31 +53,45 @@ export class SchoolsImportService {
         '6A',
         'Lớp 6A',
         6,
+        'GVCN',
         'GV01',
         'Nguyễn Thị Mai',
-        'mai.nguyen@school.edu.vn',
-        '0912345678',
+        'mai.nguyen@nguyentrai.edu.vn',
+        '0912345001',
         'Toán học',
+      ],
+      [
+        '6A',
+        'Lớp 6A',
+        6,
+        'GVBM',
+        'GV02',
+        'Trần Văn Hùng',
+        'hung.tran@nguyentrai.edu.vn',
+        '0912345002',
+        'Ngữ văn',
       ],
       [
         '6B',
         'Lớp 6B',
         6,
+        'GVCN',
         'GV02',
-        'Trần Văn Tuấn',
-        'tuan.tran@school.edu.vn',
-        '0987654321',
+        'Trần Văn Hùng',
+        'hung.tran@nguyentrai.edu.vn',
+        '0912345002',
         'Ngữ văn',
       ],
       [
-        '10A1',
-        'Lớp 10A1',
-        10,
-        'GV03',
-        'Lê Hồng Phong',
-        'phong.le@school.edu.vn',
-        '0933445566',
-        'Vật lý',
+        '6B',
+        'Lớp 6B',
+        6,
+        'GVBM',
+        'GV01',
+        'Nguyễn Thị Mai',
+        'mai.nguyen@nguyentrai.edu.vn',
+        '0912345001',
+        'Toán học',
       ],
     ];
     const wsClasses = XLSX.utils.aoa_to_sheet(classesData);
@@ -99,46 +114,46 @@ export class SchoolsImportService {
         'Quan Hệ PH 2',
       ],
       [
-        'HS001',
+        'HS0001',
         'Nguyễn Gia Bảo',
         '6A',
         '15/05/2014',
         'Nam',
         '',
         'Nguyễn Văn Tuấn',
-        '0901112223',
+        '0901000001',
         'Bố',
         'Lê Thị Thu',
-        '0902223334',
+        '0902000001',
         'Mẹ',
       ],
       [
-        'HS002',
+        'HS0002',
         'Trần Ngọc Linh',
         '6A',
         '20/08/2014',
         'Nữ',
         '',
-        'Trần Văn Hùng',
-        '0903334445',
+        'Trần Văn Bình',
+        '0903100001',
         'Bố',
         '',
         '',
         '',
       ],
       [
-        'HS003',
+        'HS0006',
         'Nguyễn Gia Huy',
         '6B',
         '10/11/2014',
         'Nam',
         '',
         'Nguyễn Văn Tuấn',
-        '0901112223',
+        '0901000001',
         'Bố',
-        '',
-        '',
-        '',
+        'Lê Thị Thu',
+        '0902000001',
+        'Mẹ',
       ],
     ];
     const wsStudents = XLSX.utils.aoa_to_sheet(studentsData);
@@ -165,20 +180,24 @@ export class SchoolsImportService {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    const sheetClassesName = wb.SheetNames.find(
-      (name) =>
-        name.toLowerCase().includes('lop') ||
-        name.toLowerCase().includes('class'),
-    ) || wb.SheetNames[0];
+    const sheetClassesName =
+      wb.SheetNames.find(
+        (name) =>
+          name.toLowerCase().includes('lop') ||
+          name.toLowerCase().includes('class'),
+      ) || wb.SheetNames[0];
 
-    const sheetStudentsName = wb.SheetNames.find(
-      (name) =>
-        name.toLowerCase().includes('hocsinh') ||
-        name.toLowerCase().includes('student'),
-    ) || wb.SheetNames[1];
+    const sheetStudentsName =
+      wb.SheetNames.find(
+        (name) =>
+          name.toLowerCase().includes('hocsinh') ||
+          name.toLowerCase().includes('student'),
+      ) || wb.SheetNames[1];
 
     if (!sheetClassesName || !sheetStudentsName) {
-      errors.push('File Excel phải có ít nhất 2 sheet: Lớp & Giáo viên và Học sinh & Phụ huynh.');
+      errors.push(
+        'File Excel phải có ít nhất 2 sheet: Lớp & Giáo viên và Học sinh & Phụ huynh.',
+      );
       return {
         isValid: false,
         summary: {
@@ -201,17 +220,20 @@ export class SchoolsImportService {
       wb.Sheets[sheetStudentsName],
     );
 
-    // Validate Classes & Teachers
     const classCodesInFile = new Set<string>();
-    const teacherCodesInFile = new Set<string>();
+    const teacherIdentifiersInFile = new Set<string>();
 
     classesRows.forEach((row, idx) => {
       const rowNum = idx + 2;
       const classCode = String(row['Mã Lớp'] || '').trim();
       const grade = parseInt(row['Khối'], 10);
-      const teacherCode = String(row['Mã GVCN'] || '').trim();
-      const teacherName = String(row['Họ Tên GVCN'] || '').trim();
-      const teacherPhone = String(row['SĐT GVCN'] || '').trim();
+      const teacherCode = String(row['Mã GVCN'] || row['Mã GV'] || '').trim();
+      const teacherName = String(
+        row['Họ Tên GVCN'] || row['Họ Tên GV'] || '',
+      ).trim();
+      const teacherEmail = String(
+        row['Email GVCN'] || row['Email GV'] || '',
+      ).trim();
 
       if (!classCode) {
         errors.push(`Sheet [${sheetClassesName}], Dòng ${rowNum}: Thiếu Mã Lớp.`);
@@ -226,21 +248,21 @@ export class SchoolsImportService {
       }
 
       if (!teacherName) {
-        warnings.push(`Sheet [${sheetClassesName}], Dòng ${rowNum}: Lớp ${classCode} chưa có thông tin Giáo viên chủ nhiệm.`);
+        warnings.push(
+          `Sheet [${sheetClassesName}], Dòng ${rowNum}: Lớp ${classCode} chưa có tên Giáo viên.`,
+        );
       }
 
-      if (teacherCode) {
-        teacherCodesInFile.add(teacherCode);
+      if (teacherCode || teacherEmail) {
+        teacherIdentifiersInFile.add(teacherCode || teacherEmail);
       }
     });
 
-    // Validate Students & Parents
     const studentCodesInFile = new Set<string>();
-    const parentPhonesInFile = new Map<string, string[]>(); // phone -> list of student names
+    const parentPhonesInFile = new Map<string, string[]>();
     let newStudentsCount = 0;
     let existingStudentsCount = 0;
 
-    // Lấy danh sách học sinh hiện có của trường
     const existingStudents = await this.prisma.user.findMany({
       where: { schoolId, role: Role.STUDENT },
       select: { studentCode: true },
@@ -254,23 +276,30 @@ export class SchoolsImportService {
       const studentCode = String(row['Mã Học Sinh'] || '').trim();
       const studentName = String(row['Họ Tên Học Sinh'] || '').trim();
       const classCode = String(row['Mã Lớp'] || '').trim();
-      const parentName1 = String(row['Họ Tên Phụ Huynh 1'] || '').trim();
       const parentPhone1 = String(row['SĐT Phụ Huynh 1'] || '').trim();
 
       if (!studentCode) {
-        errors.push(`Sheet [${sheetStudentsName}], Dòng ${rowNum}: Thiếu Mã Học Sinh.`);
+        errors.push(
+          `Sheet [${sheetStudentsName}], Dòng ${rowNum}: Thiếu Mã Học Sinh.`,
+        );
       } else if (studentCodesInFile.has(studentCode)) {
-        errors.push(`Sheet [${sheetStudentsName}], Dòng ${rowNum}: Trùng lặp Mã Học Sinh [${studentCode}] trong file.`);
+        errors.push(
+          `Sheet [${sheetStudentsName}], Dòng ${rowNum}: Trùng lặp Mã Học Sinh [${studentCode}] trong file.`,
+        );
       } else {
         studentCodesInFile.add(studentCode);
       }
 
       if (!studentName) {
-        errors.push(`Sheet [${sheetStudentsName}], Dòng ${rowNum}: Thiếu Họ Tên Học Sinh.`);
+        errors.push(
+          `Sheet [${sheetStudentsName}], Dòng ${rowNum}: Thiếu Họ Tên Học Sinh.`,
+        );
       }
 
       if (!classCode) {
-        errors.push(`Sheet [${sheetStudentsName}], Dòng ${rowNum}: Học sinh [${studentName}] chưa có Mã Lớp.`);
+        errors.push(
+          `Sheet [${sheetStudentsName}], Dòng ${rowNum}: Học sinh [${studentName}] chưa có Mã Lớp.`,
+        );
       } else if (!classCodesInFile.has(classCode)) {
         errors.push(
           `Sheet [${sheetStudentsName}], Dòng ${rowNum}: Mã Lớp [${classCode}] của học sinh [${studentName}] không tồn tại trong sheet Lớp học.`,
@@ -278,9 +307,10 @@ export class SchoolsImportService {
       }
 
       if (!parentPhone1) {
-        warnings.push(`Sheet [${sheetStudentsName}], Dòng ${rowNum}: Học sinh [${studentName}] chưa có SĐT Phụ huynh.`);
+        warnings.push(
+          `Sheet [${sheetStudentsName}], Dòng ${rowNum}: Học sinh [${studentName}] chưa có SĐT Phụ huynh.`,
+        );
       } else {
-        // Track parent linking for multi-child check
         const currentList = parentPhonesInFile.get(parentPhone1) || [];
         currentList.push(`${studentName} (${classCode})`);
         parentPhonesInFile.set(parentPhone1, currentList);
@@ -293,7 +323,6 @@ export class SchoolsImportService {
       }
     });
 
-    // Thông báo gộp tài khoản phụ huynh nếu có
     parentPhonesInFile.forEach((students, phone) => {
       if (students.length > 1) {
         warnings.push(
@@ -306,7 +335,7 @@ export class SchoolsImportService {
       isValid: errors.length === 0,
       summary: {
         classesCount: classCodesInFile.size,
-        teachersCount: teacherCodesInFile.size,
+        teachersCount: teacherIdentifiersInFile.size,
         studentsCount: studentCodesInFile.size,
         parentsCount: parentPhonesInFile.size,
         newStudentsCount,
@@ -330,17 +359,19 @@ export class SchoolsImportService {
     }
 
     const wb = XLSX.read(fileBuffer, { type: 'buffer' });
-    const sheetClassesName = wb.SheetNames.find(
-      (name) =>
-        name.toLowerCase().includes('lop') ||
-        name.toLowerCase().includes('class'),
-    ) || wb.SheetNames[0];
+    const sheetClassesName =
+      wb.SheetNames.find(
+        (name) =>
+          name.toLowerCase().includes('lop') ||
+          name.toLowerCase().includes('class'),
+      ) || wb.SheetNames[0];
 
-    const sheetStudentsName = wb.SheetNames.find(
-      (name) =>
-        name.toLowerCase().includes('hocsinh') ||
-        name.toLowerCase().includes('student'),
-    ) || wb.SheetNames[1];
+    const sheetStudentsName =
+      wb.SheetNames.find(
+        (name) =>
+          name.toLowerCase().includes('hocsinh') ||
+          name.toLowerCase().includes('student'),
+      ) || wb.SheetNames[1];
 
     const classesRows: any[] = XLSX.utils.sheet_to_json(
       wb.Sheets[sheetClassesName],
@@ -382,22 +413,34 @@ export class SchoolsImportService {
           });
         }
 
-        // 2. Xử lý Giáo viên & Lớp học (Sheet 1)
-        const classMap = new Map<string, string>(); // classCode -> classId
+        // 2. Xử lý Giáo viên (GVCN & GVBM) & Lớp học (Sheet 1)
+        const classMap = new Map<
+          string,
+          { id: string; name: string; grade: number; courseIds: string[] }
+        >();
 
         for (const row of classesRows) {
           const classCode = String(row['Mã Lớp'] || '').trim();
           const className = String(row['Tên Lớp'] || classCode).trim();
           const grade = parseInt(row['Khối'], 10);
-          const teacherCode = String(row['Mã GVCN'] || '').trim();
-          const teacherName = String(row['Họ Tên GVCN'] || '').trim();
-          const teacherEmail = String(row['Email GVCN'] || '').trim() || null;
-          const teacherPhone = String(row['SĐT GVCN'] || '').trim() || null;
+          const roleType = String(row['Vai Trò'] || 'GVCN')
+            .trim()
+            .toUpperCase();
+          const teacherCode = String(
+            row['Mã GVCN'] || row['Mã GV'] || '',
+          ).trim();
+          const teacherName = String(
+            row['Họ Tên GVCN'] || row['Họ Tên GV'] || '',
+          ).trim();
+          const teacherEmail =
+            String(row['Email GVCN'] || row['Email GV'] || '').trim() || null;
+          const teacherPhone =
+            String(row['SĐT GVCN'] || row['SĐT GV'] || '').trim() || null;
+          const subjectName = String(row['Môn Phụ Trách'] || '').trim();
 
-          let homeroomTeacherId: string | null = null;
+          let teacherId: string | null = null;
 
-          if (teacherName && (teacherEmail || teacherPhone)) {
-            // Upsert Giáo viên
+          if (teacherName && (teacherEmail || teacherPhone || teacherCode)) {
             const existingTeacher = await tx.user.findFirst({
               where: {
                 schoolId,
@@ -411,13 +454,14 @@ export class SchoolsImportService {
             });
 
             if (existingTeacher) {
-              homeroomTeacherId = existingTeacher.id;
+              teacherId = existingTeacher.id;
               await tx.user.update({
                 where: { id: existingTeacher.id },
                 data: {
                   fullName: teacherName,
                   email: teacherEmail || existingTeacher.email,
                   phone: teacherPhone || existingTeacher.phone,
+                  studentCode: teacherCode || existingTeacher.studentCode,
                 },
               });
             } else {
@@ -434,7 +478,7 @@ export class SchoolsImportService {
                   isActive: true,
                 },
               });
-              homeroomTeacherId = newTeacher.id;
+              teacherId = newTeacher.id;
             }
           }
 
@@ -447,12 +491,17 @@ export class SchoolsImportService {
             },
           });
 
+          const isHomeroom = roleType === 'GVCN';
+
           if (classRecord) {
             classRecord = await tx.class.update({
               where: { id: classRecord.id },
               data: {
                 grade,
-                homeroomTeacherId: homeroomTeacherId || classRecord.homeroomTeacherId,
+                homeroomTeacherId:
+                  isHomeroom && teacherId
+                    ? teacherId
+                    : classRecord.homeroomTeacherId,
               },
             });
           } else {
@@ -462,14 +511,84 @@ export class SchoolsImportService {
                 academicYearId: academicYear.id,
                 name: className,
                 grade,
-                homeroomTeacherId,
+                homeroomTeacherId: isHomeroom ? teacherId : null,
+                inviteCode: `${classCode}-${academicYear.name}`,
                 status: 'ACTIVE',
               },
             });
           }
 
-          classMap.set(classCode, classRecord.id);
-          classMap.set(className, classRecord.id);
+          const existingClassEntry = classMap.get(classCode) || {
+            id: classRecord.id,
+            name: classRecord.name,
+            grade: classRecord.grade,
+            courseIds: [],
+          };
+
+          // Nếu có Môn Phụ Trách và Giáo viên -> Tạo Subject, ClassSubjectTeacher (GVBM) và Course tương ứng
+          if (subjectName && teacherId) {
+            const subject = await tx.subject.upsert({
+              where: { name_grade: { name: subjectName, grade } },
+              update: {},
+              create: {
+                name: subjectName,
+                grade,
+                description: `Môn ${subjectName} Khối ${grade}`,
+              },
+            });
+
+            await tx.classSubjectTeacher.upsert({
+              where: {
+                classId_subjectId: {
+                  classId: classRecord.id,
+                  subjectId: subject.id,
+                },
+              },
+              update: {
+                teacherId,
+                status: 'ACTIVE',
+              },
+              create: {
+                classId: classRecord.id,
+                subjectId: subject.id,
+                teacherId,
+                status: 'ACTIVE',
+              },
+            });
+
+            // Đồng bộ Course cho lớp-môn để dùng chung với tài liệu RAG & bài tập
+            const courseTitle = `${subjectName} - ${className}`;
+            let course = await tx.course.findFirst({
+              where: {
+                schoolId,
+                title: courseTitle,
+              },
+            });
+            if (!course) {
+              course = await tx.course.create({
+                data: {
+                  schoolId,
+                  title: courseTitle,
+                  description: `Học phần ${subjectName} dành cho ${className}`,
+                  grade,
+                  subjectId: subject.id,
+                  teacherId,
+                },
+              });
+            } else {
+              course = await tx.course.update({
+                where: { id: course.id },
+                data: { teacherId, grade, subjectId: subject.id },
+              });
+            }
+
+            if (!existingClassEntry.courseIds.includes(course.id)) {
+              existingClassEntry.courseIds.push(course.id);
+            }
+          }
+
+          classMap.set(classCode, existingClassEntry);
+          classMap.set(className, existingClassEntry);
         }
 
         // 3. Xử lý Học sinh & Phụ huynh (Sheet 2)
@@ -481,7 +600,9 @@ export class SchoolsImportService {
           const studentCode = String(row['Mã Học Sinh'] || '').trim();
           const studentName = String(row['Họ Tên Học Sinh'] || '').trim();
           const classCode = String(row['Mã Lớp'] || '').trim();
-          const birthDateStr = String(row['Ngày Sinh (dd/mm/yyyy)'] || '').trim();
+          const birthDateStr = String(
+            row['Ngày Sinh (dd/mm/yyyy)'] || '',
+          ).trim();
           const email = String(row['Email Học Sinh'] || '').trim() || null;
 
           const parentName1 = String(row['Họ Tên Phụ Huynh 1'] || '').trim();
@@ -492,8 +613,8 @@ export class SchoolsImportService {
           const parentPhone2 = String(row['SĐT Phụ Huynh 2'] || '').trim();
           const parentRel2 = String(row['Quan Hệ PH 2'] || 'Phụ huynh').trim();
 
-          const classId = classMap.get(classCode);
-          if (!classId) continue;
+          const classInfo = classMap.get(classCode);
+          if (!classInfo) continue;
 
           // Mật khẩu mặc định học sinh: ngày sinh ddmmyyyy (nếu có) hoặc Student@123
           let studentPasswordHash = defaultStudentPasswordHash;
@@ -518,6 +639,7 @@ export class SchoolsImportService {
               data: {
                 fullName: studentName,
                 email: email || student.email,
+                grade: classInfo.grade,
               },
             });
           } else {
@@ -527,6 +649,7 @@ export class SchoolsImportService {
                 studentCode,
                 fullName: studentName,
                 email,
+                grade: classInfo.grade,
                 role: Role.STUDENT,
                 passwordHash: studentPasswordHash,
                 mustChangePassword: true,
@@ -536,16 +659,28 @@ export class SchoolsImportService {
           }
           studentsProcessed++;
 
+          // Đảm bảo học sinh có GamificationProfile
+          await tx.gamificationProfile.upsert({
+            where: { userId: student.id },
+            update: {},
+            create: {
+              userId: student.id,
+              lifetimeXp: 0,
+              spendableXp: 0,
+              level: 1,
+            },
+          });
+
           // Enroll student into Class
           await tx.classEnrollment.upsert({
             where: {
               classId_studentId: {
-                classId,
+                classId: classInfo.id,
                 studentId: student.id,
               },
             },
             create: {
-              classId,
+              classId: classInfo.id,
               studentId: student.id,
               status: 'ACTIVE',
             },
@@ -554,10 +689,28 @@ export class SchoolsImportService {
             },
           });
 
-          // Process Parent 1
+          // Đồng bộ Enrollment vào các Course bộ môn của lớp
+          for (const courseId of classInfo.courseIds) {
+            await tx.enrollment.upsert({
+              where: {
+                userId_courseId: {
+                  userId: student.id,
+                  courseId,
+                },
+              },
+              create: {
+                userId: student.id,
+                courseId,
+              },
+              update: {},
+            });
+          }
+
+          // Process Parent 1 (scoped by schoolId)
           if (parentPhone1) {
             let parent1 = await tx.user.findFirst({
               where: {
+                schoolId,
                 phone: parentPhone1,
                 role: Role.PARENT,
               },
@@ -578,7 +731,6 @@ export class SchoolsImportService {
               parentsProcessed++;
             }
 
-            // Link Parent 1 with Student
             await tx.parentStudentLink.upsert({
               where: {
                 parentId_studentId: {
@@ -598,10 +750,11 @@ export class SchoolsImportService {
             linksProcessed++;
           }
 
-          // Process Parent 2 (if present)
+          // Process Parent 2 (scoped by schoolId)
           if (parentPhone2) {
             let parent2 = await tx.user.findFirst({
               where: {
+                schoolId,
                 phone: parentPhone2,
                 role: Role.PARENT,
               },
@@ -622,7 +775,6 @@ export class SchoolsImportService {
               parentsProcessed++;
             }
 
-            // Link Parent 2 with Student
             await tx.parentStudentLink.upsert({
               where: {
                 parentId_studentId: {
@@ -643,11 +795,15 @@ export class SchoolsImportService {
           }
         }
 
+        const uniqueClassIds = new Set(
+          Array.from(classMap.values()).map((c) => c.id),
+        );
+
         return {
           success: true,
           message: 'Import dữ liệu trường học thành công.',
           summary: {
-            classesCount: classMap.size,
+            classesCount: uniqueClassIds.size,
             studentsCount: studentsProcessed,
             parentsCount: parentsProcessed,
             linksCount: linksProcessed,
@@ -655,7 +811,7 @@ export class SchoolsImportService {
         };
       },
       {
-        timeout: 60000, // 60s timeout for large batch operations
+        timeout: 60000,
       },
     );
   }
@@ -694,10 +850,10 @@ export class SchoolsImportService {
         'Tên Lớp',
         'Đối Tượng',
         'Họ và Tên',
-        'Tên Đăng Nhập',
+        'Tên Đăng Nhập (Mã HS / SĐT)',
         'Email / SĐT',
         'Mật Khẩu Mặc Định',
-        'Yêu Cầu Đổi Mật Khẩu',
+        'Trạng Thái Đổi Mật Khẩu',
       ],
     ];
 
@@ -711,11 +867,10 @@ export class SchoolsImportService {
         student.fullName || '',
         student.studentCode || student.email || '',
         student.email || '',
-        'Theo ngày sinh ddmmyyyy hoặc Student@123',
-        student.mustChangePassword ? 'Có (bắt buộc đổi)' : 'Đã đổi',
+        'Ngày sinh ddmmyyyy hoặc Student@123',
+        student.mustChangePassword ? 'Chưa đổi (Bắt buộc đổi)' : 'Đã đổi',
       ]);
 
-      // Phụ huynh của học sinh
       for (const link of student.studentLinks) {
         const parent = link.parent;
         exportRows.push([
@@ -726,15 +881,59 @@ export class SchoolsImportService {
           parent.phone || parent.email || '',
           parent.phone || parent.email || '',
           'Parent@123',
-          parent.mustChangePassword ? 'Có (bắt buộc đổi)' : 'Đã đổi',
+          parent.mustChangePassword ? 'Chưa đổi (Bắt buộc đổi)' : 'Đã đổi',
         ]);
       }
     }
 
     const ws = XLSX.utils.aoa_to_sheet(exportRows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Danh_Sach_Tai_Khoan');
+    XLSX.utils.book_append_sheet(wb, ws, 'HS_Va_PhuHuynh');
+
+    // Sheet 2: Tài khoản Giáo viên
+    const teachers = await this.prisma.user.findMany({
+      where: { schoolId, role: Role.TEACHER },
+      include: {
+        homeroomClasses: true,
+        subjectClasses: { include: { class: true, subject: true } },
+      },
+      orderBy: { fullName: 'asc' },
+    });
+
+    const teacherRows = [
+      [
+        'STT',
+        'Mã GV',
+        'Họ và Tên',
+        'Email Đăng Nhập',
+        'Số Điện Thoại',
+        'Lớp Chủ Nhiệm',
+        'Lớp - Môn Giảng Dạy',
+        'Mật Khẩu Mặc Định',
+        'Trạng Thái Đổi Mật Khẩu',
+      ],
+    ];
+
+    teachers.forEach((t, index) => {
+      const homeroomNames = t.homeroomClasses.map((c) => c.name).join(', ');
+      const subjectAssignments = t.subjectClasses
+        .map((sc) => `${sc.subject.name} (${sc.class.name})`)
+        .join(', ');
+      teacherRows.push([
+        String(index + 1),
+        t.studentCode || '',
+        t.fullName || '',
+        t.email || '',
+        t.phone || '',
+        homeroomNames || 'Không',
+        subjectAssignments || 'Chưa phân công',
+        'Teacher@123',
+        t.mustChangePassword ? 'Chưa đổi (Bắt buộc đổi)' : 'Đã đổi',
+      ]);
+    });
+
+    const wsTeachers = XLSX.utils.aoa_to_sheet(teacherRows);
+    XLSX.utils.book_append_sheet(wb, wsTeachers, 'Giao_Vien');
 
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   }
 }
-

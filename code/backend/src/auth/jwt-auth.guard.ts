@@ -1,28 +1,48 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-import { Injectable, ExecutionContext } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import {
+  Injectable,
+  ExecutionContext,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Role } from '@prisma/client';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
   canActivate(context: ExecutionContext) {
-    // Add custom authentication logic here if needed
     return super.canActivate(context);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  handleRequest(err: any, user: any, info: any) {
+  handleRequest(err: any, user: any, _info: any, context: ExecutionContext) {
     if (err || !user) {
-      // Bỏ qua lỗi xác thực tạm thời để test UI ở Phase 2
-      // Trả về một mock user (lấy từ dữ liệu seed.ts)
-      console.warn('⚠️ No token provided, using Mock User for testing!');
-      return {
-        id: '00000000-0000-0000-0000-000000000000', // Sẽ map với một user có thật sau, hoặc chỉ dùng để pass guard
-        userId: '00000000-0000-0000-0000-000000000000', // Dùng UUID chuẩn để Prisma không bị lỗi
-        email: 'student1@test.com',
-        role: Role.STUDENT,
-      };
+      throw (
+        err ||
+        new UnauthorizedException(
+          'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.',
+        )
+      );
     }
+
+    // Enforce first-time password change policy (BR-AUTH-003)
+    if (user.mustChangePassword) {
+      const req = context?.switchToHttp()?.getRequest();
+      const url: string = req?.url || req?.originalUrl || '';
+      const isAllowedRoute =
+        url.includes('/auth/first-time-change-password') ||
+        url.includes('/users/profile');
+
+      if (!isAllowedRoute) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'MUST_CHANGE_PASSWORD',
+          message:
+            'Bắt buộc đổi mật khẩu khởi tạo ở lần đăng nhập đầu tiên trước khi truy cập hệ thống.',
+        });
+      }
+    }
+
     return user;
   }
 }

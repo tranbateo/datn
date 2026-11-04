@@ -21,16 +21,6 @@ import {
 
 @Injectable()
 export class AuthService {
-  // In-memory store for Registration OTPs (if needed internally)
-  private otpStore = new Map<
-    string,
-    {
-      otp: string;
-      expiresAt: number;
-      userData: any;
-    }
-  >();
-
   // In-memory store for Login OTPs
   private loginOtpStore = new Map<
     string,
@@ -57,14 +47,14 @@ export class AuthService {
     });
   }
 
-  async sendEmailOtp(dto: RegisterDto) {
+  async sendEmailOtp(_dto: RegisterDto) {
     // BR-AUTH-003: Public registration is closed
     throw new ForbiddenException(
       'Hệ thống hiện không mở đăng ký tự do. Tài khoản được cấp bởi Quản trị viên Nhà trường.',
     );
   }
 
-  async verifyEmailOtp(dto: VerifyOtpDto) {
+  async verifyEmailOtp(_dto: VerifyOtpDto) {
     throw new ForbiddenException(
       'Hệ thống hiện không mở đăng ký tự do. Tài khoản được cấp bởi Quản trị viên Nhà trường.',
     );
@@ -73,7 +63,9 @@ export class AuthService {
   async login(dto: LoginDto) {
     const rawIdentifier = dto.identifier || dto.email;
     if (!rawIdentifier) {
-      throw new BadRequestException('Vui lòng nhập Email, Mã học sinh hoặc Số điện thoại.');
+      throw new BadRequestException(
+        'Vui lòng nhập Email, Mã học sinh hoặc Số điện thoại.',
+      );
     }
     const identifier = rawIdentifier.trim();
     const { password, schoolCode } = dto;
@@ -93,10 +85,7 @@ export class AuthService {
       });
       if (school) {
         whereCondition = {
-          AND: [
-            { schoolId: school.id },
-            { OR: orConditions },
-          ],
+          AND: [{ schoolId: school.id }, { OR: orConditions }],
         };
       }
     }
@@ -120,7 +109,10 @@ export class AuthService {
         throw new UnauthorizedException('SCHOOL_SUSPENDED');
       }
 
-      if (user.school.licenseExpiresAt && new Date() > user.school.licenseExpiresAt) {
+      if (
+        user.school.licenseExpiresAt &&
+        new Date() > user.school.licenseExpiresAt
+      ) {
         // Only School Admin is permitted to log in when school license is expired
         if (user.role !== 'SCHOOL_ADMIN') {
           throw new UnauthorizedException('SCHOOL_LICENSE_EXPIRED');
@@ -140,9 +132,19 @@ export class AuthService {
       throw new UnauthorizedException('INVALID_CREDENTIALS');
     }
 
-    // 2FA / OTP check for ADMIN, SCHOOL_ADMIN, and TEACHER (if they have an email)
+    // 2FA / OTP check for ADMIN, SCHOOL_ADMIN, and TEACHER (when ENABLE_EMAIL_2FA=true and SMTP is configured)
+    const enableEmail2fa =
+      this.configService.get<string>('ENABLE_EMAIL_2FA') === 'true';
+    const mailUser = this.configService.get<string>('MAIL_USER');
+    const mailPass = this.configService.get<string>('MAIL_PASS');
+
     if (
-      (user.role === 'ADMIN' || user.role === 'SCHOOL_ADMIN' || user.role === 'TEACHER') &&
+      enableEmail2fa &&
+      mailUser &&
+      mailPass &&
+      (user.role === 'ADMIN' ||
+        user.role === 'SCHOOL_ADMIN' ||
+        user.role === 'TEACHER') &&
       user.email
     ) {
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -156,7 +158,7 @@ export class AuthService {
 
       try {
         await this.transporter.sendMail({
-          from: `"EduAI" <${this.configService.get<string>('MAIL_USER')}>`,
+          from: `"EduAI" <${mailUser}>`,
           to: user.email,
           subject: 'Mã xác thực đăng nhập EduAI',
           html: `
@@ -180,13 +182,14 @@ export class AuthService {
       }
     }
 
-    // Generate tokens for users (STUDENT, PARENT, or roles without email OTP requirement)
+    // Generate tokens
     const tokens = await this.generateTokens(
       user.id,
       user.email || user.studentCode || user.phone || '',
       user.role,
       user.fullName,
       user.schoolId,
+      user.mustChangePassword,
     );
 
     return {
@@ -221,15 +224,15 @@ export class AuthService {
       throw new BadRequestException('USER_NOT_FOUND');
     }
 
-    // Cleanup OTP
     this.loginOtpStore.delete(email);
 
     const tokens = await this.generateTokens(
       user.id,
-      user.email || user.studentCode || '',
+      user.email || user.studentCode || user.phone || '',
       user.role,
       user.fullName,
       user.schoolId,
+      user.mustChangePassword,
     );
 
     return {
@@ -238,7 +241,10 @@ export class AuthService {
     };
   }
 
-  async firstTimeChangePassword(userId: string, dto: FirstTimeChangePasswordDto) {
+  async firstTimeChangePassword(
+    userId: string,
+    dto: FirstTimeChangePasswordDto,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('USER_NOT_FOUND');
@@ -256,11 +262,13 @@ export class AuthService {
     }
 
     if (dto.currentPassword === dto.newPassword) {
-      throw new BadRequestException('Mật khẩu mới không được trùng với mật khẩu cũ.');
+      throw new BadRequestException(
+        'Mật khẩu mới không được trùng với mật khẩu cũ.',
+      );
     }
 
     const newHash = await bcrypt.hash(dto.newPassword + pepper, 10);
-    await this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id: userId },
       data: {
         passwordHash: newHash,
@@ -268,10 +276,21 @@ export class AuthService {
       },
     });
 
+    // Issue new tokens with mustChangePassword: false
+    const tokens = await this.generateTokens(
+      updatedUser.id,
+      updatedUser.email || updatedUser.studentCode || updatedUser.phone || '',
+      updatedUser.role,
+      updatedUser.fullName,
+      updatedUser.schoolId,
+      false,
+    );
+
     return {
       success: true,
       message: 'Đổi mật khẩu thành công.',
       mustChangePassword: false,
+      ...tokens,
     };
   }
 
@@ -281,8 +300,15 @@ export class AuthService {
     role: string,
     fullName: string | null,
     schoolId: string | null,
+    mustChangePassword = false,
   ) {
-    const payload = { sub: userId, email, role, schoolId };
+    const payload = {
+      sub: userId,
+      email,
+      role,
+      schoolId,
+      mustChangePassword,
+    };
     const plainToken = crypto.randomBytes(32).toString('hex');
     const refreshToken = `${userId}.${plainToken}`;
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
@@ -301,6 +327,7 @@ export class AuthService {
         fullName,
         role,
         schoolId,
+        mustChangePassword,
       },
     };
   }
@@ -323,12 +350,12 @@ export class AuthService {
       throw new UnauthorizedException('INVALID_REFRESH_TOKEN');
     }
 
-    // Generate new tokens (Rotation)
     const payload = {
       sub: user.id,
-      email: user.email || user.studentCode || '',
+      email: user.email || user.studentCode || user.phone || '',
       role: user.role,
       schoolId: user.schoolId,
+      mustChangePassword: user.mustChangePassword,
     };
     const plainToken = crypto.randomBytes(32).toString('hex');
     const newRefreshToken = `${user.id}.${plainToken}`;

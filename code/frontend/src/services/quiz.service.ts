@@ -17,8 +17,17 @@ export interface Quiz {
   title: string;
   description: string;
   duration: number;
+  status?: string;
   createdAt: string;
   questions?: Question[];
+}
+
+export interface QuestionResult {
+  questionId: string;
+  selectedOption: string | null;
+  correctOption: string;
+  isCorrect: boolean;
+  explanation?: string | null;
 }
 
 export interface QuizAttemptResponse {
@@ -26,6 +35,7 @@ export interface QuizAttemptResponse {
   score: number;
   totalQuestions: number;
   xpEarned: number;
+  questionResults?: QuestionResult[];
 }
 
 export const quizService = {

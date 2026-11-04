@@ -1,20 +1,83 @@
 "use client";
 /* eslint-disable react/no-unescaped-entities */
 
-import { useState } from "react";
-import { Settings, Bot, Shield, Trophy, Save, Key, Sliders, CheckCircle2, Globe, Building, Mail } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Settings, Bot, Shield, Trophy, Save, Key, CheckCircle2, Globe, Building, Mail, AlertTriangle, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { fetchApi } from "@/lib/api-client";
 
-export default function AdminSettingsClient() {
+interface LicenseData {
+  id: string;
+  name: string;
+  code: string;
+  licenseKey: string | null;
+  licenseStatus: string;
+  licenseExpiresAt: string | null;
+  aiTokenQuota: number;
+  aiTokensUsed: number;
+  aiProvider: string;
+  hasCustomApiKey?: boolean;
+  quotaPercentage?: number;
+  quotaAlertLevel?: string;
+}
+
+export default function AdminSettingsClient({ initialData }: { initialData?: any }) {
   const [activeTab, setActiveTab] = useState("ai");
   const t = useTranslations("Admin.Settings");
 
+  const [license, setLicense] = useState<LicenseData | null>(null);
+  const [aiProvider, setAiProvider] = useState("SYSTEM_QUOTA");
+  const [customApiKey, setCustomApiKey] = useState("");
+  const [savingByok, setSavingByok] = useState(false);
+
+  useEffect(() => {
+    async function loadLicense() {
+      try {
+        const data = await fetchApi<LicenseData>("/schools/license/me");
+        if (data) {
+          setLicense(data);
+          setAiProvider(data.aiProvider || "SYSTEM_QUOTA");
+        }
+      } catch (err) {
+        console.error("Failed to load school license:", err);
+      }
+    }
+    loadLicense();
+  }, []);
+
+  const handleSaveByok = async () => {
+    setSavingByok(true);
+    try {
+      const updated = await fetchApi<LicenseData>("/schools/license/byok", {
+        method: "PUT",
+        body: JSON.stringify({
+          aiProvider,
+          customApiKey: aiProvider === "BYOK" ? customApiKey : "",
+        }),
+      });
+      if (updated) {
+        setLicense(updated);
+        setCustomApiKey("");
+        alert("Cập nhật cấu hình AI & BYOK của nhà trường thành công!");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Không thể cập nhật cấu hình BYOK.");
+    } finally {
+      setSavingByok(false);
+    }
+  };
+
   const tabs = [
+    { id: "ai", label: "Bản quyền & AI Quota (BYOK)", icon: Bot },
     { id: "general", label: t('general'), icon: Settings },
-    { id: "ai", label: t('ai'), icon: Bot },
     { id: "rbac", label: t('rbac'), icon: Shield },
     { id: "gamification", label: t('gamification'), icon: Trophy },
   ];
+
+  const quotaPct = license
+    ? Math.min(100, Math.round((license.aiTokensUsed / Math.max(1, license.aiTokenQuota)) * 100))
+    : 0;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -23,8 +86,13 @@ export default function AdminSettingsClient() {
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{t('title')}</h2>
           <p className="text-gray-500 dark:text-gray-400 mt-1">{t('subtitle')}</p>
         </div>
-        <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm">
-          <Save className="w-4 h-4" /> {t('saveChanges')}
+        <button
+          onClick={handleSaveByok}
+          disabled={savingByok}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm"
+        >
+          {savingByok ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {t('saveChanges')}
         </button>
       </div>
 
@@ -56,85 +124,152 @@ export default function AdminSettingsClient() {
         <div className="flex-1 min-w-0">
           <div className="bg-white dark:bg-card-bg rounded-2xl border border-gray-200 dark:border-card-border shadow-sm p-6 sm:p-8">
             
-            {/* --- AI Configuration Tab --- */}
+            {/* --- AI & License Tab --- */}
             {activeTab === "ai" && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Bot className="w-5 h-5 text-purple-500" /> Default AI Model
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Choose the primary large language model (LLM) used by the AI Tutor.</p>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-                    {/* Model Option 1 */}
-                    <div className="border-2 border-blue-600 dark:border-blue-500 rounded-xl p-4 cursor-pointer relative bg-blue-50/50 dark:bg-blue-900/10">
-                      <div className="absolute top-3 right-3 text-blue-600 dark:text-blue-500">
-                        <CheckCircle2 className="w-5 h-5" />
+                {license && (
+                  <div className="p-5 rounded-2xl border border-blue-100 dark:border-blue-900/50 bg-blue-50/40 dark:bg-blue-900/10 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                          Bản quyền trường học (B2B License)
+                        </span>
+                        <h4 className="text-xl font-bold text-gray-900 dark:text-white mt-0.5">
+                          {license.name} ({license.code})
+                        </h4>
                       </div>
-                      <div className="font-bold text-gray-900 dark:text-white mb-1">GPT-4 Turbo</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">OpenAI • High Accuracy</div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold w-fit ${
+                        license.licenseStatus === 'ACTIVE'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                          : 'bg-red-100 text-red-700'
+                      }`}>
+                        {license.licenseStatus}
+                      </span>
                     </div>
-                    {/* Model Option 2 */}
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
-                      <div className="font-bold text-gray-900 dark:text-white mb-1">Gemini 1.5 Pro</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">Google • Fast & Multimodal</div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400">Mã License: </span>
+                        <span className="font-mono font-semibold text-gray-800 dark:text-gray-200">
+                          {license.licenseKey || 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400">Hạn sử dụng: </span>
+                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          {license.licenseExpiresAt ? new Date(license.licenseExpiresAt).toLocaleDateString('vi-VN') : 'Vô thời hạn'}
+                        </span>
+                      </div>
                     </div>
-                    {/* Model Option 3 */}
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
-                      <div className="font-bold text-gray-900 dark:text-white mb-1">Claude 3 Opus</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">Anthropic • Best Reasoning</div>
+
+                    {/* Quota Progress Bar */}
+                    <div className="space-y-2 pt-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-semibold text-gray-700 dark:text-gray-300">
+                          Hạn mức AI Token đã dùng (BR-AI-QUOTA)
+                        </span>
+                        <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                          {license.aiTokensUsed.toLocaleString()} / {license.aiTokenQuota.toLocaleString()} ({quotaPct}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            quotaPct >= 90 ? 'bg-red-500' : quotaPct >= 80 ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${quotaPct}%` }}
+                        />
+                      </div>
+                      {quotaPct >= 80 && (
+                        <div className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span>
+                            {quotaPct >= 100
+                              ? "Hạn mức AI của nhà trường đã hết! Tính năng Chat AI và Sinh Quiz đang tạm khóa (Quiz, Tài liệu & Báo cáo vẫn hoạt động bình thường)."
+                              : `Cảnh báo: Nhà trường đã sử dụng ${quotaPct}% hạn mức AI Token trong kỳ.`}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
+                )}
+
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Key className="w-5 h-5 text-emerald-500" /> Chế độ cung cấp AI (System Quota vs BYOK)
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Nhà trường có thể sử dụng hạn mức Token đi kèm gói bản quyền hoặc tự cấu hình Gemini API Key riêng (BYOK) để không bị giới hạn bởi quota hệ thống.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                    <div
+                      onClick={() => setAiProvider("SYSTEM_QUOTA")}
+                      className={`border-2 rounded-xl p-4 cursor-pointer relative transition-all ${
+                        aiProvider === "SYSTEM_QUOTA"
+                          ? "border-blue-600 bg-blue-50/50 dark:bg-blue-900/10"
+                          : "border-gray-200 dark:border-gray-700"
+                      }`}
+                    >
+                      {aiProvider === "SYSTEM_QUOTA" && (
+                        <div className="absolute top-3 right-3 text-blue-600">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                      )}
+                      <div className="font-bold text-gray-900 dark:text-white mb-1">System Quota (Mặc định)</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        Sử dụng Token trong gói hợp đồng B2B của trường
+                      </div>
+                    </div>
+
+                    <div
+                      onClick={() => setAiProvider("BYOK")}
+                      className={`border-2 rounded-xl p-4 cursor-pointer relative transition-all ${
+                        aiProvider === "BYOK"
+                          ? "border-blue-600 bg-blue-50/50 dark:bg-blue-900/10"
+                          : "border-gray-200 dark:border-gray-700"
+                      }`}
+                    >
+                      {aiProvider === "BYOK" && (
+                        <div className="absolute top-3 right-3 text-blue-600">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                      )}
+                      <div className="font-bold text-gray-900 dark:text-white mb-1">BYOK (Bring Your Own Key)</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        Sử dụng Gemini API Key riêng của nhà trường
+                      </div>
+                    </div>
+                  </div>
+
+                  {aiProvider === "BYOK" && (
+                    <div className="mt-4 space-y-2">
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        Google Gemini API Key của nhà trường
+                      </label>
+                      <input
+                        type="password"
+                        value={customApiKey}
+                        onChange={(e) => setCustomApiKey(e.target.value)}
+                        placeholder={license?.hasCustomApiKey ? "•••••••••••••••• (Đã cấu hình - Nhập mới để thay đổi)" : "AIzaSy..."}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono outline-none focus:border-blue-500"
+                      />
+                      <p className="text-xs text-gray-400">
+                        API Key được lưu trữ bảo mật ở phía server và không bao giờ hiển thị lại trên giao diện.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="h-px bg-gray-100 dark:bg-gray-800"></div>
 
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Sliders className="w-5 h-5 text-blue-500" /> Model Parameters
+                    <Bot className="w-5 h-5 text-purple-500" /> Mô hình ngôn ngữ đang kích hoạt
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Fine-tune the AI's response behavior.</p>
-                  
-                  <div className="space-y-6 mt-6">
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Temperature (Creativity)</label>
-                        <span className="text-sm font-bold text-blue-600 dark:text-blue-400">0.7</span>
-                      </div>
-                      <input type="range" min="0" max="100" defaultValue="70" className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-blue-600" />
-                      <div className="flex justify-between text-xs text-gray-400 mt-1">
-                        <span>Precise & Analytical</span>
-                        <span>Creative & Fluid</span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Max Response Tokens</label>
-                      <select 
-                        defaultValue="2048"
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                      >
-                        <option value="1024">1024 tokens (~750 words)</option>
-                        <option value="2048">2048 tokens (~1500 words)</option>
-                        <option value="4096">4096 tokens (~3000 words)</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="h-px bg-gray-100 dark:bg-gray-800"></div>
-
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Key className="w-5 h-5 text-emerald-500" /> System Prompt (Persona)
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Define the base personality and rules for the AI Tutor.</p>
-                  
-                  <textarea 
-                    rows={4} 
-                    className="mt-4 w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-y font-mono leading-relaxed"
-                    defaultValue="You are an expert AI Tutor for high school students. Always explain concepts step-by-step. Do not provide direct answers to homework; instead, guide the student to discover the answer themselves."
-                  ></textarea>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Model mặc định được cấu hình qua Adapter: <span className="font-mono font-bold text-blue-600">{initialData?.aiModel || 'gemini-2.5-flash'}</span>
+                  </p>
                 </div>
               </div>
             )}
@@ -142,19 +277,19 @@ export default function AdminSettingsClient() {
             {/* --- General Tab --- */}
             {activeTab === "general" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Organization Details</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Thông tin đơn vị trường học</h3>
                 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Platform Name</label>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Tên trường học</label>
                     <div className="relative">
                       <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input type="text" defaultValue="EduAI Premium" className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                      <input type="text" defaultValue={license?.name || "THCS Nguyễn Trãi"} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Support Email</label>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Email hỗ trợ kỹ thuật</label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <input type="email" defaultValue="support@eduai.edu.vn" className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
@@ -162,7 +297,7 @@ export default function AdminSettingsClient() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Default Language</label>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Ngôn ngữ mặc định</label>
                     <div className="relative">
                       <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <select className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 appearance-none">
@@ -179,15 +314,15 @@ export default function AdminSettingsClient() {
             {activeTab === "gamification" && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Gamification & Rewards Engine</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Configure how students earn points and compete.</p>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Gamification & Bảng xếp hạng nội bộ trường</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Cấu hình cơ chế tích lũy XP và Streak trong phạm vi nhà trường.</p>
                 </div>
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700">
                     <div>
-                      <div className="font-semibold text-gray-900 dark:text-white">Enable Leaderboards</div>
-                      <div className="text-sm text-gray-500">Allow students to see their rank based on XP.</div>
+                      <div className="font-semibold text-gray-900 dark:text-white">Bật Bảng xếp hạng theo Trường</div>
+                      <div className="text-sm text-gray-500">Học sinh xem thứ hạng XP trong phạm vi trường học của mình.</div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" className="sr-only peer" defaultChecked />
@@ -197,29 +332,13 @@ export default function AdminSettingsClient() {
 
                   <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700">
                     <div>
-                      <div className="font-semibold text-gray-900 dark:text-white">Streak System</div>
-                      <div className="text-sm text-gray-500">Award bonus XP for consecutive days of login and study.</div>
+                      <div className="font-semibold text-gray-900 dark:text-white">Hệ thống Streak học tập</div>
+                      <div className="text-sm text-gray-500">Thưởng XP khi học sinh duy trì chuỗi ngày làm bài liên tiếp.</div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" className="sr-only peer" defaultChecked />
                       <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                     </label>
-                  </div>
-                </div>
-
-                <div className="h-px bg-gray-100 dark:bg-gray-800"></div>
-                
-                <div>
-                  <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-3">XP Reward Matrix</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Lesson Completion</label>
-                      <input type="number" defaultValue="50" className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:border-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Perfect Quiz Score</label>
-                      <input type="number" defaultValue="100" className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:border-blue-500" />
-                    </div>
                   </div>
                 </div>
               </div>
@@ -229,43 +348,48 @@ export default function AdminSettingsClient() {
             {activeTab === "rbac" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Role-Based Access Control</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage what different user types can see and do.</p>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Ma trận phân quyền (RBAC)</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Phân quyền chuẩn theo mô hình B2B School Provisioning.</p>
                 </div>
                 
                 <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
                       <tr>
-                        <th className="px-4 py-3 font-semibold">Permission</th>
-                        <th className="px-4 py-3 font-semibold text-center">Admin</th>
-                        <th className="px-4 py-3 font-semibold text-center">Teacher</th>
+                        <th className="px-4 py-3 font-semibold">Quyền hạn</th>
+                        <th className="px-4 py-3 font-semibold text-center">School Admin</th>
+                        <th className="px-4 py-3 font-semibold text-center">GVCN / GVBM</th>
                         <th className="px-4 py-3 font-semibold text-center">Student</th>
+                        <th className="px-4 py-3 font-semibold text-center">Parent</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                      <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">Manage System Settings</td>
+                      <tr>
+                        <td className="px-4 py-3 font-medium">Import Excel & Xuất tài khoản trường</td>
+                        <td className="px-4 py-3 text-center"><CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" /></td>
+                        <td className="px-4 py-3 text-center">GVCN (Lớp mình)</td>
+                        <td className="px-4 py-3 text-center">-</td>
+                        <td className="px-4 py-3 text-center">-</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-medium">Tải tài liệu RAG & Duyệt Quiz AI</td>
+                        <td className="px-4 py-3 text-center"><CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" /></td>
                         <td className="px-4 py-3 text-center"><CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" /></td>
                         <td className="px-4 py-3 text-center">-</td>
                         <td className="px-4 py-3 text-center">-</td>
                       </tr>
-                      <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">Upload AI Content</td>
+                      <tr>
+                        <td className="px-4 py-3 font-medium">Hỏi đáp AI RAG có trích dẫn & Làm Quiz</td>
+                        <td className="px-4 py-3 text-center">-</td>
                         <td className="px-4 py-3 text-center"><CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" /></td>
                         <td className="px-4 py-3 text-center"><CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" /></td>
                         <td className="px-4 py-3 text-center">-</td>
                       </tr>
-                      <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">View Global Analytics</td>
+                      <tr>
+                        <td className="px-4 py-3 font-medium">Xem báo cáo học tập của con & Nhắn tin GV</td>
+                        <td className="px-4 py-3 text-center">-</td>
                         <td className="px-4 py-3 text-center"><CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" /></td>
                         <td className="px-4 py-3 text-center">-</td>
-                        <td className="px-4 py-3 text-center">-</td>
-                      </tr>
-                      <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">Chat with AI Tutor</td>
-                        <td className="px-4 py-3 text-center"><CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" /></td>
-                        <td className="px-4 py-3 text-center"><CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" /></td>
                         <td className="px-4 py-3 text-center"><CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" /></td>
                       </tr>
                     </tbody>

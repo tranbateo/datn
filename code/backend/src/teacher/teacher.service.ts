@@ -1,47 +1,123 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateQuizDto, CreateQuestionDto } from './dto/teacher.dto';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 @Injectable()
 export class TeacherService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
-  async getDashboardStats(teacherId: string) {
-    const totalCourses = await this.prisma.course.count({
-      where: { teacherId },
+  private async getTeacherScope(teacherId: string) {
+    const teacher = await this.prisma.user.findUnique({
+      where: { id: teacherId },
+      include: {
+        homeroomClasses: {
+          include: {
+            enrollments: { where: { status: 'ACTIVE' } },
+          },
+        },
+        subjectClasses: {
+          include: {
+            class: {
+              include: {
+                enrollments: { where: { status: 'ACTIVE' } },
+              },
+            },
+            subject: true,
+          },
+        },
+        courses: true,
+      },
     });
 
-    const courses = await this.prisma.course.findMany({
-      where: { teacherId },
-      select: { id: true, subjectId: true },
-    });
+    if (!teacher) {
+      throw new NotFoundException('Không tìm thấy giáo viên.');
+    }
 
-    const courseIds = courses.map((c) => c.id);
+    const courseIds = teacher.courses.map((c) => c.id);
     const subjectIds = Array.from(
-      new Set(courses.map((c) => c.subjectId).filter((id) => id !== null)),
+      new Set([
+        ...teacher.courses.map((c) => c.subjectId).filter(Boolean),
+        ...teacher.subjectClasses.map((sc) => sc.subjectId).filter(Boolean),
+      ]),
+    ) as string[];
+
+    const classIds = Array.from(
+      new Set([
+        ...teacher.homeroomClasses.map((c) => c.id),
+        ...teacher.subjectClasses.map((sc) => sc.classId),
+      ]),
     );
 
-    const enrollments = await this.prisma.enrollment.findMany({
-      where: { courseId: { in: courseIds } },
+    return {
+      teacher,
+      schoolId: teacher.schoolId,
+      courseIds,
+      subjectIds,
+      classIds,
+      homeroomClasses: teacher.homeroomClasses,
+      subjectClasses: teacher.subjectClasses,
+    };
+  }
+
+  async getDashboardStats(teacherId: string) {
+    const scope = await this.getTeacherScope(teacherId);
+    const totalCourses = scope.courseIds.length;
+
+    const courseEnrollments = await this.prisma.enrollment.findMany({
+      where: { courseId: { in: scope.courseIds } },
       select: { userId: true },
     });
 
-    const totalStudents = new Set(enrollments.map((e) => e.userId)).size;
-
-    const totalQuizzes = await this.prisma.quiz.count({
-      where: { subjectId: { in: subjectIds } },
+    const classEnrollments = await this.prisma.classEnrollment.findMany({
+      where: { classId: { in: scope.classIds }, status: 'ACTIVE' },
+      select: { studentId: true },
     });
 
-    // Calculate average score of all attempts in this teacher's quizzes
-    const attempts = await this.prisma.quizAttempt.findMany({
-      where: { quiz: { subjectId: { in: subjectIds } } },
-      select: {
-        score: true,
-        completedAt: true,
-        user: { select: { fullName: true } },
-      },
-    });
+    const allStudentIds = Array.from(
+      new Set([
+        ...courseEnrollments.map((e) => e.userId),
+        ...classEnrollments.map((ce) => ce.studentId),
+      ]),
+    );
+    const totalStudents = allStudentIds.length;
+
+    const quizWhere: any = {};
+    if (scope.schoolId) quizWhere.schoolId = scope.schoolId;
+    if (scope.subjectIds.length > 0) {
+      quizWhere.subjectId = { in: scope.subjectIds };
+    }
+
+    const totalQuizzes =
+      scope.subjectIds.length > 0
+        ? await this.prisma.quiz.count({ where: quizWhere })
+        : 0;
+
+    const attempts =
+      allStudentIds.length > 0
+        ? await this.prisma.quizAttempt.findMany({
+            where: {
+              userId: { in: allStudentIds },
+              ...(scope.subjectIds.length > 0
+                ? { quiz: { subjectId: { in: scope.subjectIds } } }
+                : {}),
+            },
+            select: {
+              score: true,
+              completedAt: true,
+              user: { select: { fullName: true } },
+            },
+          })
+        : [];
 
     let averageScore = 0;
     if (attempts.length > 0) {
@@ -49,7 +125,6 @@ export class TeacherService {
       averageScore = Number((sum / attempts.length).toFixed(1));
     }
 
-    // Performance data: Last 7 days average score
     const last7Days = Array.from({ length: 7 }).map((_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (6 - i));
@@ -73,19 +148,18 @@ export class TeacherService {
           ? dayScores.reduce((acc, s) => acc + s, 0) / dayScores.length
           : 0;
       return {
-        name: `${parts[2]}/${parts[1]}`, // DD/MM
+        name: `${parts[2]}/${parts[1]}`,
         score: Number(avg.toFixed(1)),
       };
     });
 
-    // Needs attention: Students with lowest average score in teacher's courses
     const studentScores: Record<
       string,
       { total: number; count: number; name: string }
     > = {};
     attempts.forEach((a) => {
       if (!a.user) return;
-      const name = a.user.fullName || 'Unknown Student';
+      const name = a.user.fullName || 'Học sinh';
       if (!studentScores[name]) {
         studentScores[name] = { total: 0, count: 0, name };
       }
@@ -97,39 +171,105 @@ export class TeacherService {
       .map((s) => ({
         name: s.name,
         average: s.total / s.count,
-        issues: `Điểm trung bình thấp: ${(s.total / s.count).toFixed(1)}/100`,
+        issues: `Điểm trung bình: ${(s.total / s.count).toFixed(1)}/100`,
       }))
       .sort((a, b) => a.average - b.average)
-      .slice(0, 3); // Get top 3 lowest
+      .slice(0, 3);
 
     return {
       totalStudents,
       totalCourses,
       totalQuizzes,
       averageScore,
+      homeroomClassesCount: scope.homeroomClasses.length,
+      subjectClassesCount: scope.subjectClasses.length,
+      homeroomClasses: scope.homeroomClasses.map((c) => ({
+        id: c.id,
+        name: c.name,
+        grade: c.grade,
+        studentsCount: c.enrollments.length,
+      })),
+      subjectClasses: scope.subjectClasses.map((sc) => ({
+        id: sc.id,
+        classId: sc.classId,
+        className: sc.class.name,
+        grade: sc.class.grade,
+        subjectId: sc.subjectId,
+        subjectName: sc.subject.name,
+        studentsCount: sc.class.enrollments.length,
+      })),
       performanceData,
       needsAttention,
     };
   }
 
+  async getMyClasses(teacherId: string) {
+    const scope = await this.getTeacherScope(teacherId);
+    return {
+      homeroomClasses: scope.homeroomClasses.map((c) => ({
+        id: c.id,
+        name: c.name,
+        grade: c.grade,
+        role: 'GVCN',
+        studentsCount: c.enrollments.length,
+      })),
+      subjectClasses: scope.subjectClasses.map((sc) => ({
+        id: sc.id,
+        classId: sc.classId,
+        className: sc.class.name,
+        grade: sc.class.grade,
+        subjectId: sc.subjectId,
+        subjectName: sc.subject.name,
+        role: 'GVBM',
+        studentsCount: sc.class.enrollments.length,
+      })),
+    };
+  }
+
   async getStudents(teacherId: string) {
-    const courses = await this.prisma.course.findMany({
-      where: { teacherId },
-      select: { id: true, subjectId: true, title: true },
+    const scope = await this.getTeacherScope(teacherId);
+
+    const homeroomClassIds = new Set(scope.homeroomClasses.map((c) => c.id));
+
+    // Fetch from ClassEnrollment (for both GVCN and GVBM)
+    const classEnrollments = await this.prisma.classEnrollment.findMany({
+      where: {
+        classId: { in: scope.classIds },
+        status: 'ACTIVE',
+      },
+      include: {
+        class: true,
+        student: {
+          select: {
+            id: true,
+            studentCode: true,
+            email: true,
+            phone: true,
+            fullName: true,
+            grade: true,
+            gamificationProfile: {
+              select: {
+                level: true,
+                currentStreak: true,
+                lifetimeXp: true,
+              },
+            },
+          },
+        },
+      },
     });
 
-    const courseIds = courses.map((c) => c.id);
-    const subjectIds = Array.from(
-      new Set(courses.map((c) => c.subjectId).filter(Boolean)),
-    ) as string[];
-
-    const enrollments = await this.prisma.enrollment.findMany({
-      where: { courseId: { in: courseIds } },
+    // Also fetch from Course Enrollment for backward compatibility
+    const courseEnrollments = await this.prisma.enrollment.findMany({
+      where: { courseId: { in: scope.courseIds } },
       include: {
+        course: true,
         user: {
           select: {
             id: true,
+            studentCode: true,
             email: true,
+            phone: true,
             fullName: true,
             grade: true,
             gamificationProfile: {
@@ -145,64 +285,101 @@ export class TeacherService {
     });
 
     const studentsMap = new Map<string, any>();
-    const studentIds = Array.from(new Set(enrollments.map((e) => e.userId)));
+    for (const ce of classEnrollments) {
+      const u = ce.student;
+      const isGvcn = homeroomClassIds.has(ce.classId);
+      studentsMap.set(u.id, {
+        user: u,
+        className: ce.class.name,
+        classId: ce.classId,
+        teacherRole: isGvcn ? 'GVCN' : 'GVBM',
+        enrolledAt: ce.enrolledAt,
+      });
+    }
 
-    const attempts = await this.prisma.quizAttempt.findMany({
-      where: {
-        userId: { in: studentIds },
-        quiz: { subjectId: { in: subjectIds } },
-      },
-      select: {
-        userId: true,
-        score: true,
-        completedAt: true,
-      },
-      orderBy: { completedAt: 'desc' },
-    });
-
-    for (const e of enrollments) {
-      if (!studentsMap.has(e.userId)) {
-        const u = (e as any).user;
-        const userAttempts = attempts.filter((a) => a.userId === e.userId);
-        let avgScore = 0;
-        let lastActivity = null;
-        let progress = 0;
-        let status = 'Inactive';
-
-        if (userAttempts.length > 0) {
-          const sum = userAttempts.reduce((acc, curr) => acc + curr.score, 0);
-          avgScore = Number((sum / userAttempts.length).toFixed(1));
-          lastActivity = userAttempts[0].completedAt;
-          progress = Math.min(100, userAttempts.length * 10);
-
-          if (avgScore > 60) status = 'Active';
-          else if (avgScore > 0) status = 'At Risk';
-        }
-
-        studentsMap.set(e.userId, {
-          id: u.id,
-          name: u.fullName || 'Học sinh ẩn danh',
-          email: u.email,
-          grade: u.grade ? `Lớp ${u.grade}` : 'Chưa cập nhật',
-          level: u.gamificationProfile?.level || 1,
-          streak: u.gamificationProfile?.currentStreak || 0,
-          avgScore,
-          progress,
-          status,
-          lastActivity,
-          enrolledAt: e.createdAt,
-          initials: (u.fullName || 'HS')
-            .split(' ')
-            .map((n: string) => n[0])
-            .join('')
-            .substring(0, 2)
-            .toUpperCase(),
+    for (const enr of courseEnrollments) {
+      const u = enr.user;
+      if (!studentsMap.has(u.id)) {
+        studentsMap.set(u.id, {
+          user: u,
+          className: enr.course.title,
+          classId: null,
+          teacherRole: 'GVBM',
+          enrolledAt: enr.createdAt,
         });
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return Array.from(studentsMap.values());
+    const studentIds = Array.from(studentsMap.keys());
+    const attempts =
+      studentIds.length > 0
+        ? await this.prisma.quizAttempt.findMany({
+            where: {
+              userId: { in: studentIds },
+            },
+            include: {
+              quiz: { select: { id: true, title: true, subjectId: true } },
+            },
+            orderBy: { completedAt: 'desc' },
+          })
+        : [];
+
+    const result: any[] = [];
+    studentsMap.forEach((info, studentId) => {
+      const u = info.user;
+      // GVCN sees all subjects' attempts; GVBM sees their assigned subjects' attempts
+      const relevantAttempts = attempts.filter((a) => {
+        if (a.userId !== studentId) return false;
+        if (info.teacherRole === 'GVCN') return true;
+        return (
+          scope.subjectIds.length === 0 ||
+          (a.quiz?.subjectId && scope.subjectIds.includes(a.quiz.subjectId))
+        );
+      });
+
+      let avgScore = 0;
+      let lastActivity = null;
+      let progress = 0;
+      let status = 'Active';
+
+      if (relevantAttempts.length > 0) {
+        const sum = relevantAttempts.reduce((acc, curr) => acc + curr.score, 0);
+        avgScore = Number((sum / relevantAttempts.length).toFixed(1));
+        lastActivity = relevantAttempts[0].completedAt;
+        progress = Math.min(100, relevantAttempts.length * 20);
+
+        if (avgScore >= 60) status = 'Active';
+        else status = 'At Risk';
+      }
+
+      result.push({
+        id: u.id,
+        studentCode: u.studentCode || '',
+        name: u.fullName || 'Học sinh',
+        email: u.email || u.studentCode || '',
+        className: info.className,
+        classId: info.classId,
+        teacherRole: info.teacherRole,
+        grade: u.grade ? `Khối ${u.grade}` : 'Chưa cập nhật',
+        level: u.gamificationProfile?.level || 1,
+        streak: u.gamificationProfile?.currentStreak || 0,
+        xp: u.gamificationProfile?.lifetimeXp || 0,
+        avgScore,
+        progress,
+        status,
+        lastActivity,
+        enrolledAt: info.enrolledAt,
+        latestAttemptId: relevantAttempts[0]?.id || null,
+        initials: (u.fullName || 'HS')
+          .split(' ')
+          .map((n: string) => n[0])
+          .join('')
+          .substring(0, 2)
+          .toUpperCase(),
+      });
+    });
+
+    return result;
   }
 
   async getCourses(teacherId: string) {
@@ -214,6 +391,7 @@ export class TeacherService {
           select: {
             enrollments: true,
             lessons: true,
+            documents: true,
           },
         },
       },
@@ -224,68 +402,77 @@ export class TeacherService {
       id: course.id,
       title: course.title,
       subject: course.subject?.name || 'Chưa phân loại',
-      grade: course.grade ? `Lớp ${course.grade}` : 'Mọi cấp độ',
+      subjectId: course.subjectId,
+      grade: course.grade ? `Khối ${course.grade}` : 'Mọi cấp độ',
+      gradeNum: course.grade,
       students: course._count.enrollments,
       lessons: course._count.lessons,
+      documentsCount: course._count.documents,
       status: 'published',
       image:
-        'https://images.unsplash.com/photo-1509062522246-3755977927d7?q=80&w=2000&auto=format&fit=crop', // Better placeholder
+        'https://images.unsplash.com/photo-1509062522246-3755977927d7?q=80&w=2000&auto=format&fit=crop',
       rating: 5.0,
       createdAt: course.createdAt.toISOString(),
     }));
   }
 
   async getQuestions(teacherId: string) {
-    const courses = await this.prisma.course.findMany({
-      where: { teacherId },
-      select: { subjectId: true },
-    });
-    const subjectIds = Array.from(
-      new Set(courses.map((c) => c.subjectId).filter(Boolean)),
-    ) as string[];
-
-    let whereClause = {};
-    if (subjectIds.length > 0) {
-      whereClause = { quiz: { subjectId: { in: subjectIds } } };
+    const scope = await this.getTeacherScope(teacherId);
+    if (scope.subjectIds.length === 0) {
+      return [];
     }
+
+    const whereClause: any = {
+      quiz: {
+        subjectId: { in: scope.subjectIds },
+        ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
+      },
+    };
 
     const questions = await this.prisma.quizQuestion.findMany({
       where: whereClause,
       include: {
         quiz: {
-          select: { title: true, subject: { select: { name: true } } },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            subject: { select: { name: true } },
+          },
         },
       },
-      take: 50,
+      take: 100,
     });
 
     return questions.map((q) => ({
       id: q.id,
+      quizId: q.quiz?.id,
+      quizTitle: q.quiz?.title,
+      quizStatus: q.quiz?.status || 'DRAFT',
       stem: q.content,
+      options: q.options,
+      correctOption: q.correctOption,
+      explanation: q.explanation,
       subject: q.quiz?.subject?.name || 'Khác',
       subjectColor: 'bg-blue-100 text-blue-700',
       type: 'Multiple Choice',
       difficulty: 'Medium',
       diffColor: 'text-emerald-500',
-      date: new Date().toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }),
+      date: new Date().toLocaleDateString('vi-VN'),
     }));
   }
 
   async getQuizzes(teacherId: string) {
-    const courses = await this.prisma.course.findMany({
-      where: { teacherId },
-      select: { subjectId: true },
-    });
-    const subjectIds = Array.from(
-      new Set(courses.map((c) => c.subjectId).filter(Boolean)),
-    ) as string[];
+    const scope = await this.getTeacherScope(teacherId);
+    if (scope.subjectIds.length === 0) {
+      return [];
+    }
 
     const quizzes = await this.prisma.quiz.findMany({
-      where: { subjectId: { in: subjectIds } },
+      where: {
+        subjectId: { in: scope.subjectIds },
+        ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
+      },
       include: {
         subject: true,
         _count: {
@@ -298,7 +485,11 @@ export class TeacherService {
     return quizzes.map((q) => ({
       id: q.id,
       title: q.title,
+      description: q.description,
+      grade: q.grade,
+      status: q.status,
       subject: q.subject?.name || 'Khác',
+      subjectId: q.subjectId,
       questionsCount: q._count.questions,
       attemptsCount: q._count.attempts,
       duration: q.duration,
@@ -307,39 +498,131 @@ export class TeacherService {
   }
 
   async createQuiz(teacherId: string, dto: CreateQuizDto) {
-    return this.prisma.quiz.create({
+    const scope = await this.getTeacherScope(teacherId);
+    const quiz = await this.prisma.quiz.create({
       data: {
+        schoolId: scope.schoolId,
         title: dto.title,
         description: dto.description,
         grade: dto.grade,
-        subjectId: dto.subjectId,
-        duration: dto.duration,
-        isGraduation: dto.isGraduation,
+        subjectId: dto.subjectId || scope.subjectIds[0] || null,
+        duration: dto.duration || 15,
+        isGraduation: dto.isGraduation || false,
+        status: dto.status || 'DRAFT',
       },
     });
+
+    await this.auditLogService.logAction(teacherId, 'CREATE_QUIZ', 'Quiz', {
+      quizId: quiz.id,
+      title: quiz.title,
+    });
+
+    return quiz;
   }
 
-  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+  async updateQuizStatus(teacherId: string, quizId: string, status: string) {
+    const validStatuses = ['DRAFT', 'PUBLISHED', 'ASSIGNED', 'CLOSED'];
+    const upperStatus = (status || '').toUpperCase();
+    if (!validStatuses.includes(upperStatus)) {
+      throw new BadRequestException(
+        `Trạng thái không hợp lệ. Chỉ chấp nhận: ${validStatuses.join(', ')}`,
+      );
+    }
+
+    const scope = await this.getTeacherScope(teacherId);
+    const quiz = await this.prisma.quiz.findUnique({ where: { id: quizId } });
+    if (!quiz) throw new NotFoundException('Không tìm thấy đề kiểm tra.');
+    if (scope.schoolId && quiz.schoolId && quiz.schoolId !== scope.schoolId) {
+      throw new ForbiddenException('Không có quyền thao tác đề của trường khác.');
+    }
+
+    const updated = await this.prisma.quiz.update({
+      where: { id: quizId },
+      data: { status: upperStatus },
+    });
+
+    await this.auditLogService.logAction(
+      teacherId,
+      'UPDATE_QUIZ_STATUS',
+      'Quiz',
+      {
+        quizId,
+        oldStatus: quiz.status,
+        newStatus: upperStatus,
+      },
+    );
+
+    return updated;
+  }
+
+  async updateAttemptScore(
+    teacherId: string,
+    attemptId: string,
+    newScore: number,
+    reason: string,
+  ) {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException(
+        'Bắt buộc nhập lý do khi chỉnh sửa điểm thủ công (FR-QUIZ-007).',
+      );
+    }
+    if (newScore < 0 || newScore > 100) {
+      throw new BadRequestException('Điểm số phải từ 0 đến 100.');
+    }
+
+    const attempt = await this.prisma.quizAttempt.findUnique({
+      where: { id: attemptId },
+    });
+    if (!attempt) {
+      throw new NotFoundException('Không tìm thấy bài làm.');
+    }
+
+    const oldScore = attempt.score;
+    const updated = await this.prisma.quizAttempt.update({
+      where: { id: attemptId },
+      data: { score: Number(newScore) },
+    });
+
+    await this.auditLogService.logAction(
+      teacherId,
+      'MANUAL_GRADE_CHANGE',
+      'QuizAttempt',
+      {
+        attemptId,
+        studentId: attempt.userId,
+        oldScore,
+        newScore: Number(newScore),
+        reason: reason.trim(),
+      },
+    );
+
+    return updated;
+  }
+
   async createQuestions(teacherId: string, dtos: CreateQuestionDto[]) {
-    // Basic implementation: assumes the teacher owns the quiz or is authorized
+    if (!dtos || dtos.length === 0) {
+      return { count: 0 };
+    }
     const created: any = await this.prisma.quizQuestion.createMany({
       data: dtos.map((dto) => ({
         quizId: dto.quizId,
         content: dto.content,
-        options: dto.options,
+        options:
+          typeof dto.options === 'string'
+            ? dto.options
+            : JSON.stringify(dto.options),
         correctOption: dto.correctOption,
         explanation: dto.explanation,
       })),
     });
     return { count: created.count };
   }
-  /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 
   async createQuizWithAiQuestions(
     teacherId: string,
     data: {
       title: string;
-      courseId: string;
+      courseId?: string;
       duration?: number;
       isGraduation?: boolean;
       questions: {
@@ -350,27 +633,36 @@ export class TeacherService {
       }[];
     },
   ) {
-    const course = await this.prisma.course.findUnique({
-      where: { id: data.courseId },
-    });
+    const scope = await this.getTeacherScope(teacherId);
+    const course = data.courseId
+      ? await this.prisma.course.findUnique({
+          where: { id: data.courseId },
+        })
+      : null;
 
-    return this.prisma.$transaction(async (prisma) => {
-      const quiz = await prisma.quiz.create({
+    return this.prisma.$transaction(async (tx) => {
+      // BR-QUIZ-001: AI-generated quiz is ALWAYS saved as DRAFT until teacher approves
+      const quiz = await tx.quiz.create({
         data: {
-          title: data.title || 'AI Generated Quiz',
-          duration: data.duration,
+          schoolId: scope.schoolId,
+          title: data.title || 'Đề kiểm tra AI (Nháp)',
+          duration: data.duration || 15,
           isGraduation: data.isGraduation || false,
-          subjectId: course?.subjectId,
-          grade: course?.grade,
+          subjectId: course?.subjectId || scope.subjectIds[0] || null,
+          grade: course?.grade || 6,
+          status: 'DRAFT',
         },
       });
 
       if (data.questions && data.questions.length > 0) {
-        await prisma.quizQuestion.createMany({
+        await tx.quizQuestion.createMany({
           data: data.questions.map((q) => ({
             quizId: quiz.id,
             content: q.content,
-            options: q.options,
+            options:
+              typeof q.options === 'string'
+                ? q.options
+                : JSON.stringify(q.options),
             correctOption: q.correctOption,
             explanation: q.explanation,
           })),
@@ -384,21 +676,82 @@ export class TeacherService {
   async getDocuments(teacherId: string) {
     const documents = await this.prisma.document.findMany({
       where: { course: { teacherId } },
-      include: { course: { select: { title: true } } },
+      include: { course: { select: { id: true, title: true } } },
       orderBy: { uploadedAt: 'desc' },
     });
 
     return documents.map((d) => ({
       id: d.id,
       name: d.fileName,
-      courseTitle: d.course?.title || 'Unknown Course',
+      courseId: d.courseId,
+      courseTitle: d.course?.title || 'Chưa phân loại',
       size: d.size || '1.2 MB',
-      status: d.status.toLowerCase() === 'pending' ? 'processing' : 'ready',
-      date: new Date(d.uploadedAt).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }),
+      rawStatus: d.status,
+      status:
+        d.status.toLowerCase() === 'pending' ||
+        d.status.toLowerCase() === 'processing'
+          ? 'processing'
+          : d.status.toLowerCase() === 'unpublished'
+            ? 'unpublished'
+            : 'ready',
+      date: new Date(d.uploadedAt).toLocaleDateString('vi-VN'),
     }));
+  }
+
+  async updateDocumentStatus(
+    teacherId: string,
+    documentId: string,
+    status: string,
+  ) {
+    const doc = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: { course: true },
+    });
+    if (!doc) throw new NotFoundException('Không tìm thấy tài liệu.');
+    if (doc.course.teacherId !== teacherId) {
+      throw new ForbiddenException('Không có quyền chỉnh sửa tài liệu của giáo viên khác.');
+    }
+
+    const updated = await this.prisma.document.update({
+      where: { id: documentId },
+      data: { status },
+    });
+
+    await this.auditLogService.logAction(
+      teacherId,
+      'UPDATE_DOCUMENT_STATUS',
+      'Document',
+      {
+        documentId,
+        status,
+      },
+    );
+
+    return updated;
+  }
+
+  async deleteDocument(teacherId: string, documentId: string) {
+    const doc = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: { course: true },
+    });
+    if (!doc) throw new NotFoundException('Không tìm thấy tài liệu.');
+    if (doc.course.teacherId !== teacherId) {
+      throw new ForbiddenException('Không có quyền xóa tài liệu của giáo viên khác.');
+    }
+
+    await this.prisma.document.delete({ where: { id: documentId } });
+
+    await this.auditLogService.logAction(
+      teacherId,
+      'DELETE_DOCUMENT',
+      'Document',
+      {
+        documentId,
+        fileName: doc.fileName,
+      },
+    );
+
+    return { success: true };
   }
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { Search, Plus, Download, MoreVertical, Star, Edit, Trash2 } from "lucide-react";
+import { Search, Plus, Download, Edit, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { fetchApi } from "@/lib/api-client";
 import { Teacher, Course, User } from '@/types';
 import UserModal from "@/components/admin/UserModal";
@@ -13,8 +13,27 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("all");
+
+  const filteredTeachers = useMemo(() => {
+    return teachers.filter((teacher) => {
+      const matchesSearch =
+        !searchTerm ||
+        teacher.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        teacher.email?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesStatus =
+        selectedStatus === "all" ||
+        (selectedStatus === "active" && teacher.isActive) ||
+        (selectedStatus === "inactive" && !teacher.isActive);
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [teachers, searchTerm, selectedStatus]);
+
   const handleOpenModal = (user?: Teacher) => {
-    setSelectedUser(user ? (user as any as User) : null);
+    setSelectedUser(user ? (user as unknown as User) : null);
     setIsModalOpen(true);
   };
 
@@ -40,6 +59,10 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
     setTeachers(teachers.filter(s => s.id !== id));
   };
 
+  const handleExport = () => {
+    window.open('/api/proxy/schools/export/credentials', '_blank');
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -49,7 +72,10 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
           <p className="text-gray-500 dark:text-gray-400 mt-1">{t('subtitle')}</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
             <Download className="w-4 h-4" /> {t('export')}
           </button>
           <button 
@@ -68,22 +94,21 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input 
               type="text" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={t('searchPlaceholder')}
               className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors dark:text-white placeholder:text-gray-400"
             />
           </div>
-          
-          <select className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500 min-w-[160px] hidden sm:block">
-            <option>{t('allDepartments')}</option>
-            <option>Computer Science</option>
-            <option>Mathematics</option>
-            <option>Literature</option>
-          </select>
 
-          <select className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500 min-w-[140px] hidden md:block">
-            <option>{t('anyStatus')}</option>
-            <option>Active</option>
-            <option>On Leave</option>
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500 min-w-[140px]"
+          >
+            <option value="all">{t('anyStatus')}</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
           </select>
         </div>
       </div>
@@ -91,31 +116,24 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
       {/* Table */}
       <div className="bg-white dark:bg-card-bg rounded-xl border border-gray-200 dark:border-card-border shadow-sm overflow-hidden flex flex-col min-h-[400px]">
         <div className="overflow-x-auto">
-          {teachers.length === 0 ? (
+          {filteredTeachers.length === 0 ? (
             <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-              Chưa có dữ liệu giáo viên
+              Chưa có dữ liệu giáo viên phù hợp
             </div>
           ) : (
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-6 py-4 font-semibold w-12">
-                    <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" />
-                  </th>
                   <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">{t('educator')}</th>
-                  <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">{t('department')}</th>
+                  <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Phân công (GVCN / GVBM)</th>
                   <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">{t('activeCourses')}</th>
-                  <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">{t('avgRating')}</th>
                   <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">{t('status')}</th>
                   <th className="px-6 py-4 font-semibold text-right"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {teachers.map((teacher: Teacher, index: number) => (
-                  <tr key={index} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
-                    <td className="px-6 py-4">
-                      <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500/20" />
-                    </td>
+                {filteredTeachers.map((teacher: Teacher, index: number) => (
+                  <tr key={teacher.id || index} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold">
@@ -127,22 +145,31 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300 font-medium">
-                      N/A
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        {teacher.homeroomClasses?.map((cls) => (
+                          <span key={cls.id} className="px-2 py-0.5 bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded text-xs font-semibold">
+                            GVCN: {cls.name}
+                          </span>
+                        ))}
+                        {teacher.subjectClasses?.map((sc, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded text-xs font-semibold">
+                            GVBM: {sc.subject?.name} ({sc.class?.name})
+                          </span>
+                        ))}
+                        {(!teacher.homeroomClasses?.length && !teacher.subjectClasses?.length) && (
+                          <span className="text-gray-400 text-xs">Chưa phân công lớp</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1.5">
                         {teacher.courses?.map((course: Course, i: number) => (
                           <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded text-xs font-semibold">
-                            {course.title.substring(0, 8)}...
+                            {course.title}
                           </span>
                         ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white">
-                        0.0
-                        <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                        {!teacher.courses?.length && <span className="text-gray-400 text-xs">-</span>}
                       </div>
                     </td>
                     <td className="px-6 py-4">

@@ -11,7 +11,7 @@ export default function LoginPage() {
   const t = useTranslations('Auth');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [role, setRole] = useState<'student' | 'teacher' | 'parent'>('student');
+  const [role, setRole] = useState<'student' | 'teacher' | 'parent' | 'school_admin'>('student');
   const [requireOtp, setRequireOtp] = useState(false);
   const [otpEmail, setOtpEmail] = useState("");
 
@@ -21,9 +21,8 @@ export default function LoginPage() {
     setErrorMsg("");
 
     const formData = new FormData(e.currentTarget);
-    
+
     if (requireOtp) {
-      // Add email to formData for OTP verification
       formData.append('email', otpEmail);
       const result = await verifyLoginOtpAction(formData);
       if (result?.error) {
@@ -71,19 +70,19 @@ export default function LoginPage() {
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Nhập mã OTP</label>
             <div className="relative">
               <KeyRound className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
+              <input
                 name="otp"
-                type="text" 
+                type="text"
                 required
                 maxLength={6}
-                placeholder="Ví dụ: 123456" 
+                placeholder="Ví dụ: 123456"
                 className="pl-10 pr-4 py-2.5 w-full bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow text-center font-mono text-lg tracking-[0.5em]"
               />
             </div>
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={isLoading}
             className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-70 disabled:cursor-not-allowed mt-2"
           >
@@ -119,13 +118,13 @@ export default function LoginPage() {
       )}
 
       {/* Role Selection Tabs */}
-      <div className="flex p-1 bg-gray-100 dark:bg-gray-800/50 rounded-xl mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-gray-100 dark:bg-gray-800/50 rounded-xl mb-8">
         <button
           type="button"
           onClick={() => setRole('student')}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-            role === 'student' 
-              ? 'bg-white dark:bg-gray-700 text-primary shadow-sm' 
+          className={`py-2 px-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            role === 'student'
+              ? 'bg-white dark:bg-gray-700 text-primary shadow-sm'
               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
           }`}
         >
@@ -134,9 +133,9 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={() => setRole('teacher')}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-            role === 'teacher' 
-              ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' 
+          className={`py-2 px-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            role === 'teacher'
+              ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm'
               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
           }`}
         >
@@ -145,39 +144,52 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={() => setRole('parent')}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-            role === 'parent' 
-              ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm' 
+          className={`py-2 px-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            role === 'parent'
+              ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm'
               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
           }`}
         >
           👨‍👩‍👧 Phụ huynh
         </button>
+        <button
+          type="button"
+          onClick={() => setRole('school_admin')}
+          className={`py-2 px-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            role === 'school_admin'
+              ? 'bg-white dark:bg-gray-700 text-amber-600 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+        >
+          🏫 Nhà trường
+        </button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Hidden input to pass the selected role to the backend if needed */}
         <input type="hidden" name="role" value={role} />
-        
+
         <div className="space-y-1">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {role === 'student' && 'Mã học sinh hoặc Email'}
             {role === 'teacher' && 'Email hoặc Số điện thoại'}
             {role === 'parent' && 'Số điện thoại đăng ký'}
+            {role === 'school_admin' && 'Email Quản trị viên Trường'}
           </label>
           <div className="relative">
             <Mail className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input 
+            <input
               name="identifier"
-              type="text" 
+              type="text"
               required
               placeholder={
-                role === 'student' 
-                  ? 'Ví dụ: HS2026-6A01 hoặc student@school.edu.vn'
+                role === 'student'
+                  ? 'Ví dụ: HS0001 hoặc student@nguyentrai.edu.vn'
                   : role === 'teacher'
-                  ? 'Ví dụ: teacher@school.edu.vn hoặc 0912345678'
-                  : 'Ví dụ: 0987654321'
-              } 
+                  ? 'Ví dụ: mai.nguyen@nguyentrai.edu.vn hoặc 0912345001'
+                  : role === 'parent'
+                  ? 'Ví dụ: 0901000001'
+                  : 'Ví dụ: schooladmin@nguyentrai.edu.vn'
+              }
               className="pl-10 pr-4 py-2.5 w-full bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow"
             />
           </div>
@@ -187,11 +199,11 @@ export default function LoginPage() {
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('passwordLabel')}</label>
           <div className="relative">
             <Lock className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input 
+            <input
               name="password"
-              type="password" 
+              type="password"
               required
-              placeholder={t('passwordPlaceholder')} 
+              placeholder={t('passwordPlaceholder')}
               className="pl-10 pr-4 py-2.5 w-full bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow"
             />
           </div>
@@ -207,8 +219,8 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           disabled={isLoading}
           className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-70 disabled:cursor-not-allowed mt-2"
         >

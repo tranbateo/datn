@@ -14,6 +14,19 @@ import {
 export class SchoolsService {
   constructor(private prisma: PrismaService) {}
 
+  async resolveSchoolId(userSchoolId: string | null, querySchoolId?: string): Promise<string> {
+    if (userSchoolId) return userSchoolId;
+    if (querySchoolId) return querySchoolId;
+    const firstSchool = await this.prisma.school.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!firstSchool) {
+      throw new BadRequestException('Hệ thống chưa có trường học nào.');
+    }
+    return firstSchool.id;
+  }
+
   async create(dto: CreateSchoolDto) {
     const existing = await this.prisma.school.findUnique({
       where: { code: dto.code },
@@ -22,7 +35,7 @@ export class SchoolsService {
       throw new BadRequestException('Mã trường học đã tồn tại.');
     }
 
-    return this.prisma.school.create({
+    const school = await this.prisma.school.create({
       data: {
         name: dto.name,
         code: dto.code,
@@ -35,10 +48,16 @@ export class SchoolsService {
         aiTokenQuota: dto.aiTokenQuota || 10000000,
       },
     });
+
+    const { customApiKey, ...safeSchool } = school;
+    return {
+      ...safeSchool,
+      hasCustomApiKey: Boolean(customApiKey),
+    };
   }
 
   async findAll() {
-    return this.prisma.school.findMany({
+    const schools = await this.prisma.school.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
@@ -46,6 +65,11 @@ export class SchoolsService {
         },
       },
     });
+
+    return schools.map(({ customApiKey, ...s }) => ({
+      ...s,
+      hasCustomApiKey: Boolean(customApiKey),
+    }));
   }
 
   async findOne(id: string) {
@@ -58,7 +82,11 @@ export class SchoolsService {
       },
     });
     if (!school) throw new NotFoundException('Không tìm thấy trường học.');
-    return school;
+    const { customApiKey, ...safeSchool } = school;
+    return {
+      ...safeSchool,
+      hasCustomApiKey: Boolean(customApiKey),
+    };
   }
 
   async update(id: string, dto: UpdateSchoolDto) {
@@ -70,10 +98,15 @@ export class SchoolsService {
       data.licenseExpiresAt = new Date(dto.licenseExpiresAt);
     }
 
-    return this.prisma.school.update({
+    const updated = await this.prisma.school.update({
       where: { id },
       data,
     });
+    const { customApiKey, ...safeSchool } = updated;
+    return {
+      ...safeSchool,
+      hasCustomApiKey: Boolean(customApiKey),
+    };
   }
 
   async getLicense(schoolId: string) {
@@ -83,15 +116,17 @@ export class SchoolsService {
         id: true,
         name: true,
         code: true,
+        level: true,
         licenseKey: true,
         licenseExpiresAt: true,
         maxUsers: true,
         aiTokenQuota: true,
         aiTokensUsed: true,
         aiProvider: true,
+        customApiKey: true,
         isActive: true,
         _count: {
-          select: { users: true },
+          select: { users: true, classes: true, courses: true },
         },
       },
     });
@@ -101,10 +136,26 @@ export class SchoolsService {
       ? new Date() > school.licenseExpiresAt
       : false;
 
+    const { customApiKey, ...rest } = school;
+    const quotaPercentage =
+      school.aiTokenQuota > 0
+        ? Math.min(100, Math.round((school.aiTokensUsed / school.aiTokenQuota) * 100))
+        : 0;
+
     return {
-      ...school,
+      ...rest,
+      hasCustomApiKey: Boolean(customApiKey),
       isExpired,
       tokensRemaining: Math.max(0, school.aiTokenQuota - school.aiTokensUsed),
+      quotaPercentage,
+      quotaAlertLevel:
+        quotaPercentage >= 100
+          ? 'EXHAUSTED'
+          : quotaPercentage >= 90
+            ? 'CRITICAL'
+            : quotaPercentage >= 80
+              ? 'WARNING'
+              : 'NORMAL',
     };
   }
 
@@ -114,11 +165,13 @@ export class SchoolsService {
     });
     if (!school) throw new NotFoundException('Không tìm thấy trường học.');
 
+    const hasKey = Boolean(dto.apiKey && dto.apiKey.trim().length > 0);
+
     return this.prisma.school.update({
       where: { id: schoolId },
       data: {
-        aiProvider: 'BYOK',
-        customApiKey: dto.apiKey,
+        aiProvider: hasKey ? 'BYOK' : 'SYSTEM',
+        customApiKey: hasKey ? dto.apiKey.trim() : null,
       },
       select: {
         id: true,

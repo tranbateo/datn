@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Loader2, Save } from 'lucide-react';
 import { fetchApi } from '@/lib/api-client';
 import { API_ENDPOINTS } from '@/constants/api';
+import { teacherService } from '@/services/teacher.service';
 
 interface AiQuizBuilderModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface AiQuizBuilderModalProps {
 export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQuizBuilderModalProps) {
   const [title, setTitle] = useState('');
   const [courseId, setCourseId] = useState('');
+  const [courses, setCourses] = useState<Array<{ id: string; title: string; grade?: string | number }>>([]);
   const [topic, setTopic] = useState('');
   const [numQuestions, setNumQuestions] = useState(5);
   const [duration, setDuration] = useState(15);
@@ -20,11 +22,26 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
   const [saving, setSaving] = useState(false);
   const [previewData, setPreviewData] = useState<any[] | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      teacherService.getCourses()
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setCourses(data);
+            if (data.length > 0 && !courseId) {
+              setCourseId(String(data[0].id));
+            }
+          }
+        })
+        .catch((err) => console.error('Failed to load teacher courses', err));
+    }
+  }, [isOpen, courseId]);
+
   if (!isOpen) return null;
 
   const handleGenerate = async () => {
     if (!title || !courseId) {
-      alert('Vui lòng nhập Tên đề thi và ID khóa học!');
+      alert('Vui lòng nhập Tên đề thi và chọn Khóa học / Lớp học!');
       return;
     }
     setLoading(true);
@@ -39,9 +56,9 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
         }),
       });
       setPreviewData(data as any);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Tạo quiz thất bại. Vui lòng thử lại.');
+      alert(err?.message || 'Tạo quiz thất bại. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -84,7 +101,7 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">AI Quiz Builder</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Tạo câu hỏi từ tài liệu đã học</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Tạo đề thi nháp (DRAFT) từ tài liệu RAG của lớp</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-800">
@@ -107,24 +124,39 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Khóa học (Course ID) *</label>
-                  <input
-                    type="text"
-                    value={courseId}
-                    onChange={e => setCourseId(e.target.value)}
-                    placeholder="Nhập ID khóa học"
-                    className="w-full px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Khóa học / Lớp học *</label>
+                  {courses.length > 0 ? (
+                    <select
+                      value={courseId}
+                      onChange={e => setCourseId(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">-- Chọn khóa học / lớp --</option>
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title} {c.grade ? `(Khối ${c.grade})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={courseId}
+                      onChange={e => setCourseId(e.target.value)}
+                      placeholder="Nhập ID khóa học"
+                      className="w-full px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chủ đề (Topic) - Optional</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chủ đề (Topic) - Tùy chọn</label>
                   <input
                     type="text"
                     value={topic}
                     onChange={e => setTopic(e.target.value)}
-                    placeholder="Ví dụ: Đại số tuyến tính..."
+                    placeholder="Ví dụ: Phân số, Phương trình bậc nhất..."
                     className="w-full px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -164,13 +196,18 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
             </div>
           ) : (
             <div className="space-y-4">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Xem trước câu hỏi:</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Xem trước & Duyệt câu hỏi:</h3>
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">
+                  Sẽ lưu ở trạng thái NHÁP (DRAFT) để giáo viên duyệt trước khi giao
+                </span>
+              </div>
               {previewData.map((q, i) => (
                 <div key={i} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
                   <p className="font-medium text-gray-900 dark:text-white"><span className="text-blue-600 font-bold">Câu {i + 1}:</span> {q.content}</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {q.options.map((opt: string, j: number) => (
-                      <div key={j} className={`px-3 py-2 rounded-lg text-sm border ${q.correctOption === opt ? 'border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+                      <div key={j} className={`px-3 py-2 rounded-lg text-sm border ${q.correctOption === opt ? 'border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 font-semibold' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
                         {opt}
                       </div>
                     ))}
@@ -198,7 +235,7 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
               className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl transition-all shadow-md shadow-blue-500/20 disabled:opacity-50"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {loading ? 'Đang tạo...' : 'Tạo câu hỏi'}
+              {loading ? 'Đang tạo...' : 'Tạo câu hỏi bằng AI'}
             </button>
           ) : (
             <button
@@ -207,7 +244,7 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
               className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-xl transition-colors shadow-md shadow-green-500/20 disabled:opacity-50"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {saving ? 'Đang lưu...' : 'Lưu & Sử dụng'}
+              {saving ? 'Đang lưu...' : 'Lưu bản nháp (DRAFT)'}
             </button>
           )}
         </div>

@@ -38,12 +38,10 @@ async function proxyRequest(request: NextRequest, pathArray: string[]) {
   const token = cookieStore.get('auth-token')?.value;
 
   const headers = new Headers(request.headers);
-  // Forward authorization if available in cookie
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  
-  // Clean headers to prevent Next.js from overwriting host, connection, etc.
+
   headers.delete('host');
   headers.delete('connection');
   headers.delete('content-length');
@@ -52,10 +50,9 @@ async function proxyRequest(request: NextRequest, pathArray: string[]) {
     method: request.method,
     headers,
     redirect: 'manual',
-    duplex: 'half'
+    duplex: 'half',
   };
 
-  // Only pass body if it's not a GET or HEAD request
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const contentType = request.headers.get('content-type');
     if (contentType?.includes('multipart/form-data')) {
@@ -70,12 +67,21 @@ async function proxyRequest(request: NextRequest, pathArray: string[]) {
 
   try {
     const response = await fetch(url, options as RequestInit);
-    
-    // Convert backend response to Next.js response
-    const responseBody = await response.arrayBuffer();
-    
+
     const responseHeaders = new Headers(response.headers);
     responseHeaders.delete('content-encoding');
+
+    // Preserve real-time SSE streaming without buffering entire body
+    const respContentType = response.headers.get('content-type') || '';
+    if (respContentType.includes('text/event-stream') && response.body) {
+      return new NextResponse(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    }
+
+    const responseBody = await response.arrayBuffer();
 
     return new NextResponse(responseBody, {
       status: response.status,
@@ -84,6 +90,12 @@ async function proxyRequest(request: NextRequest, pathArray: string[]) {
     });
   } catch (error: unknown) {
     console.error('Proxy Error:', error);
-    return NextResponse.json({ message: 'Internal Proxy Error', error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+    return NextResponse.json(
+      {
+        message: 'Internal Proxy Error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 },
+    );
   }
 }

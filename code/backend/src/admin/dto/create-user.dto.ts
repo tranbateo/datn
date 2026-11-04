@@ -1,7 +1,9 @@
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   MinLength,
@@ -9,9 +11,17 @@ import {
 import { Role } from '@prisma/client';
 
 export class CreateUserDto {
+  @IsOptional()
   @IsEmail({}, { message: 'Email không hợp lệ' })
-  @IsNotEmpty({ message: 'Email không được để trống' })
-  email: string;
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  studentCode?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
 
   @IsString()
   @MinLength(6, { message: 'Mật khẩu phải có ít nhất 6 ký tự' })
@@ -23,6 +33,22 @@ export class CreateUserDto {
 
   @IsEnum(Role, { message: 'Quyền không hợp lệ' })
   role: Role;
+
+  @IsOptional()
+  @IsNumber()
+  grade?: number;
+
+  @IsOptional()
+  @IsString()
+  classId?: string;
+
+  @IsOptional()
+  @IsString()
+  schoolId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  mustChangePassword?: boolean;
 
   @IsOptional()
   @IsString()
