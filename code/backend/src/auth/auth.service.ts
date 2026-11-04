@@ -311,7 +311,10 @@ export class AuthService {
     };
     const plainToken = crypto.randomBytes(32).toString('hex');
     const refreshToken = `${userId}.${plainToken}`;
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    const refreshTokenHash = crypto
+      .createHash('sha256')
+      .update(refreshToken)
+      .digest('hex');
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -345,7 +348,14 @@ export class AuthService {
       throw new UnauthorizedException('INVALID_REFRESH_TOKEN');
     }
 
-    const isValid = await bcrypt.compare(refreshToken, user.refreshTokenHash);
+    const sha256Hash = crypto
+      .createHash('sha256')
+      .update(refreshToken)
+      .digest('hex');
+    const isValid =
+      user.refreshTokenHash === sha256Hash ||
+      (user.refreshTokenHash.startsWith('$2') &&
+        (await bcrypt.compare(refreshToken, user.refreshTokenHash)));
     if (!isValid) {
       throw new UnauthorizedException('INVALID_REFRESH_TOKEN');
     }
@@ -359,7 +369,10 @@ export class AuthService {
     };
     const plainToken = crypto.randomBytes(32).toString('hex');
     const newRefreshToken = `${user.id}.${plainToken}`;
-    const newRefreshTokenHash = await bcrypt.hash(newRefreshToken, 10);
+    const newRefreshTokenHash = crypto
+      .createHash('sha256')
+      .update(newRefreshToken)
+      .digest('hex');
 
     await this.prisma.user.update({
       where: { id: user.id },

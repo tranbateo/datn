@@ -11,7 +11,7 @@ export default function LoginPage() {
   const t = useTranslations('Auth');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [role, setRole] = useState<'student' | 'teacher' | 'parent' | 'school_admin'>('student');
+  const [role, setRole] = useState<'student' | 'teacher' | 'parent'>('student');
   const [requireOtp, setRequireOtp] = useState(false);
   const [otpEmail, setOtpEmail] = useState("");
 
@@ -117,51 +117,40 @@ export default function LoginPage() {
         </div>
       )}
 
-      {/* Role Selection Tabs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-gray-100 dark:bg-gray-800/50 rounded-xl mb-8">
+      {/* Role Selection Tabs (Student, Teacher, Parent) */}
+      <div className="grid grid-cols-3 gap-1 p-1 bg-gray-100 dark:bg-gray-800/50 rounded-xl mb-8">
         <button
           type="button"
           onClick={() => setRole('student')}
-          className={`py-2 px-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+          className={`py-2 px-3 text-sm font-semibold rounded-lg transition-all ${
             role === 'student'
               ? 'bg-white dark:bg-gray-700 text-primary shadow-sm'
               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
           }`}
         >
-          👨‍🎓 Học sinh
+          Học sinh
         </button>
         <button
           type="button"
           onClick={() => setRole('teacher')}
-          className={`py-2 px-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+          className={`py-2 px-3 text-sm font-semibold rounded-lg transition-all ${
             role === 'teacher'
               ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm'
               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
           }`}
         >
-          👩‍🏫 Giáo viên
+          Giáo viên
         </button>
         <button
           type="button"
           onClick={() => setRole('parent')}
-          className={`py-2 px-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+          className={`py-2 px-3 text-sm font-semibold rounded-lg transition-all ${
             role === 'parent'
               ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm'
               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
           }`}
         >
-          👨‍👩‍👧 Phụ huynh
-        </button>
-        <button
-          type="button"
-          onClick={() => setRole('school_admin')}
-          className={`py-2 px-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
-            role === 'school_admin'
-              ? 'bg-white dark:bg-gray-700 text-amber-600 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-          }`}
-        >
-          🏫 Nhà trường
+          Phụ huynh
         </button>
       </div>
 
@@ -173,7 +162,6 @@ export default function LoginPage() {
             {role === 'student' && 'Mã học sinh hoặc Email'}
             {role === 'teacher' && 'Email hoặc Số điện thoại'}
             {role === 'parent' && 'Số điện thoại đăng ký'}
-            {role === 'school_admin' && 'Email Quản trị viên Trường'}
           </label>
           <div className="relative">
             <Mail className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -183,12 +171,10 @@ export default function LoginPage() {
               required
               placeholder={
                 role === 'student'
-                  ? 'Ví dụ: HS0001 hoặc student@nguyentrai.edu.vn'
+                  ? 'Ví dụ: HS0001 hoặc hs0001@thcsnt.edu.vn'
                   : role === 'teacher'
-                  ? 'Ví dụ: mai.nguyen@nguyentrai.edu.vn hoặc 0912345001'
-                  : role === 'parent'
-                  ? 'Ví dụ: 0901000001'
-                  : 'Ví dụ: schooladmin@nguyentrai.edu.vn'
+                  ? 'Ví dụ: gv01@thcsnt.edu.vn hoặc 0912000001'
+                  : 'Ví dụ: 0901000001'
               }
               className="pl-10 pr-4 py-2.5 w-full bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow"
             />
@@ -233,7 +219,7 @@ export default function LoginPage() {
       </form>
 
       <div className="mt-8 p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-center text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
-        💡 Tài khoản do Nhà trường cấp phát. Nếu bạn chưa có tài khoản hoặc cần cấp lại mật khẩu, vui lòng liên hệ Giáo viên chủ nhiệm hoặc Quản trị viên của trường.
+        Tài khoản do Nhà trường cấp phát. Nếu bạn chưa có tài khoản hoặc cần cấp lại mật khẩu, vui lòng liên hệ Giáo viên chủ nhiệm hoặc Quản trị viên của trường.
       </div>
     </div>
   );

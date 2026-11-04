@@ -255,11 +255,11 @@ const outputPath = path.join(__dirname, '..', '..', '..', 'docs', 'MauImport_THC
 XLSX.writeFile(wb, outputPath);
 
 console.log('='.repeat(60));
-console.log(`✅ Đã tạo file mẫu: ${outputPath}`);
+console.log(`Đã tạo file mẫu: ${outputPath}`);
 console.log('='.repeat(60));
-console.log(`📚 Trường:           ${SCHOOL_NAME}`);
-console.log(`🏫 Số lớp:           ${classes.length} lớp (Khối 6 → 9, mỗi khối 2 lớp)`);
-console.log(`👩‍🏫 Số giáo viên:     ${teachers.length} giáo viên (đầy đủ GVCN & GVBM)`);
-console.log(`👨‍🎓 Số học sinh:      ${studentIndex - 1} học sinh`);
-console.log(`👨‍👩‍👧 Phụ huynh trùng:  3 gia đình có anh chị em học cùng trường`);
+console.log(`Trường:           ${SCHOOL_NAME}`);
+console.log(`Số lớp:           ${classes.length} lớp (Khối 6 -> 9, mỗi khối 2 lớp)`);
+console.log(`Số giáo viên:     ${teachers.length} giáo viên (đầy đủ GVCN & GVBM)`);
+console.log(`Số học sinh:      ${studentIndex - 1} học sinh`);
+console.log(`Phụ huynh trùng:  3 gia đình có anh chị em học cùng trường`);
 console.log('='.repeat(60));

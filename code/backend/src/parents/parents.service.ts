@@ -155,38 +155,38 @@ export class ParentsService {
     const studentsStats = await Promise.all(
       links.map(async (link) => {
         const studentId = link.studentId;
-
-        const recentQuizzes = await this.prisma.quizAttempt.findMany({
-          where: { userId: studentId },
-          take: 5,
-          orderBy: { startedAt: 'desc' },
-          include: {
-            quiz: {
-              include: { subject: true },
-            },
-          },
-        });
-
         const now = new Date();
         const next7Days = new Date();
         next7Days.setDate(now.getDate() + 7);
 
-        const upcomingEvents = await this.prisma.calendarEvent.findMany({
-          where: {
-            userId: studentId,
-            startTime: {
-              gte: now,
-              lte: next7Days,
-            },
-          },
-          orderBy: { startTime: 'asc' },
-        });
-
-        const recentNotifications = await this.prisma.notification.findMany({
-          where: { userId: studentId },
-          take: 5,
-          orderBy: { createdAt: 'desc' },
-        });
+        const [recentQuizzes, upcomingEvents, recentNotifications] =
+          await Promise.all([
+            this.prisma.quizAttempt.findMany({
+              where: { userId: studentId },
+              take: 5,
+              orderBy: { startedAt: 'desc' },
+              include: {
+                quiz: {
+                  include: { subject: true },
+                },
+              },
+            }),
+            this.prisma.calendarEvent.findMany({
+              where: {
+                userId: studentId,
+                startTime: {
+                  gte: now,
+                  lte: next7Days,
+                },
+              },
+              orderBy: { startTime: 'asc' },
+            }),
+            this.prisma.notification.findMany({
+              where: { userId: studentId },
+              take: 5,
+              orderBy: { createdAt: 'desc' },
+            }),
+          ]);
 
         const activeClass = link.student.classEnrollments?.[0]?.class || null;
 

@@ -108,7 +108,7 @@ export default function ScheduleScreen() {
         {uploading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <ThemedText style={styles.btnText}>📷 Quét Lịch Học (OCR)</ThemedText>
+          <ThemedText style={styles.btnText}>Quét Lịch Học (OCR)</ThemedText>
         )}
       </TouchableOpacity>
 

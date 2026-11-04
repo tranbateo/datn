@@ -115,7 +115,7 @@ export default function Home() {
                     <p>Δ = (-5)² - 4(1)(6) = 25 - 24 = 1</p>
                   </div>
                   <div className="inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-2.5 py-1 rounded text-xs font-medium border border-purple-100 dark:border-purple-800 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors">
-                    <span>📖 SGK Toán 9</span>
+                    <span>SGK Toán 9</span>
                   </div>
                 </div>
               </div>

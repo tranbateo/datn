@@ -75,15 +75,15 @@ export default function OnboardingPage() {
   ];
 
   const availableSubjects = [
-    { id: "toan", name: t('math'), icon: "📐" },
-    { id: "ly", name: t('physics'), icon: "🔬" },
-    { id: "hoa", name: t('chemistry'), icon: "⚗️" },
-    { id: "van", name: t('literature'), icon: "📖" },
-    { id: "anh", name: t('english'), icon: "🌐" },
-    { id: "sinh", name: t('biology'), icon: "🧬" },
-    { id: "su", name: t('history'), icon: "📜" },
-    { id: "dia", name: t('geography'), icon: "🌍" },
-    { id: "tin", name: t('computer'), icon: "💻" },
+    { id: "toan", name: t('math') },
+    { id: "ly", name: t('physics') },
+    { id: "hoa", name: t('chemistry') },
+    { id: "van", name: t('literature') },
+    { id: "anh", name: t('english') },
+    { id: "sinh", name: t('biology') },
+    { id: "su", name: t('history') },
+    { id: "dia", name: t('geography') },
+    { id: "tin", name: t('computer') },
   ];
 
   return (
@@ -146,9 +146,9 @@ export default function OnboardingPage() {
                         }
                       `}
                     >
-                      {g.id === 'Nam' && '♂'}
-                      {g.id === 'Nữ' && '♀'}
-                      {g.id === 'Khác' && '⚧'}
+
+
+
                       {g.label}
                     </button>
                   ))}
@@ -221,7 +221,7 @@ export default function OnboardingPage() {
                           }
                         `}
                       >
-                        <span>{sub.icon}</span>
+
                         {sub.name}
                       </button>
                     );

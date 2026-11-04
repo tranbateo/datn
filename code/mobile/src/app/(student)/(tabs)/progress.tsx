@@ -53,7 +53,7 @@ export default function ProgressScreen() {
               </View>
               <View style={styles.statBox}>
                 <ThemedText type="small" themeColor="textSecondary">Streak</ThemedText>
-                <ThemedText type="subtitle">3🔥</ThemedText>
+                <ThemedText type="subtitle">3 ngày</ThemedText>
               </View>
             </View>
           </ThemedView>

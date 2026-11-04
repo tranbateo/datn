@@ -73,15 +73,26 @@ export class TeacherService {
     const scope = await this.getTeacherScope(teacherId);
     const totalCourses = scope.courseIds.length;
 
-    const courseEnrollments = await this.prisma.enrollment.findMany({
-      where: { courseId: { in: scope.courseIds } },
-      select: { userId: true },
-    });
+    const quizWhere: any = {};
+    if (scope.schoolId) quizWhere.schoolId = scope.schoolId;
+    if (scope.subjectIds.length > 0) {
+      quizWhere.subjectId = { in: scope.subjectIds };
+    }
 
-    const classEnrollments = await this.prisma.classEnrollment.findMany({
-      where: { classId: { in: scope.classIds }, status: 'ACTIVE' },
-      select: { studentId: true },
-    });
+    const [courseEnrollments, classEnrollments, totalQuizzes] =
+      await Promise.all([
+        this.prisma.enrollment.findMany({
+          where: { courseId: { in: scope.courseIds } },
+          select: { userId: true },
+        }),
+        this.prisma.classEnrollment.findMany({
+          where: { classId: { in: scope.classIds }, status: 'ACTIVE' },
+          select: { studentId: true },
+        }),
+        scope.subjectIds.length > 0
+          ? this.prisma.quiz.count({ where: quizWhere })
+          : Promise.resolve(0),
+      ]);
 
     const allStudentIds = Array.from(
       new Set([
@@ -90,17 +101,6 @@ export class TeacherService {
       ]),
     );
     const totalStudents = allStudentIds.length;
-
-    const quizWhere: any = {};
-    if (scope.schoolId) quizWhere.schoolId = scope.schoolId;
-    if (scope.subjectIds.length > 0) {
-      quizWhere.subjectId = { in: scope.subjectIds };
-    }
-
-    const totalQuizzes =
-      scope.subjectIds.length > 0
-        ? await this.prisma.quiz.count({ where: quizWhere })
-        : 0;
 
     const attempts =
       allStudentIds.length > 0

@@ -64,10 +64,10 @@ export default function StudentDashboard() {
       <div className="flex justify-between items-center bg-white dark:bg-card-bg p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-card-border">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Chào mừng trở lại, {profile?.fullName || 'Học sinh'}! 👋
+            Chào mừng trở lại, {profile?.fullName || 'Học sinh'}!
           </h2>
           <p className="text-gray-500 dark:text-gray-400">
-            Bạn đã hoàn thành 80% mục tiêu tuần này. Tiếp tục phát huy nhé!Môn học</p>
+            Bạn đã hoàn thành 80% mục tiêu tuần này. Tiếp tục phát huy nhé!</p>
         </div>
       </div>
 
@@ -83,7 +83,7 @@ export default function StudentDashboard() {
               <p className="text-sm text-gray-500 dark:text-gray-400">Cố gắng thêm chút nữa để lên cấp!</p>
             </div>
             <div className="flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-full text-sm font-bold">
-              <span className="text-lg">🔥</span> {gamification?.streakDays || 0} ngày
+              Chuỗi: {gamification?.streakDays || 0} ngày
             </div>
           </div>
           

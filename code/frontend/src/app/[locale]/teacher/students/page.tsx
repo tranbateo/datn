@@ -231,7 +231,7 @@ export default function TeacherStudentsPage() {
                       <div className="flex flex-col">
                         <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">Lv {student.level || 1}</span>
                         <span className="text-xs text-orange-500 flex items-center gap-1">
-                          🔥 {student.streak || 0} ngày
+                          Chuỗi: {student.streak || 0} ngày
                         </span>
                       </div>
                     </td>

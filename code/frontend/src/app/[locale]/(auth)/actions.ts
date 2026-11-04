@@ -41,16 +41,11 @@ export async function login(formData: FormData) {
 
     const actualRole = data.user.role?.toLowerCase() || 'student';
 
-    if (actualRole === 'admin') {
+    if (actualRole === 'admin' || actualRole === 'school_admin') {
       return { error: 'ADMIN_USE_PORTAL' };
     }
 
-    // Allow school_admin if selectedRole is 'school_admin' or 'teacher' or not mismatched
-    if (
-      selectedRole &&
-      selectedRole !== actualRole &&
-      !(selectedRole === 'school_admin' && actualRole === 'school_admin')
-    ) {
+    if (selectedRole && selectedRole !== actualRole) {
       return { error: 'roleMismatch' };
     }
 

@@ -2,10 +2,14 @@
 
 import { Bell } from "lucide-react";
 import { useState, useEffect } from "react";
+import { fetchApi } from "@/lib/api-client";
 
 interface NotificationBellProps {
   className?: string;
 }
+
+const NOTIF_CACHE_KEY = "eduai_unread_notif_cache";
+const CACHE_TTL_MS = 60_000;
 
 export function NotificationBell({ className }: NotificationBellProps) {
   const [hasUnread, setHasUnread] = useState(false);
@@ -13,14 +17,25 @@ export function NotificationBell({ className }: NotificationBellProps) {
   useEffect(() => {
     const checkNotifications = async () => {
       try {
-        const { fetchApi } = await import('@/lib/api-client');
+        const cached = sessionStorage.getItem(NOTIF_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - parsed.ts < CACHE_TTL_MS) {
+            setHasUnread(Boolean(parsed.hasUnread));
+            return;
+          }
+        }
         const data = await fetchApi<any[]>('/notifications');
         if (Array.isArray(data)) {
           const unread = data.some((n: any) => !n.isRead);
           setHasUnread(unread);
+          sessionStorage.setItem(
+            NOTIF_CACHE_KEY,
+            JSON.stringify({ hasUnread: unread, ts: Date.now() }),
+          );
         }
-      } catch (error) {
-        console.error("Failed to fetch notifications", error);
+      } catch {
+        // Ignore silent notification check error
       }
     };
     checkNotifications();

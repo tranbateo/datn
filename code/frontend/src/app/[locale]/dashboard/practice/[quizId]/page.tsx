@@ -138,7 +138,7 @@ export default function TakeQuizPage() {
             Bạn trả lời đúng <span className="font-bold text-green-600">{result.score}/{result.total}</span> câu hỏi.
           </p>
           <div className="inline-flex items-center gap-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-500 px-4 py-2 rounded-xl font-bold">
-            <span className="text-xl">🔥</span> +{result.xp} XP
+            +{result.xp} XP
           </div>
         </div>
       )}

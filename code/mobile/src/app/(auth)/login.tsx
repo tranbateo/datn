@@ -71,13 +71,13 @@ export default function LoginScreen() {
             style={[styles.roleBtn, role === 'student' && styles.roleActiveStudent]}
             onPress={() => setRole('student')}
           >
-            <Text style={[styles.roleText, role === 'student' && styles.roleTextActive]}>👨‍🎓 Học sinh</Text>
+            <Text style={[styles.roleText, role === 'student' && styles.roleTextActive]}>Học sinh</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.roleBtn, role === 'parent' && styles.roleActiveParent]}
             onPress={() => setRole('parent')}
           >
-            <Text style={[styles.roleText, role === 'parent' && styles.roleTextActive]}>👨‍👩‍👧 Phụ huynh</Text>
+            <Text style={[styles.roleText, role === 'parent' && styles.roleTextActive]}>Phụ huynh</Text>
           </TouchableOpacity>
         </View>
 

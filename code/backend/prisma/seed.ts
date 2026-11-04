@@ -12,27 +12,7 @@ async function main() {
   const studentPasswordHash = await bcrypt.hash('Student@123' + pepper, 10);
   const parentPasswordHash = await bcrypt.hash('Parent@123' + pepper, 10);
 
-  // 1. System Admin
-  const sysAdmin = await prisma.user.upsert({
-    where: { email: 'admin@eduai.vn' },
-    update: {
-      role: Role.ADMIN,
-      passwordHash: adminPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-    create: {
-      email: 'admin@eduai.vn',
-      fullName: 'Quản trị Hệ thống EduAI',
-      role: Role.ADMIN,
-      passwordHash: adminPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-  });
-  console.log(`✅ System Admin: ${sysAdmin.email} (Password: Admin@123)`);
-
-  // 2. Sample School: THCS Nguyễn Trãi
+  // 1. Sample School: THCS Nguyễn Trãi
   const school = await prisma.school.upsert({
     where: { code: 'THCSNT' },
     update: {
@@ -57,14 +37,58 @@ async function main() {
       aiProvider: 'SYSTEM',
     },
   });
-  console.log(`✅ School: ${school.name} (${school.code})`);
+  console.log(`School: ${school.name} (${school.code})`);
 
-  // 3. School Admin for THCS Nguyễn Trãi
+  // 2. School Admin (Role.ADMIN) for THCS Nguyễn Trãi (logs in at /vi/admin/login)
   const schoolAdmin = await prisma.user.upsert({
+    where: { email: 'admin@nguyentrai.edu.vn' },
+    update: {
+      schoolId: school.id,
+      role: Role.ADMIN,
+      passwordHash: adminPasswordHash,
+      mustChangePassword: false,
+      isActive: true,
+    },
+    create: {
+      schoolId: school.id,
+      email: 'admin@nguyentrai.edu.vn',
+      phone: '0909000111',
+      fullName: 'Quản trị viên - THCS Nguyễn Trãi',
+      role: Role.ADMIN,
+      passwordHash: adminPasswordHash,
+      mustChangePassword: false,
+      isActive: true,
+    },
+  });
+
+  // Also keep admin@eduai.vn and schooladmin@nguyentrai.edu.vn synced to the same School with Role.ADMIN
+  await prisma.user.upsert({
+    where: { email: 'admin@eduai.vn' },
+    update: {
+      schoolId: school.id,
+      role: Role.ADMIN,
+      fullName: 'Quản trị viên - THCS Nguyễn Trãi',
+      passwordHash: adminPasswordHash,
+      mustChangePassword: false,
+      isActive: true,
+    },
+    create: {
+      schoolId: school.id,
+      email: 'admin@eduai.vn',
+      fullName: 'Quản trị viên - THCS Nguyễn Trãi',
+      role: Role.ADMIN,
+      passwordHash: adminPasswordHash,
+      mustChangePassword: false,
+      isActive: true,
+    },
+  });
+
+  await prisma.user.upsert({
     where: { email: 'schooladmin@nguyentrai.edu.vn' },
     update: {
       schoolId: school.id,
-      role: Role.SCHOOL_ADMIN,
+      role: Role.ADMIN,
+      fullName: 'Ban Giám Hiệu - THCS Nguyễn Trãi',
       passwordHash: adminPasswordHash,
       mustChangePassword: false,
       isActive: true,
@@ -72,15 +96,15 @@ async function main() {
     create: {
       schoolId: school.id,
       email: 'schooladmin@nguyentrai.edu.vn',
-      phone: '0909000111',
+      phone: '0909000112',
       fullName: 'Ban Giám Hiệu - THCS Nguyễn Trãi',
-      role: Role.SCHOOL_ADMIN,
+      role: Role.ADMIN,
       passwordHash: adminPasswordHash,
       mustChangePassword: false,
       isActive: true,
     },
   });
-  console.log(`✅ School Admin: ${schoolAdmin.email} (Password: Admin@123)`);
+  console.log(`School Admin (Role.ADMIN): ${schoolAdmin.email} / admin@eduai.vn (Password: Admin@123)`);
 
   // 4. Seed Standard Subjects for Grades 6 - 12
   const subjectNames = [
@@ -113,7 +137,7 @@ async function main() {
       subjectMap.set(`${name}_${grade}`, subj.id);
     }
   }
-  console.log(`✅ Seeded ${subjectMap.size} subjects across grades 6-12`);
+  console.log(`Seeded ${subjectMap.size} subjects across grades 6-12`);
 
   // 5. Academic Year 2025-2026
   const academicYear = await prisma.academicYear.upsert({
@@ -434,7 +458,7 @@ async function main() {
     });
   }
 
-  console.log('🎉 Comprehensive B2B School Seed completed successfully!');
+  console.log('Comprehensive B2B School Seed completed successfully.');
 }
 
 main()

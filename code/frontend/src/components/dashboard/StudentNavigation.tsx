@@ -1,8 +1,6 @@
 "use client";
 
 import { APP_ROUTES } from '@/constants/routes';
- 
-
 import { usePathname } from "next/navigation";
 import { Link } from "@/i18n/routing";
 import { Home, Bot, Calendar, BookOpen, BarChart2, Bell, LogOut, Edit3, MessageSquareWarning, X, CheckCircle2 } from "lucide-react";
@@ -11,6 +9,10 @@ import { ThemeToggle } from "../ThemeToggle";
 import { logout } from "@/app/[locale]/(auth)/actions";
 import { useTranslations } from "next-intl";
 import Image from "next/image";
+import { fetchApi } from "@/lib/api-client";
+
+const PROFILE_CACHE_KEY = "eduai_student_profile_cache";
+const PROFILE_TTL_MS = 60_000;
 
 export function StudentNavigation() {
   const pathname = usePathname();
@@ -27,7 +29,16 @@ export function StudentNavigation() {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const { fetchApi } = await import('@/lib/api-client');
+        const cached = sessionStorage.getItem(PROFILE_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - parsed.ts < PROFILE_TTL_MS) {
+            setUserProfile(parsed.profile);
+            setHasUnread(Boolean(parsed.hasUnread));
+            return;
+          }
+        }
+
         const [profileData, notificationsData] = await Promise.all([
           fetchApi('/users/profile').catch(() => null),
           fetchApi('/notifications').catch(() => [])
@@ -37,9 +48,17 @@ export function StudentNavigation() {
           setUserProfile(profileData);
         }
         
+        let unread = false;
         if (Array.isArray(notificationsData)) {
-          const unread = notificationsData.some((n: any) => !n.isRead);
+          unread = notificationsData.some((n: any) => !n.isRead);
           setHasUnread(unread);
+        }
+
+        if (profileData) {
+          sessionStorage.setItem(
+            PROFILE_CACHE_KEY,
+            JSON.stringify({ profile: profileData, hasUnread: unread, ts: Date.now() }),
+          );
         }
       } catch (error) {
         console.error("Failed to fetch user data", error);
@@ -48,9 +67,7 @@ export function StudentNavigation() {
     fetchUserData();
   }, []);
 
-  // Simple check for active link based on the last segment
   const isActive = (path: string) => {
-    // Exact match for /dashboard, or starts with /dashboard/path
     if (path === "/dashboard") {
       return pathname.endsWith("/dashboard");
     }
@@ -60,7 +77,7 @@ export function StudentNavigation() {
   const navItems = [
     { name: t("home"), href: "/dashboard", icon: Home },
     { name: t("aiTutor"), href: "/dashboard/ai-tutor", icon: Bot },
-    { name: "Khóa học", href: "/dashboard/courses", icon: BookOpen }, // Add explicit translation if possible, for now hardcode "Khóa học"
+    { name: "Khóa học", href: "/dashboard/courses", icon: BookOpen },
     { name: t("schedule"), href: "/dashboard/schedule", icon: Calendar },
     { name: t("practice"), href: "/dashboard/practice", icon: Edit3 },
     { name: t("progress"), href: "/dashboard/progress", icon: BarChart2 },
@@ -98,7 +115,11 @@ export function StudentNavigation() {
                 {t("editProfile")}
               </Link>
               <form action={logout}>
-                <button type="submit" className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
+                <button
+                  type="submit"
+                  onClick={() => sessionStorage.clear()}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
+                >
                   <LogOut className="w-4 h-4" />
                   {t("logout")}
                 </button>
@@ -107,9 +128,8 @@ export function StudentNavigation() {
           )}
         </div>
 
-        {/* Right: Notifications & ThemeToggle & LanguageSwitcher */}
+        {/* Right: Notifications & ThemeToggle */}
         <div className="flex items-center gap-2">
-          
           <ThemeToggle />
           <button 
             onClick={() => setShowNotifications(!showNotifications)}
@@ -131,11 +151,6 @@ export function StudentNavigation() {
                   <p className="text-sm font-medium text-gray-900 dark:text-white">Toán 11 - Sắp bắt đầu!</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Tiết học sẽ bắt đầu trong 15 phút nữa.</p>
                   <p className="text-[10px] text-blue-500 mt-1">Vừa xong</p>
-                </div>
-                <div className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">Bạn nhận được 50 XP</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Tuyệt vời! Bạn đã hoàn thành xuất sắc bài tập tiếng Anh.</p>
-                  <p className="text-[10px] text-gray-400 mt-1">2 giờ trước</p>
                 </div>
               </div>
               <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700 text-center">
@@ -196,7 +211,11 @@ export function StudentNavigation() {
             </div>
           </Link>
           <form action={logout} className="mt-2">
-            <button type="submit" className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 rounded-xl transition-colors">
+            <button
+              type="submit"
+              onClick={() => sessionStorage.clear()}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 rounded-xl transition-colors"
+            >
               <LogOut className="w-4 h-4" />
               {t("logout")}
             </button>
@@ -237,11 +256,6 @@ export function StudentNavigation() {
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Tiết học sẽ bắt đầu trong 15 phút nữa.</p>
                   <p className="text-[10px] font-medium text-blue-500 mt-1.5 uppercase tracking-wider">Vừa xong</p>
                 </div>
-                <div className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">Bạn nhận được 50 XP</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Tuyệt vời! Bạn đã hoàn thành xuất sắc bài tập tiếng Anh.</p>
-                  <p className="text-[10px] font-medium text-gray-400 mt-1.5 uppercase tracking-wider">2 giờ trước</p>
-                </div>
               </div>
               <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700 text-center bg-gray-50/50 dark:bg-gray-800/50">
                 <button className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{tNotif("viewAll")}</button>
@@ -278,7 +292,6 @@ export function StudentNavigation() {
       {showFeedbackModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Header */}
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -295,7 +308,6 @@ export function StudentNavigation() {
               </button>
             </div>
 
-            {/* Body */}
             <div className="p-6">
               {feedbackStatus === "success" ? (
                 <div className="text-center py-6">
@@ -334,7 +346,6 @@ export function StudentNavigation() {
               )}
             </div>
 
-            {/* Footer */}
             {feedbackStatus !== "success" && (
               <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex justify-end gap-3">
                 <button 

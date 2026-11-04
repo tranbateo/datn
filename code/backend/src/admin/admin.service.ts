@@ -26,39 +26,81 @@ export class AdminService {
   async getDashboardStats(schoolId?: string | null) {
     const schoolFilter = this.buildSchoolFilter(schoolId);
 
-    const totalStudents = await this.prisma.user.count({
-      where: { ...schoolFilter, role: Role.STUDENT },
-    });
-    const activeTeachers = await this.prisma.user.count({
-      where: { ...schoolFilter, role: Role.TEACHER, isActive: true },
-    });
-    const totalClasses = await this.prisma.class.count({
-      where: schoolFilter,
-    });
-    const totalLessons = await this.prisma.lesson.count({
-      where: schoolId ? { course: { schoolId } } : {},
-    });
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const [
+      totalStudents,
+      activeTeachers,
+      totalClasses,
+      totalLessons,
+      recentUsers,
+      recentCourses,
+      tokenResult,
+      schoolRecord,
+      totalAttempts,
+      passedAttempts,
+      activeProfiles,
+    ] = await Promise.all([
+      this.prisma.user.count({
+        where: { ...schoolFilter, role: Role.STUDENT },
+      }),
+      this.prisma.user.count({
+        where: { ...schoolFilter, role: Role.TEACHER, isActive: true },
+      }),
+      this.prisma.class.count({
+        where: schoolFilter,
+      }),
+      this.prisma.lesson.count({
+        where: schoolId ? { course: { schoolId } } : {},
+      }),
+      this.prisma.user.findMany({
+        where: schoolFilter,
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, fullName: true, role: true, createdAt: true },
+      }),
+      this.prisma.course.findMany({
+        where: schoolFilter,
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          createdAt: true,
+          teacher: { select: { fullName: true } },
+        },
+      }),
+      this.prisma.aiTokenUsage.aggregate({
+        where: schoolId ? { user: { schoolId } } : {},
+        _sum: { tokensUsed: true },
+      }),
+      schoolId
+        ? this.prisma.school.findUnique({
+            where: { id: schoolId },
+            select: { aiTokensUsed: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.quizAttempt.count({
+        where: schoolId ? { user: { schoolId } } : {},
+      }),
+      this.prisma.quizAttempt.count({
+        where: {
+          ...(schoolId ? { user: { schoolId } } : {}),
+          score: { gte: 50 },
+        },
+      }),
+      this.prisma.gamificationProfile.findMany({
+        where: {
+          ...(schoolId ? { user: { schoolId } } : {}),
+          lastActiveAt: { gte: sevenDaysAgo },
+        },
+        select: { lastActiveAt: true },
+      }),
+    ]);
 
     const monthlyCost = 0;
-
-    const recentUsers = await this.prisma.user.findMany({
-      where: schoolFilter,
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, fullName: true, role: true, createdAt: true },
-    });
-
-    const recentCourses = await this.prisma.course.findMany({
-      where: schoolFilter,
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        createdAt: true,
-        teacher: { select: { fullName: true } },
-      },
-    });
 
     const rawActivity = [
       ...recentUsers.map((u) => ({
@@ -81,17 +123,8 @@ export class AdminService {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, 5);
 
-    const tokenResult = await this.prisma.aiTokenUsage.aggregate({
-      where: schoolId ? { user: { schoolId } } : {},
-      _sum: { tokensUsed: true },
-    });
     let totalTokens = tokenResult._sum.tokensUsed || 0;
-
     if (schoolId && totalTokens === 0) {
-      const schoolRecord = await this.prisma.school.findUnique({
-        where: { id: schoolId },
-        select: { aiTokensUsed: true },
-      });
       totalTokens = schoolRecord?.aiTokensUsed || 0;
     }
 
@@ -104,31 +137,10 @@ export class AdminService {
       },
     ];
 
-    const totalAttempts = await this.prisma.quizAttempt.count({
-      where: schoolId ? { user: { schoolId } } : {},
-    });
-    const passedAttempts = await this.prisma.quizAttempt.count({
-      where: {
-        ...(schoolId ? { user: { schoolId } } : {}),
-        score: { gte: 50 },
-      },
-    });
     const completionRate =
       totalAttempts > 0
         ? Math.round((passedAttempts / totalAttempts) * 100)
         : 0;
-
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
-
-    const activeProfiles = await this.prisma.gamificationProfile.findMany({
-      where: {
-        ...(schoolId ? { user: { schoolId } } : {}),
-        lastActiveAt: { gte: sevenDaysAgo },
-      },
-      select: { lastActiveAt: true },
-    });
 
     const activeCounts: Record<string, number> = {};
     activeProfiles.forEach((p) => {
@@ -165,21 +177,23 @@ export class AdminService {
 
   async getAnalyticsStats(schoolId?: string | null) {
     const schoolFilter = this.buildSchoolFilter(schoolId);
-    const totalUsers = await this.prisma.user.count({ where: schoolFilter });
-    const activeProfiles = await this.prisma.gamificationProfile.count({
-      where: {
-        ...(schoolId ? { user: { schoolId } } : {}),
-        lifetimeXp: { gt: 0 },
-      },
-    });
-
-    const totalQuizzes = await this.prisma.quiz.count({ where: schoolFilter });
-    const totalAttempts = await this.prisma.quizAttempt.count({
-      where: schoolId ? { user: { schoolId } } : {},
-    });
-    const totalDocuments = await this.prisma.document.count({
-      where: schoolFilter,
-    });
+    const [totalUsers, activeProfiles, totalQuizzes, totalAttempts, totalDocuments] =
+      await Promise.all([
+        this.prisma.user.count({ where: schoolFilter }),
+        this.prisma.gamificationProfile.count({
+          where: {
+            ...(schoolId ? { user: { schoolId } } : {}),
+            lifetimeXp: { gt: 0 },
+          },
+        }),
+        this.prisma.quiz.count({ where: schoolFilter }),
+        this.prisma.quizAttempt.count({
+          where: schoolId ? { user: { schoolId } } : {},
+        }),
+        this.prisma.document.count({
+          where: schoolFilter,
+        }),
+      ]);
 
     return {
       storageCapacity: {
