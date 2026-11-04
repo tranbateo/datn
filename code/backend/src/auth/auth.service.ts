@@ -384,4 +384,13 @@ export class AuthService {
       refreshToken: newRefreshToken,
     };
   }
+
+  async logout(userId: string) {
+    // BR-AUTH-001: Revoke session refresh token on logout
+    await this.prisma.user.updateMany({
+      where: { id: userId },
+      data: { refreshTokenHash: null },
+    });
+    return { success: true };
+  }
 }

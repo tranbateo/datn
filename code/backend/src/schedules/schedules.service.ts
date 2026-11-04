@@ -18,10 +18,14 @@ export class SchedulesService {
   private model: ChatGoogleGenerativeAI;
 
   constructor(private prisma: PrismaService) {
+    const visionModel =
+      process.env.GEMINI_VISION_MODEL ||
+      process.env.GEMINI_MODEL ||
+      'gemini-1.5-flash';
     this.model = new ChatGoogleGenerativeAI({
-      model: 'gemini-1.5-flash-latest', // Use flash for fast vision
+      model: visionModel,
       maxOutputTokens: 2048,
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
     });
   }
 
@@ -67,11 +71,9 @@ export class SchedulesService {
 
   async parseScheduleOCR(file: Express.Multer.File) {
     try {
-      // 1. Convert file to base64
       const base64Image = file.buffer.toString('base64');
       const mimeType = file.mimetype;
 
-      // 2. Send to Gemini Vision
       const response = await this.model.invoke([
         new HumanMessage({
           content: [
@@ -102,7 +104,6 @@ Chú ý: type có thể là CLASS, EXAM, ASSIGNMENT, MEETING. color hãy random 
         }),
       ]);
 
-      // 3. Parse JSON from response
       let contentStr = '';
       if (typeof response.content === 'string') {
         contentStr = response.content;
@@ -115,7 +116,6 @@ Chú ý: type có thể là CLASS, EXAM, ASSIGNMENT, MEETING. color hãy random 
         contentStr = JSON.stringify(response.content);
       }
 
-      // Clean up potential markdown formatting (```json ... ```)
       const cleanedStr = contentStr
         .replace(/```json/gi, '')
         .replace(/```/g, '')
@@ -131,7 +131,6 @@ Chú ý: type có thể là CLASS, EXAM, ASSIGNMENT, MEETING. color hãy random 
   }
 
   async bulkCreateSchedules(userId: string, events: any[]) {
-    // Convert string dates to Date objects if needed, and inject userId
     const dataToInsert = events.map((e) => ({
       ...e,
       startTime: new Date(e.startTime),

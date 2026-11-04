@@ -20,10 +20,13 @@ export function StudentNavigation() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState<"idle" | "submitting" | "success">("idle");
+  const [feedbackCategory, setFeedbackCategory] = useState("ai");
+  const [feedbackContent, setFeedbackContent] = useState("");
   const t = useTranslations("User.Navigation");
   const tNotif = useTranslations("User.Notifications");
   const tFeedback = useTranslations("Admin.FeedbackModal");
   const [hasUnread, setHasUnread] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [userProfile, setUserProfile] = useState<any | null>(null);
 
   useEffect(() => {
@@ -35,6 +38,7 @@ export function StudentNavigation() {
           if (Date.now() - parsed.ts < PROFILE_TTL_MS) {
             setUserProfile(parsed.profile);
             setHasUnread(Boolean(parsed.hasUnread));
+            setNotifications(Array.isArray(parsed.notifications) ? parsed.notifications : []);
             return;
           }
         }
@@ -49,15 +53,15 @@ export function StudentNavigation() {
         }
         
         let unread = false;
-        if (Array.isArray(notificationsData)) {
-          unread = notificationsData.some((n: any) => !n.isRead);
-          setHasUnread(unread);
-        }
+        const notifList = Array.isArray(notificationsData) ? notificationsData : [];
+        setNotifications(notifList);
+        unread = notifList.some((n: any) => !n.isRead);
+        setHasUnread(unread);
 
         if (profileData) {
           sessionStorage.setItem(
             PROFILE_CACHE_KEY,
-            JSON.stringify({ profile: profileData, hasUnread: unread, ts: Date.now() }),
+            JSON.stringify({ profile: profileData, hasUnread: unread, notifications: notifList, ts: Date.now() }),
           );
         }
       } catch (error) {
@@ -66,6 +70,35 @@ export function StudentNavigation() {
     };
     fetchUserData();
   }, []);
+
+  const handleMarkAllRead = async () => {
+    try {
+      await fetchApi('/notifications/read-all', { method: 'PATCH' });
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setHasUnread(false);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!feedbackContent.trim()) return;
+    setFeedbackStatus("submitting");
+    try {
+      await fetchApi('/users/feedback', {
+        method: 'POST',
+        body: JSON.stringify({
+          category: feedbackCategory,
+          content: feedbackContent.trim(),
+        }),
+      });
+      setFeedbackContent("");
+      setFeedbackStatus("success");
+    } catch (error: any) {
+      alert(error?.message || "Không thể gửi phản hồi");
+      setFeedbackStatus("idle");
+    }
+  };
 
   const isActive = (path: string) => {
     if (path === "/dashboard") {
@@ -82,6 +115,8 @@ export function StudentNavigation() {
     { name: t("practice"), href: "/dashboard/practice", icon: Edit3 },
     { name: t("progress"), href: "/dashboard/progress", icon: BarChart2 },
   ];
+
+  const activeClassName = userProfile?.classEnrollments?.[0]?.class?.name;
 
   return (
     <>
@@ -100,7 +135,9 @@ export function StudentNavigation() {
 
           <div className="flex flex-col">
             <span className="font-bold text-blue-600 dark:text-blue-500 text-sm truncate max-w-[120px]">{userProfile?.fullName || 'Học viên'}</span>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{userProfile?.grade ? `Lớp ${userProfile.grade}` : t("greetingMobile")}</span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+              {activeClassName ? `Lớp ${activeClassName}` : userProfile?.grade ? `Khối ${userProfile.grade}` : t("greetingMobile")}
+            </span>
           </div>
 
           {/* Profile Dropdown */}
@@ -144,17 +181,26 @@ export function StudentNavigation() {
             <div className="absolute top-14 right-4 w-80 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden py-2 animate-in fade-in zoom-in-95 duration-200">
               <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
                 <span className="font-bold text-gray-900 dark:text-white">{tNotif("title")}</span>
-                <button className="text-xs text-blue-600 dark:text-blue-400 hover:underline">{tNotif("markAllRead")}</button>
+                {notifications.length > 0 && (
+                  <button onClick={handleMarkAllRead} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                    {tNotif("markAllRead")}
+                  </button>
+                )}
               </div>
               <div className="max-h-64 overflow-y-auto">
-                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">Toán 11 - Sắp bắt đầu!</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Tiết học sẽ bắt đầu trong 15 phút nữa.</p>
-                  <p className="text-[10px] text-blue-500 mt-1">Vừa xong</p>
-                </div>
-              </div>
-              <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700 text-center">
-                <button className="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-blue-600 transition-colors">{tNotif("viewAll")}</button>
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-xs text-gray-500">Chưa có thông báo mới.</div>
+                ) : (
+                  notifications.slice(0, 6).map((n: any) => (
+                    <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{n.message}</p>
+                      <p className="text-[10px] text-blue-500 mt-1">
+                        {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -169,7 +215,9 @@ export function StudentNavigation() {
           </div>
           <div>
             <h1 className="font-bold text-gray-900 dark:text-white text-lg leading-tight">AI Tutor</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{t("slogan")}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {userProfile?.school?.name || t("slogan")}
+            </p>
           </div>
         </Link>
 
@@ -207,7 +255,10 @@ export function StudentNavigation() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{userProfile?.fullName || 'Học viên'}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userProfile?.grade ? `Lớp ${userProfile.grade}` : t("role")}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                {userProfile?.studentCode ? `${userProfile.studentCode} • ` : ""}
+                {activeClassName ? `Lớp ${activeClassName}` : userProfile?.grade ? `Khối ${userProfile.grade}` : t("role")}
+              </p>
             </div>
           </Link>
           <form action={logout} className="mt-2">
@@ -248,17 +299,26 @@ export function StudentNavigation() {
             <div className="absolute top-12 right-0 w-80 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-200 z-[100]">
               <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
                 <span className="font-bold text-gray-900 dark:text-white">{tNotif("title")}</span>
-                <button className="text-xs text-blue-600 dark:text-blue-400 hover:underline">{tNotif("markAllRead")}</button>
+                {notifications.length > 0 && (
+                  <button onClick={handleMarkAllRead} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                    {tNotif("markAllRead")}
+                  </button>
+                )}
               </div>
               <div className="max-h-80 overflow-y-auto">
-                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">Toán 11 - Sắp bắt đầu!</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Tiết học sẽ bắt đầu trong 15 phút nữa.</p>
-                  <p className="text-[10px] font-medium text-blue-500 mt-1.5 uppercase tracking-wider">Vừa xong</p>
-                </div>
-              </div>
-              <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700 text-center bg-gray-50/50 dark:bg-gray-800/50">
-                <button className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{tNotif("viewAll")}</button>
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-xs text-gray-500">Chưa có thông báo mới.</div>
+                ) : (
+                  notifications.slice(0, 8).map((n: any) => (
+                    <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{n.title}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{n.message}</p>
+                      <p className="text-[10px] font-medium text-blue-500 mt-1.5 uppercase tracking-wider">
+                        {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -327,7 +387,11 @@ export function StudentNavigation() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{tFeedback("categoryLabel")}</label>
-                    <select className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                    <select
+                      value={feedbackCategory}
+                      onChange={(e) => setFeedbackCategory(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    >
                       <option value="ai">{tFeedback("catAI")}</option>
                       <option value="content">{tFeedback("catContent")}</option>
                       <option value="system">{tFeedback("catSystem")}</option>
@@ -338,6 +402,8 @@ export function StudentNavigation() {
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{tFeedback("contentLabel")}</label>
                     <textarea 
                       rows={4}
+                      value={feedbackContent}
+                      onChange={(e) => setFeedbackContent(e.target.value)}
                       placeholder={tFeedback("contentPlaceholder")}
                       className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
                     ></textarea>
@@ -355,12 +421,9 @@ export function StudentNavigation() {
                   {tFeedback("cancel")}
                 </button>
                 <button 
-                  onClick={() => {
-                    setFeedbackStatus("submitting");
-                    setTimeout(() => setFeedbackStatus("success"), 1000);
-                  }}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-2"
-                  disabled={feedbackStatus === "submitting"}
+                  onClick={handleSubmitFeedback}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                  disabled={feedbackStatus === "submitting" || !feedbackContent.trim()}
                 >
                   {feedbackStatus === "submitting" ? (
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>

@@ -4,9 +4,10 @@ import { ChatRagController } from './chat-rag.controller';
 import { GamificationModule } from '../gamification/gamification.module';
 import { QuotaGuard } from './quota.guard';
 import { ChatRagGateway } from './chat-rag.gateway';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [GamificationModule],
+  imports: [GamificationModule, AuthModule],
   providers: [ChatRagService, ChatRagGateway, QuotaGuard],
   controllers: [ChatRagController],
 })

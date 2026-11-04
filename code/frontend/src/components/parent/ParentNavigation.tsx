@@ -2,12 +2,13 @@
 
 import { usePathname } from "next/navigation";
 import { Link } from "@/i18n/routing";
-import { Home, Link as LinkIcon, MessageSquare, Settings, Bell, LogOut, Edit3, MessageSquareWarning, X, CheckCircle2 } from "lucide-react";
+import { Home, Link as LinkIcon, MessageSquare, Settings, Bell, LogOut, Edit3, MessageSquareWarning, X, CheckCircle2, Users } from "lucide-react";
 import { useState, useEffect } from "react";
 import { ThemeToggle } from "../ThemeToggle";
 import { logout } from "@/app/[locale]/(auth)/actions";
 import { useTranslations } from "next-intl";
 import Image from "next/image";
+import { fetchApi } from "@/lib/api-client";
 
 export function ParentNavigation() {
   const pathname = usePathname();
@@ -15,17 +16,19 @@ export function ParentNavigation() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState<"idle" | "submitting" | "success">("idle");
+  const [feedbackCategory, setFeedbackCategory] = useState("system");
+  const [feedbackContent, setFeedbackContent] = useState("");
   const t = useTranslations("User.Navigation");
   const tNotif = useTranslations("User.Notifications");
   const tFeedback = useTranslations("Admin.FeedbackModal");
   const tParent = useTranslations("ParentUI.Sidebar");
   const [hasUnread, setHasUnread] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [userProfile, setUserProfile] = useState<any | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const { fetchApi } = await import('@/lib/api-client');
         const [profileData, notificationsData] = await Promise.all([
           fetchApi('/users/profile').catch(() => null),
           fetchApi('/notifications').catch(() => [])
@@ -36,6 +39,7 @@ export function ParentNavigation() {
         }
         
         if (Array.isArray(notificationsData)) {
+          setNotifications(notificationsData);
           const unread = notificationsData.some((n: any) => !n.isRead);
           setHasUnread(unread);
         }
@@ -46,7 +50,35 @@ export function ParentNavigation() {
     fetchUserData();
   }, []);
 
-  // Simple check for active link based on the last segment
+  const handleMarkAllRead = async () => {
+    try {
+      await fetchApi('/notifications/read-all', { method: 'PATCH' });
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setHasUnread(false);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!feedbackContent.trim()) return;
+    setFeedbackStatus("submitting");
+    try {
+      await fetchApi('/users/feedback', {
+        method: 'POST',
+        body: JSON.stringify({
+          category: feedbackCategory,
+          content: feedbackContent.trim(),
+        }),
+      });
+      setFeedbackContent("");
+      setFeedbackStatus("success");
+    } catch (error: any) {
+      alert(error?.message || "Không thể gửi phản hồi");
+      setFeedbackStatus("idle");
+    }
+  };
+
   const isActive = (path: string) => {
     if (path === "/parent") {
       return pathname.endsWith("/parent");
@@ -102,9 +134,8 @@ export function ParentNavigation() {
           )}
         </div>
 
-        {/* Right: Notifications & ThemeToggle & LanguageSwitcher */}
+        {/* Right: Notifications & ThemeToggle */}
         <div className="flex items-center gap-2">
-          
           <ThemeToggle />
           <button 
             onClick={() => setShowNotifications(!showNotifications)}
@@ -119,22 +150,26 @@ export function ParentNavigation() {
             <div className="absolute top-14 right-4 w-80 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden py-2 animate-in fade-in zoom-in-95 duration-200">
               <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
                 <span className="font-bold text-gray-900 dark:text-white">{tNotif("title")}</span>
-                <button className="text-xs text-blue-600 dark:text-blue-400 hover:underline">{tNotif("markAllRead")}</button>
+                {notifications.length > 0 && (
+                  <button onClick={handleMarkAllRead} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                    {tNotif("markAllRead")}
+                  </button>
+                )}
               </div>
               <div className="max-h-64 overflow-y-auto">
-                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">Toán 11 - Sắp bắt đầu!</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Tiết học sẽ bắt đầu trong 15 phút nữa.</p>
-                  <p className="text-[10px] text-blue-500 mt-1">Vừa xong</p>
-                </div>
-                <div className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">Bạn nhận được 50 XP</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Tuyệt vời! Bạn đã hoàn thành xuất sắc bài tập tiếng Anh.</p>
-                  <p className="text-[10px] text-gray-400 mt-1">2 giờ trước</p>
-                </div>
-              </div>
-              <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700 text-center">
-                <button className="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-blue-600 transition-colors">{tNotif("viewAll")}</button>
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-xs text-gray-500">Chưa có thông báo mới.</div>
+                ) : (
+                  notifications.slice(0, 6).map((n: any) => (
+                    <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{n.message}</p>
+                      <p className="text-[10px] text-blue-500 mt-1">
+                        {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -145,11 +180,11 @@ export function ParentNavigation() {
       <aside className="hidden md:flex flex-col w-64 h-screen fixed left-0 top-0 z-50 bg-white dark:bg-card-bg border-r border-gray-100 dark:border-card-border overflow-y-auto">
         <Link href="/parent" className="p-6 flex items-center gap-3 hover:opacity-80 transition-opacity">
           <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white">
-            <LogOut className="w-6 h-6 rotate-180" /> {/* Just a placeholder icon */}
+            <Users className="w-6 h-6" />
           </div>
           <div>
             <h1 className="font-bold text-gray-900 dark:text-white text-lg leading-tight">{tParent("title")}</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{tParent("subtitle")}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{userProfile?.school?.name || tParent("subtitle")}</p>
           </div>
         </Link>
 
@@ -187,7 +222,7 @@ export function ParentNavigation() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{userProfile?.fullName || tParent("role")}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{tParent("role")}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userProfile?.phone || tParent("role")}</p>
             </div>
           </Link>
           <form action={logout} className="mt-2">
@@ -224,22 +259,26 @@ export function ParentNavigation() {
             <div className="absolute top-12 right-0 w-80 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-200 z-[100]">
               <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
                 <span className="font-bold text-gray-900 dark:text-white">{tNotif("title")}</span>
-                <button className="text-xs text-blue-600 dark:text-blue-400 hover:underline">{tNotif("markAllRead")}</button>
+                {notifications.length > 0 && (
+                  <button onClick={handleMarkAllRead} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                    {tNotif("markAllRead")}
+                  </button>
+                )}
               </div>
               <div className="max-h-80 overflow-y-auto">
-                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">Toán 11 - Sắp bắt đầu!</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Tiết học sẽ bắt đầu trong 15 phút nữa.</p>
-                  <p className="text-[10px] font-medium text-blue-500 mt-1.5 uppercase tracking-wider">Vừa xong</p>
-                </div>
-                <div className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">Bạn nhận được 50 XP</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Tuyệt vời! Bạn đã hoàn thành xuất sắc bài tập tiếng Anh.</p>
-                  <p className="text-[10px] font-medium text-gray-400 mt-1.5 uppercase tracking-wider">2 giờ trước</p>
-                </div>
-              </div>
-              <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700 text-center bg-gray-50/50 dark:bg-gray-800/50">
-                <button className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{tNotif("viewAll")}</button>
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-xs text-gray-500">Chưa có thông báo mới.</div>
+                ) : (
+                  notifications.slice(0, 8).map((n: any) => (
+                    <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{n.title}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{n.message}</p>
+                      <p className="text-[10px] font-medium text-blue-500 mt-1.5 uppercase tracking-wider">
+                        {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -273,7 +312,6 @@ export function ParentNavigation() {
       {showFeedbackModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Header */}
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -290,7 +328,6 @@ export function ParentNavigation() {
               </button>
             </div>
 
-            {/* Body */}
             <div className="p-6">
               {feedbackStatus === "success" ? (
                 <div className="text-center py-6">
@@ -310,7 +347,11 @@ export function ParentNavigation() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{tFeedback("categoryLabel")}</label>
-                    <select className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                    <select
+                      value={feedbackCategory}
+                      onChange={(e) => setFeedbackCategory(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    >
                       <option value="ai">{tFeedback("catAI")}</option>
                       <option value="content">{tFeedback("catContent")}</option>
                       <option value="system">{tFeedback("catSystem")}</option>
@@ -321,6 +362,8 @@ export function ParentNavigation() {
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{tFeedback("contentLabel")}</label>
                     <textarea 
                       rows={4}
+                      value={feedbackContent}
+                      onChange={(e) => setFeedbackContent(e.target.value)}
                       placeholder={tFeedback("contentPlaceholder")}
                       className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
                     ></textarea>
@@ -329,7 +372,6 @@ export function ParentNavigation() {
               )}
             </div>
 
-            {/* Footer */}
             {feedbackStatus !== "success" && (
               <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex justify-end gap-3">
                 <button 
@@ -339,12 +381,9 @@ export function ParentNavigation() {
                   {tFeedback("cancel")}
                 </button>
                 <button 
-                  onClick={() => {
-                    setFeedbackStatus("submitting");
-                    setTimeout(() => setFeedbackStatus("success"), 1000);
-                  }}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-2"
-                  disabled={feedbackStatus === "submitting"}
+                  onClick={handleSubmitFeedback}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                  disabled={feedbackStatus === "submitting" || !feedbackContent.trim()}
                 >
                   {feedbackStatus === "submitting" ? (
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>

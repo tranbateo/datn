@@ -1,10 +1,8 @@
 "use client";
 
-import { APP_ROUTES } from '@/constants/routes';
- 
-
+import { APP_ROUTES } from "@/constants/routes";
 import { Link } from "@/i18n/routing";
-import { BookOpen, Clock, ChevronRight, Loader2 } from "lucide-react";
+import { BookOpen, Clock, ChevronRight, Loader2, School, Bot, Edit3 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { gamificationService, GamificationProfile } from "@/services/gamification.service";
@@ -14,8 +12,14 @@ import { calendarService, CalendarEvent } from "@/services/calendar.service";
 
 export default function StudentDashboard() {
   const t = useTranslations("User.Dashboard");
-  
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  const [profile, setProfile] = useState<(UserProfile & {
+    studentCode?: string;
+    school?: { name: string };
+    classEnrollments?: Array<{
+      class?: { name: string; homeroomTeacher?: { fullName: string } };
+    }>;
+  }) | null>(null);
   const [gamification, setGamification] = useState<GamificationProfile | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<CalendarEvent[]>([]);
@@ -25,28 +29,31 @@ export default function StudentDashboard() {
     Promise.all([
       usersService.getProfile(),
       gamificationService.getProfile(),
-      calendarService.getEvents().catch(() => [])
-    ]).then(([user, gamif, eventsData]) => {
-      setProfile(user);
-      setGamification(gamif);
-      
-      const now = new Date();
-      const upcoming = eventsData
-        .filter((e) => new Date(e.startTime) > now)
-        .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-        .slice(0, 3);
-      setUpcomingEvents(upcoming);
-      if (user.grade) {
-        return curriculumService.getSubjectsByGrade(user.grade);
-      }
-      return [];
-    }).then(subs => {
-      setSubjects(subs);
-      setLoading(false);
-    }).catch(err => {
-      console.error(err);
-      setLoading(false);
-    });
+      calendarService.getEvents().catch(() => []),
+    ])
+      .then(([user, gamif, eventsData]) => {
+        setProfile(user as any);
+        setGamification(gamif);
+
+        const now = new Date();
+        const upcoming = eventsData
+          .filter((e) => new Date(e.startTime) > now)
+          .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+          .slice(0, 3);
+        setUpcomingEvents(upcoming);
+        if (user.grade) {
+          return curriculumService.getSubjectsByGrade(user.grade);
+        }
+        return [];
+      })
+      .then((subs) => {
+        setSubjects(subs);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoading(false);
+      });
   }, []);
 
   if (loading) {
@@ -57,44 +64,85 @@ export default function StudentDashboard() {
     );
   }
 
+  const activeClass = profile?.classEnrollments?.[0]?.class;
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 lg:space-y-8 animate-in fade-in duration-500 pb-24 md:pb-8">
-      
-      {/* --- DESKTOP/TABLET GREETING (Hidden on mobile as it's in header) --- */}
-      <div className="flex justify-between items-center bg-white dark:bg-card-bg p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-card-border">
+      {/* --- GREETING & SCHOOL CLASS BANNER --- */}
+      <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 bg-white dark:bg-card-bg p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-card-border">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Chào mừng trở lại, {profile?.fullName || 'Học sinh'}!
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            {profile?.school?.name && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 px-2.5 py-1 rounded-md">
+                <School className="w-3.5 h-3.5" /> {profile.school.name}
+              </span>
+            )}
+            {activeClass?.name && (
+              <span className="inline-flex items-center text-xs font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300 px-2.5 py-1 rounded-md">
+                Lớp {activeClass.name}
+              </span>
+            )}
+            {profile?.studentCode && (
+              <span className="inline-flex items-center font-mono text-xs font-bold text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-300 px-2.5 py-1 rounded-md">
+                Mã HS: {profile.studentCode}
+              </span>
+            )}
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+            Chào mừng trở lại, {profile?.fullName || "Học sinh"}!
           </h2>
-          <p className="text-gray-500 dark:text-gray-400">
-            Bạn đã hoàn thành 80% mục tiêu tuần này. Tiếp tục phát huy nhé!</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+            {activeClass?.homeroomTeacher?.fullName
+              ? `Giáo viên chủ nhiệm: ${activeClass.homeroomTeacher.fullName} • Hãy chọn môn học bên dưới để ôn tập hoặc hỏi AI Tutor.`
+              : "Hãy chọn môn học bên dưới để làm bài luyện tập hoặc hỏi đáp cùng AI Tutor."}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <Link
+            href="/dashboard/ai-tutor"
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm"
+          >
+            <Bot className="w-4 h-4" /> Hỏi AI Tutor
+          </Link>
+          <Link
+            href="/dashboard/practice"
+            className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors"
+          >
+            <Edit3 className="w-4 h-4" /> Làm bài tập
+          </Link>
         </div>
       </div>
 
       {/* --- GOAL CARD --- */}
       <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 relative overflow-hidden">
-        {/* Decorative background glow */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 dark:bg-blue-500/10 blur-2xl rounded-full"></div>
-        
+
         <div className="relative z-10">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Cấp độ {gamification?.level || 1}</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Cố gắng thêm chút nữa để lên cấp!</p>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                Cấp độ học tập {gamification?.level || 1}
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Hoàn thành bài kiểm tra và hỏi đáp kiến thức để tích lũy XP!
+              </p>
             </div>
             <div className="flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-full text-sm font-bold">
               Chuỗi: {gamification?.streakDays || 0} ngày
             </div>
           </div>
-          
+
           <div className="flex justify-between items-end mb-2 text-sm font-bold">
             <span className="text-blue-600 dark:text-blue-400">{gamification?.currentXp || 0} XP</span>
             <span className="text-gray-400 dark:text-gray-500">{gamification?.nextLevelXp || 1000} XP</span>
           </div>
           <div className="w-full h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-            <div 
-               className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-1000" 
-               style={{ width: `${Math.min(100, ((gamification?.currentXp || 0) / (gamification?.nextLevelXp || 1000)) * 100)}%` }}
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-1000"
+              style={{
+                width: `${Math.min(100, ((gamification?.currentXp || 0) / (gamification?.nextLevelXp || 1000)) * 100)}%`,
+              }}
             ></div>
           </div>
         </div>
@@ -102,17 +150,30 @@ export default function StudentDashboard() {
 
       {/* --- CURRICULUM SUBJECTS --- */}
       <div className="space-y-4">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white">Chương trình học (Lớp {profile?.grade})</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+            Chương trình học chính khóa (Khối {profile?.grade || 9})
+          </h2>
+          <Link href="/dashboard/practice" className="text-sm font-semibold text-blue-600 hover:underline">
+            Tất cả bài kiểm tra
+          </Link>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
           {subjects.map((sub) => (
-            <div key={sub.id} className="bg-white dark:bg-gray-900 rounded-3xl p-4 shadow-sm border border-gray-100 dark:border-gray-800 flex items-center gap-3 cursor-pointer hover:border-indigo-200 transition-colors">
-              <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center text-indigo-600 font-bold">
+            <Link
+              key={sub.id}
+              href="/dashboard/practice"
+              className="bg-white dark:bg-gray-900 rounded-3xl p-4 shadow-sm border border-gray-100 dark:border-gray-800 flex items-center gap-3 cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all group"
+            >
+              <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center text-indigo-600 font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                 {sub.name.charAt(0)}
               </div>
-              <div className="flex-1">
-                <h4 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-1">{sub.name}</h4>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-gray-900 dark:text-white text-sm truncate">{sub.name}</h4>
+                <p className="text-xs text-gray-400">Luyện tập ngay</p>
               </div>
-            </div>
+              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-600 transition-colors" />
+            </Link>
           ))}
         </div>
       </div>
@@ -120,9 +181,12 @@ export default function StudentDashboard() {
       {/* --- UP NEXT --- */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('upNext')}</h2>
-          <Link href={APP_ROUTES.SCHEDULE} className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
-            {t('viewAll')}
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t("upNext")}</h2>
+          <Link
+            href={APP_ROUTES.SCHEDULE}
+            className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
+          >
+            {t("viewAll")}
           </Link>
         </div>
 
@@ -133,22 +197,33 @@ export default function StudentDashboard() {
         ) : (
           <div className="space-y-3">
             {upcomingEvents.map((ev) => (
-              <div key={ev.id} className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800 flex items-center justify-between shadow-sm">
+              <div
+                key={ev.id}
+                className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800 flex items-center justify-between shadow-sm"
+              >
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900 rounded-full flex items-center justify-center">
                     <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
-                      {profile?.fullName?.charAt(0) || 'U'}
+                      {profile?.fullName?.charAt(0) || "U"}
                     </span>
                   </div>
                   <div>
                     <h4 className="font-bold text-gray-900 dark:text-white text-sm">{ev.title}</h4>
                     <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(ev.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                      <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> {ev.type}</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />{" "}
+                        {new Date(ev.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <BookOpen className="w-3 h-3" /> {ev.type}
+                      </span>
                     </div>
                   </div>
                 </div>
-                <Link href={APP_ROUTES.SCHEDULE} className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:border-indigo-200 transition-colors">
+                <Link
+                  href={APP_ROUTES.SCHEDULE}
+                  className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                >
                   <ChevronRight className="w-4 h-4" />
                 </Link>
               </div>
@@ -156,7 +231,6 @@ export default function StudentDashboard() {
           </div>
         )}
       </div>
-      
     </div>
   );
 }

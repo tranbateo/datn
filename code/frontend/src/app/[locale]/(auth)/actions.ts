@@ -223,6 +223,19 @@ export async function verifyOtp(formData: FormData) {
 
 export async function logout() {
   const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token')?.value;
+  if (token) {
+    try {
+      await fetch(`${getApiUrl()}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch {
+      // Ignore network error during logout cleanup
+    }
+  }
   cookieStore.delete('auth-token');
   const { redirect: nextRedirect } = await import('next/navigation');
   nextRedirect('/');

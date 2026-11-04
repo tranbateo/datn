@@ -5,15 +5,18 @@ import { User } from '@/types';
 interface UserModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Partial<User> & { password?: string }) => Promise<void>;
+  onSave: (data: Partial<User> & { password?: string; phone?: string }) => Promise<void>;
   user: User | null;
   role: 'STUDENT' | 'TEACHER' | 'PARENT';
 }
 
 export default function UserModal({ isOpen, onClose, onSave, user, role }: UserModalProps) {
-  const [formData, setFormData] = useState<Partial<User> & { password?: string }>({
+  const [formData, setFormData] = useState<Partial<User> & { password?: string; phone?: string }>({
     fullName: '',
     email: '',
+    studentCode: '',
+    phone: '',
+    grade: role === 'STUDENT' ? 6 : undefined,
     password: '',
     role: role,
     isActive: true,
@@ -23,16 +26,21 @@ export default function UserModal({ isOpen, onClose, onSave, user, role }: UserM
 
   useEffect(() => {
     if (user) {
-      // We are in an effect, but since we are synchronizing props to state, 
-      // React 18+ docs suggest doing it during render or extracting to a key.
-      // But for quick fix, we just use a small hack or disable lint.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFormData({ ...user, password: '' });
+      setFormData({
+        ...user,
+        studentCode: user.studentCode || '',
+        phone: user.phone || user.phoneNumber || '',
+        grade: user.grade || (role === 'STUDENT' ? 6 : undefined),
+        password: '',
+      });
     } else {
-       
       setFormData({
         fullName: '',
         email: '',
+        studentCode: '',
+        phone: '',
+        grade: role === 'STUDENT' ? 6 : undefined,
         password: '',
         role: role,
         isActive: true,
@@ -46,10 +54,17 @@ export default function UserModal({ isOpen, onClose, onSave, user, role }: UserM
     setLoading(true);
     setError('');
     try {
-      const payload = { ...formData };
-      if (user && !payload.password) {
-        delete payload.password;
-      }
+      const payload: Record<string, any> = {
+        fullName: formData.fullName,
+        role: formData.role || role,
+        isActive: formData.isActive,
+      };
+      if (formData.email?.trim()) payload.email = formData.email.trim();
+      if (formData.studentCode?.trim()) payload.studentCode = formData.studentCode.trim();
+      if (formData.phone?.trim()) payload.phone = formData.phone.trim();
+      if (role === 'STUDENT' && formData.grade) payload.grade = Number(formData.grade);
+      if (formData.password) payload.password = formData.password;
+
       await onSave(payload);
       onClose();
     } catch (err: any) {
@@ -62,7 +77,7 @@ export default function UserModal({ isOpen, onClose, onSave, user, role }: UserM
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md overflow-hidden">
         <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-800">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -77,24 +92,72 @@ export default function UserModal({ isOpen, onClose, onSave, user, role }: UserM
           {error && <div className="text-sm text-red-500 bg-red-50 p-2 rounded">{error}</div>}
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Họ tên</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Họ và tên *</label>
             <input
               type="text"
               required
-              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
+              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm"
               value={formData.fullName || ''}
               onChange={e => setFormData({ ...formData, fullName: e.target.value })}
             />
           </div>
+
+          {(role === 'STUDENT' || role === 'TEACHER') && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  {role === 'STUDENT' ? 'Mã học sinh (VD: HS0010)' : 'Mã giáo viên (VD: GV010)'}
+                </label>
+                <input
+                  type="text"
+                  required={role === 'STUDENT' && !formData.email}
+                  placeholder={role === 'STUDENT' ? 'HS0010' : 'GV010'}
+                  className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm font-mono"
+                  value={formData.studentCode || ''}
+                  onChange={e => setFormData({ ...formData, studentCode: e.target.value })}
+                />
+              </div>
+              {role === 'STUDENT' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Khối lớp</label>
+                  <select
+                    className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm"
+                    value={formData.grade || 6}
+                    onChange={e => setFormData({ ...formData, grade: Number(e.target.value) })}
+                  >
+                    {[6, 7, 8, 9, 10, 11, 12].map(g => (
+                      <option key={g} value={g}>Khối {g}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Email {role === 'STUDENT' ? '(Không bắt buộc nếu có Mã HS)' : '*'}
+            </label>
             <input
               type="email"
-              required
-              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
+              required={role !== 'STUDENT' && !formData.phone}
+              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm"
               value={formData.email || ''}
               onChange={e => setFormData({ ...formData, email: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Số điện thoại {role === 'PARENT' ? '*' : '(Tùy chọn)'}
+            </label>
+            <input
+              type="text"
+              required={role === 'PARENT' && !formData.email}
+              placeholder="0901xxxxxx"
+              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm"
+              value={formData.phone || ''}
+              onChange={e => setFormData({ ...formData, phone: e.target.value })}
             />
           </div>
           
@@ -105,7 +168,7 @@ export default function UserModal({ isOpen, onClose, onSave, user, role }: UserM
             <input
               type={user ? "password" : "text"}
               required={!user}
-              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
+              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm"
               value={formData.password || ''}
               onChange={e => setFormData({ ...formData, password: e.target.value })}
             />

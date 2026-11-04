@@ -31,8 +31,12 @@ export class ChatRagService {
     private prisma: PrismaService,
     private gamificationService: GamificationService,
   ) {
+    const defaultModel = process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest';
+    const embeddingModel =
+      process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004';
+
     this.model = new ChatGoogleGenerativeAI({
-      model: 'gemini-1.5-pro-latest',
+      model: defaultModel,
       maxOutputTokens: 2048,
       apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
     });
@@ -44,6 +48,7 @@ export class ChatRagService {
 
     const embeddings = new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
+      model: embeddingModel,
     });
 
     this.vectorStore = new SupabaseVectorStore(embeddings, {
@@ -53,12 +58,25 @@ export class ChatRagService {
     });
   }
 
-  private getModelForSchool(customApiKey?: string | null) {
-    if (customApiKey && customApiKey.trim()) {
+  private getModelForSchool(
+    customApiKey?: string | null,
+    aiProvider?: string | null,
+  ) {
+    const isModelOverride =
+      aiProvider && aiProvider.trim().toLowerCase().startsWith('gemini-');
+    const resolvedModel = isModelOverride
+      ? aiProvider.trim()
+      : process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest';
+    const resolvedKey =
+      (customApiKey && customApiKey.trim()) ||
+      process.env.GEMINI_API_KEY ||
+      'placeholder-key';
+
+    if ((customApiKey && customApiKey.trim()) || isModelOverride) {
       return new ChatGoogleGenerativeAI({
-        model: 'gemini-1.5-pro-latest',
+        model: resolvedModel,
         maxOutputTokens: 2048,
-        apiKey: customApiKey.trim(),
+        apiKey: resolvedKey,
       });
     }
     return this.model;
@@ -302,6 +320,7 @@ Câu hỏi của học sinh: ${content}`;
       const { HumanMessage } = await import('@langchain/core/messages');
       const activeModel = this.getModelForSchool(
         session.user?.school?.customApiKey,
+        session.user?.school?.aiProvider,
       );
 
       const response = await activeModel.invoke([
@@ -434,6 +453,7 @@ Câu hỏi của học sinh: ${content}`;
       const { HumanMessage } = await import('@langchain/core/messages');
       const activeModel = this.getModelForSchool(
         session.user?.school?.customApiKey,
+        session.user?.school?.aiProvider,
       );
 
       const stream = await activeModel.stream([

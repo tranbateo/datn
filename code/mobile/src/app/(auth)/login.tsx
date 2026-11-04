@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, useColorScheme } from 'react-native';
 import { useAuthStore } from '@/store/authStore';
 
-const API_URL = 'http://10.0.2.2:3001'; // Default Android emulator localhost
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:3001';
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'student' | 'parent'>('student');
   const [loading, setLoading] = useState(false);
@@ -14,8 +14,9 @@ export default function LoginScreen() {
   const setSession = useAuthStore((state) => state.setSession);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Lỗi', 'Vui lòng nhập email và mật khẩu');
+    const trimmed = identifier.trim();
+    if (!trimmed || !password) {
+      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin tài khoản và mật khẩu');
       return;
     }
 
@@ -24,7 +25,7 @@ export default function LoginScreen() {
       const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier: trimmed, email: trimmed, password }),
       });
 
       if (!response.ok) {
@@ -36,7 +37,7 @@ export default function LoginScreen() {
 
       const data = await response.json();
       const actualRole = data.user?.role?.toLowerCase() || 'student';
-      
+
       if (actualRole !== role) {
         Alert.alert('Lỗi', 'Vai trò không khớp với tài khoản. Vui lòng chọn đúng vai trò.');
         setLoading(false);
@@ -45,7 +46,6 @@ export default function LoginScreen() {
 
       // Save token and user to store (which saves to SecureStore)
       await setSession(data.accessToken, data.user);
-      
     } catch (error: any) {
       Alert.alert('Lỗi kết nối', error.message);
     } finally {
@@ -54,8 +54,8 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={[styles.container, isDark ? styles.bgDark : styles.bgLight]} 
+    <KeyboardAvoidingView
+      style={[styles.container, isDark ? styles.bgDark : styles.bgLight]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
@@ -67,13 +67,13 @@ export default function LoginScreen() {
         </Text>
 
         <View style={styles.roleContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.roleBtn, role === 'student' && styles.roleActiveStudent]}
             onPress={() => setRole('student')}
           >
             <Text style={[styles.roleText, role === 'student' && styles.roleTextActive]}>Học sinh</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.roleBtn, role === 'parent' && styles.roleActiveParent]}
             onPress={() => setRole('parent')}
           >
@@ -84,12 +84,11 @@ export default function LoginScreen() {
         <View style={styles.form}>
           <TextInput
             style={[styles.input, isDark ? styles.inputDark : styles.inputLight]}
-            placeholder="Email"
+            placeholder={role === 'student' ? 'Mã học sinh hoặc Email (VD: HS0001)' : 'Số điện thoại hoặc Email'}
             placeholderTextColor={isDark ? '#888' : '#aaa'}
-            value={email}
-            onChangeText={setEmail}
+            value={identifier}
+            onChangeText={setIdentifier}
             autoCapitalize="none"
-            keyboardType="email-address"
           />
           <TextInput
             style={[styles.input, isDark ? styles.inputDark : styles.inputLight]}

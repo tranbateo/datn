@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Filter, Download, Users, TrendingUp, AlertTriangle } from "lucide-react";
+import { Search, Filter, Download, Users, TrendingUp, AlertTriangle, Edit, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, useEffect, useMemo } from "react";
 import { teacherService } from "@/services/teacher.service";
@@ -20,6 +20,9 @@ interface StudentData {
   initials: string;
   color?: string;
   lastActivity: string | null;
+  latestAttemptId?: string | null;
+  latestQuizTitle?: string | null;
+  latestScore?: number | null;
   progress: number;
   status: string;
   enrolledAt?: string;
@@ -33,24 +36,32 @@ export default function TeacherStudentsPage() {
   const [selectedClass, setSelectedClass] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
 
+  // Manual Grade Override state (FR-QUIZ-007)
+  const [editingStudent, setEditingStudent] = useState<StudentData | null>(null);
+  const [newScore, setNewScore] = useState<number>(80);
+  const [scoreReason, setScoreReason] = useState("");
+  const [savingScore, setSavingScore] = useState(false);
+
   // Derive quick stats
   const activeToday = students.filter(s => s.lastActivity && new Date(s.lastActivity).toDateString() === new Date().toDateString()).length;
   const newThisWeek = students.filter(s => s.enrolledAt && (new Date().getTime() - new Date(s.enrolledAt).getTime()) < 7 * 24 * 60 * 60 * 1000).length;
   const studentsAtRisk = students.filter(s => s.status === 'At Risk').length;
 
-  useEffect(() => {
-    async function loadStudents() {
-      try {
-        const data = await teacherService.getStudents();
-        if (data) {
-          setStudents(data as unknown as StudentData[]);
-        }
-      } catch (error) {
-        console.error("Failed to load students", error);
-      } finally {
-        setLoading(false);
+  async function loadStudents() {
+    setLoading(true);
+    try {
+      const data = await teacherService.getStudents();
+      if (data) {
+        setStudents(data as unknown as StudentData[]);
       }
+    } catch (error) {
+      console.error("Failed to load students", error);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
     loadStudents();
   }, []);
 
@@ -90,8 +101,33 @@ export default function TeacherStudentsPage() {
     window.open(`/api/proxy/schools/export/credentials${query}`, '_blank');
   };
 
+  const handleOpenScoreModal = (student: StudentData) => {
+    setEditingStudent(student);
+    setNewScore(student.latestScore ?? student.progress ?? 80);
+    setScoreReason("");
+  };
+
+  const handleSaveScore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent?.latestAttemptId || !scoreReason.trim()) return;
+    setSavingScore(true);
+    try {
+      await teacherService.overrideAttemptScore(
+        editingStudent.latestAttemptId,
+        Number(newScore),
+        scoreReason.trim()
+      );
+      setEditingStudent(null);
+      await loadStudents();
+    } catch (error: any) {
+      alert(error?.message || "Không thể cập nhật điểm bài làm.");
+    } finally {
+      setSavingScore(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col lg:flex-row gap-8">
+    <div className="flex flex-col lg:flex-row gap-8 pb-10">
       {/* Main Content - Table */}
       <div className="flex-1 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -172,18 +208,19 @@ export default function TeacherStudentsPage() {
                   <th className="px-6 py-4">{t('lastActivity')}</th>
                   <th className="px-6 py-4">Điểm TB ({t('progress')})</th>
                   <th className="px-6 py-4">{t('status')}</th>
+                  <th className="px-6 py-4 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-card-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                       Đang tải danh sách học sinh...
                     </td>
                   </tr>
                 ) : filteredStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                       Chưa có học sinh nào phù hợp.
                     </td>
                   </tr>
@@ -236,7 +273,12 @@ export default function TeacherStudentsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                      {student.lastActivity ? new Date(student.lastActivity).toLocaleDateString('vi-VN') : 'Chưa có'}
+                      <div>{student.lastActivity ? new Date(student.lastActivity).toLocaleDateString('vi-VN') : 'Chưa có'}</div>
+                      {student.latestQuizTitle && (
+                        <div className="text-[11px] text-gray-400 truncate max-w-[140px]" title={student.latestQuizTitle}>
+                          {student.latestQuizTitle}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -257,6 +299,19 @@ export default function TeacherStudentsPage() {
                       }`}>
                         {student.status === 'Active' ? t('active') : student.status === 'At Risk' ? t('atRisk') : t('inactive')}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      {student.latestAttemptId ? (
+                        <button
+                          onClick={() => handleOpenScoreModal(student)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 transition-colors"
+                          title="Chỉnh sửa điểm bài kiểm tra gần nhất (FR-QUIZ-007)"
+                        >
+                          <Edit className="w-3.5 h-3.5" /> Sửa điểm
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">Chưa có bài</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -305,6 +360,79 @@ export default function TeacherStudentsPage() {
           <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">{studentsAtRisk}</h3>
         </div>
       </div>
+
+      {/* Manual Score Override Modal (FR-QUIZ-007) */}
+      {editingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                Điều chỉnh điểm bài làm (FR-QUIZ-007)
+              </h3>
+              <button onClick={() => setEditingStudent(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveScore} className="p-5 space-y-4">
+              <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl text-sm">
+                <div className="font-bold text-gray-900 dark:text-white">{editingStudent.name}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Bài kiểm tra: <span className="font-semibold">{editingStudent.latestQuizTitle || "Bài làm gần nhất"}</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Điểm hiện tại: <span className="font-bold text-blue-600">{editingStudent.latestScore ?? editingStudent.progress}%</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Điểm mới (Thang 0 - 100) *
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  required
+                  value={newScore}
+                  onChange={(e) => setNewScore(Number(e.target.value))}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Lý do điều chỉnh điểm (Bắt buộc lưu Audit Log) *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={scoreReason}
+                  onChange={(e) => setScoreReason(e.target.value)}
+                  placeholder="VD: Chấm phúc khảo câu tự luận số 5, cộng thêm 10 điểm..."
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingStudent(null)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-xl"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingScore || !scoreReason.trim()}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50"
+                >
+                  {savingScore ? "Đang lưu..." : "Lưu điểm & Ghi Audit"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

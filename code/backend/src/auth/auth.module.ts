@@ -14,10 +14,22 @@ import { PrismaModule } from '../prisma/prisma.module';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '7d' },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret && process.env.NODE_ENV === 'production') {
+          throw new Error('JWT_SECRET must be configured in production');
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const expiresIn = (configService.get<string>('JWT_EXPIRES_IN') ||
+          '4h') as any;
+        return {
+          secret: secret || 'dev_jwt_secret_fallback_only',
+          signOptions: {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            expiresIn,
+          },
+        };
+      },
       inject: [ConfigService],
     }),
   ],

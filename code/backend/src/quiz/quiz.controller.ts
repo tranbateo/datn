@@ -87,16 +87,17 @@ export class QuizController {
   @Patch(':id')
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
   update(
+    @Request() req: any,
     @Param('id') id: string,
     @Body() updateQuizDto: Partial<CreateQuizInputDto>,
   ) {
-    return this.quizService.update(id, updateQuizDto as any);
+    return this.quizService.update(id, updateQuizDto as any, req.user);
   }
 
   @Delete(':id')
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
-  remove(@Param('id') id: string) {
-    return this.quizService.remove(id);
+  remove(@Request() req: any, @Param('id') id: string) {
+    return this.quizService.remove(id, req.user);
   }
 
   @Post('generate-ai-quiz')

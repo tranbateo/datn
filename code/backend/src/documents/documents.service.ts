@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
@@ -18,6 +22,7 @@ export class DocumentsService {
 
     const embeddings = new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
+      model: process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004',
     });
 
     this.vectorStore = new SupabaseVectorStore(embeddings, {
@@ -76,9 +81,24 @@ export class DocumentsService {
     size: string,
     schoolId?: string | null,
   ) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, schoolId: true },
+    });
+    if (
+      course &&
+      schoolId &&
+      course.schoolId &&
+      course.schoolId !== schoolId
+    ) {
+      throw new ForbiddenException(
+        'Không có quyền tải tài liệu vào khóa học của trường khác.',
+      );
+    }
+
     return this.prisma.document.create({
       data: {
-        schoolId: schoolId || null,
+        schoolId: schoolId || course?.schoolId || null,
         courseId,
         fileName,
         type,
@@ -95,7 +115,21 @@ export class DocumentsService {
     });
   }
 
-  async findByCourseId(courseId: string) {
+  async findByCourseId(courseId: string, schoolId?: string | null) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, schoolId: true },
+    });
+    if (
+      course &&
+      schoolId &&
+      course.schoolId &&
+      course.schoolId !== schoolId
+    ) {
+      throw new ForbiddenException(
+        'Không có quyền xem tài liệu của trường khác.',
+      );
+    }
     return this.prisma.document.findMany({
       where: { courseId },
       orderBy: { uploadedAt: 'desc' },

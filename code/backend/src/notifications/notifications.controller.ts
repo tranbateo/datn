@@ -23,6 +23,15 @@ export class NotificationsController {
     });
   }
 
+  @Patch('read-all')
+  async markAllAsRead(@Req() req: any) {
+    const userId = req.user.userId || req.user.id;
+    return this.prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true },
+    });
+  }
+
   @Patch(':id/read')
   async markAsRead(@Req() req: any, @Param('id') id: string) {
     const userId = req.user.userId || req.user.id;

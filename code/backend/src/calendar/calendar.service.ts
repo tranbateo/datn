@@ -30,9 +30,14 @@ export class CalendarService {
 
   async ocrSchedule(file: Express.Multer.File) {
     try {
+      const visionModel =
+        process.env.GEMINI_VISION_MODEL ||
+        process.env.GEMINI_MODEL ||
+        'gemini-1.5-flash';
       const model = new ChatGoogleGenerativeAI({
-        model: 'gemini-1.5-flash',
+        model: visionModel,
         maxOutputTokens: 2048,
+        apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
       });
 
       const base64Image = file.buffer.toString('base64');

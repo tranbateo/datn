@@ -41,6 +41,16 @@ export class UsersController {
     return this.usersService.syncUser(userId, user.email, user.role);
   }
 
+  @ApiOperation({ summary: 'Submit feedback / report AI or content error (FR-RAG-004)' })
+  @Post('feedback')
+  submitFeedback(
+    @Request() req: any,
+    @Body() body: { category?: string; content: string },
+  ) {
+    const userId = req.user.id || req.user.userId;
+    return this.usersService.submitFeedback(userId, body.category, body.content);
+  }
+
   @ApiOperation({ summary: 'Create user manually (Admin only)' })
   @Post()
   @Roles(Role.ADMIN, Role.SCHOOL_ADMIN)

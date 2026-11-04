@@ -61,4 +61,12 @@ export class AuthController {
   ) {
     return this.authService.firstTimeChangePassword(req.user.id, dto);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Logout and revoke refresh token session' })
+  @Post('logout')
+  async logout(@Req() req: { user: { id: string } }) {
+    return this.authService.logout(req.user.id);
+  }
 }

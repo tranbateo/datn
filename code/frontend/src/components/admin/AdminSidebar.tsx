@@ -13,7 +13,10 @@ import {
   HelpCircle,
   LogOut,
   Bell,
-  MessageSquareWarning
+  MessageSquareWarning,
+  School,
+  ShieldAlert,
+  FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
@@ -25,14 +28,17 @@ export function AdminSidebar() {
 
   const menuItems = [
     { name: t('overview'), icon: LayoutDashboard, href: "/admin" },
-    { name: t('analytics'), icon: BarChart3, href: "/admin/analytics" },
+    { name: "Lớp học & Phân công", icon: School, href: "/admin/classes" },
     { name: t('students'), icon: Users, href: "/admin/students" },
     { name: t('teachers'), icon: GraduationCap, href: "/admin/teachers" },
     { name: t('parents'), icon: UserCheck, href: "/admin/parents" },
     { name: t('courses'), icon: Library, href: "/admin/courses" },
+    { name: "Kho Tài liệu RAG", icon: FileText, href: "/admin/documents" },
+    { name: t('analytics'), icon: BarChart3, href: "/admin/analytics" },
     { name: t('notifications'), icon: Bell, href: "/admin/notifications" },
     { name: t('feedback'), icon: MessageSquareWarning, href: "/admin/feedback" },
     { name: t('aiConfig'), icon: Bot, href: "/admin/ai-models" },
+    { name: "Nhật ký Hệ thống", icon: ShieldAlert, href: "/admin/audit-logs" },
     { name: t('settings'), icon: Settings, href: "/admin/settings" },
   ];
 
@@ -54,11 +60,11 @@ export function AdminSidebar() {
       {/* Main Navigation */}
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1.5 scrollbar-hide">
         {menuItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = item.href === "/admin" ? pathname === "/admin" : (pathname === item.href || pathname.startsWith(`${item.href}/`));
           
           return (
             <Link 
-              key={item.name} 
+              key={item.href} 
               href={item.href}
               className={cn(
                 "flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all",

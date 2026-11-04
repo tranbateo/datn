@@ -6,6 +6,7 @@ export interface User {
   avatarUrl?: string;
   grade?: string | number | null;
   studentCode?: string | null;
+  phone?: string | null;
   phoneNumber?: string | null;
   schoolId?: string | null;
   isActive: boolean;

@@ -10,8 +10,11 @@ import { Role } from '@prisma/client';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private configService: ConfigService) {
-    const secret =
-      configService.get<string>('JWT_SECRET') || 'defaultSecretForDev';
+    const rawSecret = configService.get<string>('JWT_SECRET');
+    if (!rawSecret && process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET must be configured in production');
+    }
+    const secret = rawSecret || 'dev_jwt_secret_fallback_only';
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,

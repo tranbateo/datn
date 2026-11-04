@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -11,7 +12,7 @@ import {
   AdminUpdateUserDto,
 } from './dto/users.dto';
 import { ConfigService } from '@nestjs/config';
-import { Role } from '@prisma/client';
+import { FeedbackCategory, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -20,6 +21,28 @@ export class UsersService {
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {}
+
+  async submitFeedback(userId: string, category?: string, content?: string) {
+    if (!content || !content.trim()) {
+      throw new BadRequestException('Nội dung báo cáo không được để trống.');
+    }
+
+    let mappedCategory: FeedbackCategory = FeedbackCategory.AI_ERROR;
+    if (category === 'content' || category === 'CONTENT_ERROR') {
+      mappedCategory = FeedbackCategory.CONTENT_ERROR;
+    } else if (category === 'system' || category === 'other' || category === 'SYSTEM_BUG') {
+      mappedCategory = FeedbackCategory.SYSTEM_BUG;
+    }
+
+    return this.prisma.feedback.create({
+      data: {
+        userId,
+        category: mappedCategory,
+        content: content.trim(),
+        status: 'PENDING',
+      },
+    });
+  }
 
   async syncUser(id: string, email: string, role: any) {
     let user = await this.prisma.user.findUnique({ where: { id } });

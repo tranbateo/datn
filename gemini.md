@@ -60,8 +60,8 @@ AI Tutor là nền tảng giáo dục thông minh dành cho học sinh Việt Na
 - **Student**: học sinh thuộc một trường học cụ thể (Tiểu học, THCS, THPT).
 - **Teacher**: giáo viên thuộc một trường học, quản lý lớp và nội dung.
 - **Parent**: liên kết với con, theo dõi tiến độ và nhận cảnh báo.
-- **School Admin**: quản trị cấp trường, quản lý giáo viên, học sinh, và lớp học của trường mình.
-- **System Admin**: quản trị tổng thể, quản lý danh sách các trường học (khách hàng B2B) và hệ thống.
+- **School Admin (Admin)**: quản trị cấp trường (quyền quản trị cao nhất của hệ thống trường học), quản lý giáo viên, học sinh, phụ huynh, lớp học, môn học, khối lớp, kiểm duyệt nội dung, audit log và bản quyền/quota AI của trường.
+
 
 ### 3.2. Nền tảng
 
@@ -167,21 +167,21 @@ Parent có quyền đọc đối với dữ liệu học tập của các tài k
 
 Parent không được sửa điểm, bài làm, XP hoặc dữ liệu lớp học của con.
 
-### 5.4. School Admin
+### 5.4. School Admin (Admin Nhà trường)
 
 School Admin quản lý các hoạt động nội bộ của trường mình:
 - Quản lý danh sách Teacher, Student (thêm, sửa, import).
 - Quản lý lớp học và phân công giáo viên.
 - Xem báo cáo tổng quan của toàn trường.
-- Không thể truy cập dữ liệu của trường khác.
+- Quản lý môn học, khối lớp chuẩn, kiểm duyệt nội dung, xem audit log và quản lý bản quyền/AI usage của trường.
 
-### 5.5. System Admin
 
-System Admin được phân quyền theo nguyên tắc **least privilege**.
-- Quản lý danh sách trường học (tạo mới, cấp School Admin).
-- Quản lý môn học, khối lớp chuẩn và dữ liệu gốc.
-- Kiểm duyệt nội dung toàn hệ thống theo quyền.
-- Xem audit log, chỉ số vận hành và AI usage.
+
+
+
+
+
+
 
 ## 6. Business rules bắt buộc
 

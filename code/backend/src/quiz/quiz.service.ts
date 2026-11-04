@@ -40,7 +40,7 @@ export class QuizService {
 
     const embeddings = new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
-      model: 'text-embedding-004',
+      model: process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004',
     });
 
     this.vectorStore = new SupabaseVectorStore(embeddings, {
@@ -51,7 +51,7 @@ export class QuizService {
 
     this.llm = new ChatGoogleGenerativeAI({
       apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
-      model: 'gemini-1.5-pro-latest',
+      model: process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest',
       temperature: 0.2,
     });
   }
@@ -161,10 +161,24 @@ export class QuizService {
     return this.sanitizeQuizForStudent(quiz, user);
   }
 
-  async update(id: string, data: Prisma.QuizUpdateInput) {
+  async update(id: string, data: Prisma.QuizUpdateInput, user?: UserContext) {
+    const existingQuiz = await this.prisma.quiz.findUnique({ where: { id } });
+    if (!existingQuiz) {
+      throw new NotFoundException('Không tìm thấy bài kiểm tra.');
+    }
+    if (
+      user?.schoolId &&
+      existingQuiz.schoolId &&
+      existingQuiz.schoolId !== user.schoolId
+    ) {
+      throw new ForbiddenException(
+        'Không có quyền chỉnh sửa bài kiểm tra của trường khác.',
+      );
+    }
+
     if (data.grade || data.subject?.connect?.id) {
-      const quiz = await this.prisma.quiz.findUnique({ where: { id } });
-      const newGrade = data.grade !== undefined ? data.grade : quiz?.grade;
+      const newGrade =
+        data.grade !== undefined ? data.grade : existingQuiz?.grade;
       const newSubjectId = data.subject?.connect?.id;
 
       if (newGrade && newSubjectId) {
@@ -184,7 +198,20 @@ export class QuizService {
     });
   }
 
-  async remove(id: string) {
+  async remove(id: string, user?: UserContext) {
+    const existingQuiz = await this.prisma.quiz.findUnique({ where: { id } });
+    if (!existingQuiz) {
+      throw new NotFoundException('Không tìm thấy bài kiểm tra.');
+    }
+    if (
+      user?.schoolId &&
+      existingQuiz.schoolId &&
+      existingQuiz.schoolId !== user.schoolId
+    ) {
+      throw new ForbiddenException(
+        'Không có quyền xóa bài kiểm tra của trường khác.',
+      );
+    }
     return this.prisma.quiz.delete({
       where: { id },
     });

@@ -1,8 +1,8 @@
 "use client";
 
-import { Search, Plus, Filter, Download, ChevronLeft, ChevronRight, TrendingUp, Users, Edit, Trash2, FileSpreadsheet } from "lucide-react";
+import { Search, Plus, Filter, Download, ChevronLeft, ChevronRight, TrendingUp, Users, Edit, Trash2, FileSpreadsheet, ArrowRightLeft, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { fetchApi } from "@/lib/api-client";
 import { Student, User } from '@/types';
 import UserModal from "@/components/admin/UserModal";
@@ -15,9 +15,20 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
+  const [classes, setClasses] = useState<any[]>([]);
+  const [transferStudent, setTransferStudent] = useState<Student | null>(null);
+  const [targetClassId, setTargetClassId] = useState("");
+  const [transferring, setTransferring] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGrade, setSelectedGrade] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
+
+  useEffect(() => {
+    fetchApi<any[]>("/admin/classes")
+      .then((res) => setClasses(Array.isArray(res) ? res : []))
+      .catch(() => {});
+  }, []);
 
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
@@ -66,6 +77,43 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
     if (!confirm('Bạn có chắc chắn muốn xóa học viên này?')) return;
     await fetchApi(`/admin/users/${id}`, { method: 'DELETE' });
     setStudents(students.filter(s => s.id !== id));
+  };
+
+  const handleOpenTransfer = (student: Student) => {
+    setTransferStudent(student);
+    const currentClassId = student.classEnrollments?.[0]?.class?.id || "";
+    setTargetClassId(currentClassId);
+  };
+
+  const handleTransferClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferStudent || !targetClassId) return;
+    setTransferring(true);
+    try {
+      await fetchApi(`/admin/students/${transferStudent.id}/transfer-class`, {
+        method: "POST",
+        body: JSON.stringify({ targetClassId }),
+      });
+      const targetClassObj = classes.find((c) => c.id === targetClassId);
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === transferStudent.id
+            ? {
+                ...s,
+                grade: targetClassObj?.grade || s.grade,
+                classEnrollments: targetClassObj
+                  ? [{ class: { id: targetClassObj.id, name: targetClassObj.name, grade: targetClassObj.grade } }]
+                  : s.classEnrollments,
+              }
+            : s
+        )
+      );
+      setTransferStudent(null);
+    } catch (error: any) {
+      alert(error?.message || "Không thể chuyển lớp");
+    } finally {
+      setTransferring(false);
+    }
   };
 
   const handleExportCredentials = () => {
@@ -178,7 +226,7 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                     <th className="px-6 py-4">{t('lastActivity')}</th>
                     <th className="px-6 py-4">{t('progress')}</th>
                     <th className="px-6 py-4">{t('status')}</th>
-                    <th className="px-6 py-4 w-12"></th>
+                    <th className="px-6 py-4 text-right">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-card-border">
@@ -193,7 +241,7 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                             </div>
                             <div>
                               <div className="font-semibold text-gray-900 dark:text-white text-sm">{student.fullName}</div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400">{student.email}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">{student.email || student.studentCode}</div>
                             </div>
                           </div>
                         </td>
@@ -206,10 +254,12 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                             ) : (
                               <span className="text-xs text-gray-400">-</span>
                             )}
-                            {activeClassName && (
+                            {activeClassName ? (
                               <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">
-                                {activeClassName}
+                                Lớp {activeClassName}
                               </span>
+                            ) : (
+                              <span className="text-xs text-amber-600">Chưa xếp lớp</span>
                             )}
                           </div>
                         </td>
@@ -234,13 +284,28 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                             {student.isActive ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleOpenModal(student)} className="p-1 text-blue-500 hover:text-blue-700">
-                              <Edit className="w-5 h-5" />
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleOpenTransfer(student)}
+                              title="Chuyển lớp / Xếp lớp"
+                              className="p-1.5 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+                            >
+                              <ArrowRightLeft className="w-4 h-4" />
                             </button>
-                            <button onClick={() => handleDeleteUser(student.id)} className="p-1 text-red-500 hover:text-red-700">
-                              <Trash2 className="w-5 h-5" />
+                            <button
+                              onClick={() => handleOpenModal(student)}
+                              title="Chỉnh sửa"
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(student.id)}
+                              title="Xóa"
+                              className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </td>
@@ -288,6 +353,73 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
           <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{newThisWeekCount}</h3>
         </div>
       </div>
+
+      {/* Transfer Class Modal */}
+      {transferStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-purple-600" /> Chuyển lớp học chính khóa
+              </h3>
+              <button onClick={() => setTransferStudent(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleTransferClass} className="p-5 space-y-4">
+              <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl text-sm">
+                <div className="font-bold text-gray-900 dark:text-white">{transferStudent.fullName}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Mã HS: {transferStudent.studentCode || "-"} • Lớp hiện tại:{" "}
+                  <span className="font-semibold text-blue-600">
+                    {transferStudent.classEnrollments?.[0]?.class?.name || "Chưa xếp lớp"}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Chọn lớp chuyển đến *
+                </label>
+                <select
+                  required
+                  value={targetClassId}
+                  onChange={(e) => setTargetClassId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                >
+                  <option value="">-- Chọn lớp học --</option>
+                  {classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      Lớp {cls.name} (Khối {cls.grade}) - GVCN: {cls.homeroomTeacher?.fullName || "Chưa có"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Lịch sử điểm số, XP và bài làm cũ của học sinh vẫn được bảo toàn nguyên vẹn khi chuyển lớp.
+                </p>
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTransferStudent(null)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-xl"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={transferring || !targetClassId}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl disabled:opacity-50"
+                >
+                  {transferring ? "Đang chuyển..." : "Xác nhận chuyển lớp"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <UserModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 

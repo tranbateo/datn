@@ -10,13 +10,47 @@ import {
 import { ChatRagService } from './chat-rag.service';
 import { Server, Socket } from 'socket.io';
 import { ChatEvent } from './chat-events.enum';
+import { JwtService } from '@nestjs/jwt';
 
-@WebSocketGateway({ cors: true })
+const allowedWsOrigins = (
+  process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000'
+)
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+@WebSocketGateway({
+  cors: {
+    origin: allowedWsOrigins,
+    credentials: true,
+  },
+})
 export class ChatRagGateway {
   @WebSocketServer()
   server: Server;
 
-  constructor(private readonly chatRagService: ChatRagService) {}
+  constructor(
+    private readonly chatRagService: ChatRagService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  private extractRequesterId(client: Socket): string | undefined {
+    const authHeader =
+      client.handshake.auth?.token ||
+      client.handshake.headers?.authorization ||
+      '';
+    const rawToken =
+      typeof authHeader === 'string'
+        ? authHeader.replace(/^Bearer\s+/i, '').trim()
+        : '';
+    if (!rawToken) return undefined;
+    try {
+      const payload = this.jwtService.verify(rawToken);
+      return payload?.sub as string | undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   @SubscribeMessage(ChatEvent.SEND_MESSAGE)
   async handleMessage(
@@ -25,9 +59,15 @@ export class ChatRagGateway {
     @ConnectedSocket() client: Socket,
   ) {
     const { sessionId, content, imageBase64 } = data;
+    const requesterId = this.extractRequesterId(client);
+    if (!requesterId) {
+      client.emit(ChatEvent.MESSAGE_ERROR, {
+        sessionId,
+        error: 'Unauthorized WebSocket connection',
+      });
+      return;
+    }
 
-    // Convert base64 to Multer.File like object if present, or just pass base64 directly to service
-    // To simplify, we will modify sendMessageStream to accept base64 string directly
     try {
       await this.chatRagService.sendMessageStream(
         sessionId,
@@ -36,6 +76,7 @@ export class ChatRagGateway {
         (chunk) => {
           client.emit(ChatEvent.MESSAGE_CHUNK, { sessionId, chunk });
         },
+        requesterId,
       );
       client.emit(ChatEvent.MESSAGE_COMPLETE, { sessionId });
     } catch (e: any) {

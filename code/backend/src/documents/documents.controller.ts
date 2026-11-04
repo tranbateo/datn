@@ -30,8 +30,11 @@ export class DocumentsController {
 
   @Get('course/:courseId')
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN, Role.STUDENT)
-  async getDocumentsByCourse(@Param('courseId') courseId: string) {
-    return this.documentsService.findByCourseId(courseId);
+  async getDocumentsByCourse(
+    @Param('courseId') courseId: string,
+    @Req() req: { user: { schoolId: string | null } },
+  ) {
+    return this.documentsService.findByCourseId(courseId, req.user.schoolId);
   }
 
   @Get()
@@ -61,8 +64,16 @@ export class DocumentsController {
     const isPdf =
       file.mimetype === 'application/pdf' ||
       file.originalname.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      throw new BadRequestException('Chỉ chấp nhận định dạng file PDF chuẩn.');
+    // BR-DOC-001 & Section 9: Verify PDF magic bytes (%PDF-) instead of trusting client MIME alone
+    const hasPdfMagicSignature =
+      file.buffer &&
+      file.buffer.length >= 5 &&
+      file.buffer.subarray(0, 5).toString('ascii') === '%PDF-';
+
+    if (!isPdf || !hasPdfMagicSignature) {
+      throw new BadRequestException(
+        'Chỉ chấp nhận định dạng file PDF chuẩn (đã kiểm tra chữ ký MIME).',
+      );
     }
 
     const sizeFormatted = `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
