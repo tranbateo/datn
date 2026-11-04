@@ -1,16 +1,18 @@
 "use client";
 
-import { Search, Plus, Filter, Calendar, ChevronLeft, ChevronRight, TrendingUp, Users, MoreVertical, Edit, Trash2 } from "lucide-react";
+import { Search, Plus, Filter, Calendar, ChevronLeft, ChevronRight, TrendingUp, Users, MoreVertical, Edit, Trash2, FileSpreadsheet } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { fetchApi } from "@/lib/api-client";
 import { Student, User } from '@/types';
 import UserModal from "@/components/admin/UserModal";
+import SchoolImportModal from "@/components/admin/SchoolImportModal";
 
 export default function AdminStudentsClient({ initialData }: { initialData: Student[] }) {
   const t = useTranslations("Admin.Students");
   const [students, setStudents] = useState<Student[]>(initialData || []);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   const handleOpenModal = (user?: Student) => {
@@ -60,6 +62,12 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                 className="pl-9 pr-4 py-2 w-full sm:w-64 bg-white dark:bg-card-bg border border-gray-200 dark:border-card-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
+            <button 
+              onClick={() => setIsImportModalOpen(true)}
+              className="bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shadow-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Import Excel
+            </button>
             <button 
               onClick={() => handleOpenModal()}
               className="bg-primary hover:bg-primary-hover text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
@@ -211,6 +219,11 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
         onSave={handleSaveUser} 
         user={selectedUser} 
         role="STUDENT" 
+      />
+      <SchoolImportModal 
+        isOpen={isImportModalOpen} 
+        onClose={() => setIsImportModalOpen(false)} 
+        onSuccess={() => window.location.reload()} 
       />
     </div>
   );

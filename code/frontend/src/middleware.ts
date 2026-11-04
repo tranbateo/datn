@@ -1,4 +1,4 @@
-import createMiddleware from 'next-intl/middleware';
+﻿import createMiddleware from 'next-intl/middleware';
 import {routing} from './i18n/routing';
 import { NextRequest, NextResponse } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
@@ -27,5 +27,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Match only internationalized pathnames
-  matcher: ['/', '/(vi|en)/:path*']
+  matcher: ['/', '/(vi)/:path*']
 };

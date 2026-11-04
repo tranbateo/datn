@@ -6,14 +6,19 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
+
+interface UserContext {
+  id: string;
+  role: Role;
+  schoolId: string | null;
+}
 
 @Injectable()
 export class CoursesService {
   constructor(private prisma: PrismaService) {}
 
-  async create(data: Prisma.CourseCreateInput, teacherId: string) {
-    // Validate subject and grade match
+  async create(data: Prisma.CourseCreateInput, user: UserContext) {
     if (data.grade && data.subject?.connect?.id) {
       const subject = await this.prisma.subject.findUnique({
         where: { id: data.subject.connect.id },
@@ -25,32 +30,48 @@ export class CoursesService {
       }
     }
 
-    // Explicitly connect teacher
-    data.teacher = { connect: { id: teacherId } };
+    data.teacher = { connect: { id: user.id } };
+    
+    if (user.schoolId) {
+      data.school = { connect: { id: user.schoolId } };
+    }
 
     return this.prisma.course.create({ data });
   }
 
-  async findAll() {
+  async findAll(user: UserContext) {
+    const where: Prisma.CourseWhereInput = {};
+    if (user.role !== Role.ADMIN && user.schoolId) {
+      where.schoolId = user.schoolId;
+    }
+
     return this.prisma.course.findMany({
+      where,
       include: { teacher: true, lessons: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(id: string) {
-    const course = await this.prisma.course.findUnique({
-      where: { id },
+  async findOne(id: string, user: UserContext) {
+    const where: Prisma.CourseWhereInput = { id };
+    if (user.role !== Role.ADMIN && user.schoolId) {
+      where.schoolId = user.schoolId;
+    }
+
+    const course = await this.prisma.course.findFirst({
+      where,
       include: { teacher: true, lessons: true },
     });
-    if (!course) throw new NotFoundException('Course not found');
+    
+    if (!course) throw new NotFoundException('Course not found or access denied');
     return course;
   }
 
-  async update(id: string, data: Prisma.CourseUpdateInput) {
+  async update(id: string, data: Prisma.CourseUpdateInput, user: UserContext) {
+    const course = await this.findOne(id, user); // Will throw if not found or access denied
+
     if (data.grade || data.subject?.connect?.id) {
-      const course = await this.prisma.course.findUnique({ where: { id } });
-      const newGrade = data.grade !== undefined ? data.grade : course?.grade;
+      const newGrade = data.grade !== undefined ? data.grade : course.grade;
       const newSubjectId = data.subject?.connect?.id;
 
       if (newGrade && newSubjectId) {
@@ -64,31 +85,27 @@ export class CoursesService {
         }
       }
     }
+    
     return this.prisma.course.update({
       where: { id },
       data,
     });
   }
 
-  async remove(id: string) {
+  async remove(id: string, user: UserContext) {
+    await this.findOne(id, user); // Check existence and permissions
     return this.prisma.course.delete({
       where: { id },
     });
   }
 
-  async enrollCourse(courseId: string, userId: string) {
-    const course = await this.prisma.course.findUnique({
-      where: { id: courseId },
-    });
-    if (!course) {
-      throw new NotFoundException('Khóa học không tồn tại');
-    }
+  async enrollCourse(courseId: string, user: UserContext) {
+    const course = await this.findOne(courseId, user); // Ensures student can only enroll in courses in their school
 
-    // Check if already enrolled
     const existing = await this.prisma.enrollment.findUnique({
       where: {
         userId_courseId: {
-          userId,
+          userId: user.id,
           courseId,
         },
       },
@@ -100,7 +117,7 @@ export class CoursesService {
 
     return this.prisma.enrollment.create({
       data: {
-        userId,
+        userId: user.id,
         courseId,
       },
     });

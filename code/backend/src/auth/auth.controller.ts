@@ -1,31 +1,39 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
   RegisterDto,
   VerifyOtpDto,
   LoginDto,
   RefreshTokenDto,
+  FirstTimeChangePasswordDto,
 } from './dto/auth.dto';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @ApiOperation({ summary: 'Register a new user and send OTP' })
+  @ApiOperation({ summary: 'Register a new user (Closed in School B2B)' })
   @Post('register')
   async register(@Body() dto: RegisterDto) {
     return this.authService.sendEmailOtp(dto);
   }
 
-  @ApiOperation({ summary: 'Verify OTP and create user' })
+  @ApiOperation({ summary: 'Verify OTP and create user (Closed in School B2B)' })
   @Post('verify-otp')
   async verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyEmailOtp(dto);
   }
 
-  @ApiOperation({ summary: 'Login user' })
+  @ApiOperation({ summary: 'Login user via StudentCode, Email or Phone' })
   @Post('login')
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
@@ -41,5 +49,16 @@ export class AuthController {
   @Post('refresh')
   async refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refreshTokens(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change password on first login' })
+  @Post('first-time-change-password')
+  async firstTimeChangePassword(
+    @Req() req: { user: { id: string } },
+    @Body() dto: FirstTimeChangePasswordDto,
+  ) {
+    return this.authService.firstTimeChangePassword(req.user.id, dto);
   }
 }

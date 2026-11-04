@@ -1,7 +1,6 @@
 import { APP_ROUTES } from '@/constants/routes';
 import { Link } from "@/i18n/routing";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 export default function AuthLayout({
   children,
@@ -21,7 +20,6 @@ export default function AuthLayout({
             <span className="text-xl font-bold text-gray-900 dark:text-white">EduAI</span>
           </Link>
           <div className="flex items-center gap-3">
-            <LanguageSwitcher />
             <ThemeToggle />
           </div>
         </div>

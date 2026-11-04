@@ -160,14 +160,24 @@ export default function LoginPage() {
         <input type="hidden" name="role" value={role} />
         
         <div className="space-y-1">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('emailLabel')}</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {role === 'student' && 'Mã học sinh hoặc Email'}
+            {role === 'teacher' && 'Email hoặc Số điện thoại'}
+            {role === 'parent' && 'Số điện thoại đăng ký'}
+          </label>
           <div className="relative">
             <Mail className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input 
-              name="email"
-              type="email" 
+              name="identifier"
+              type="text" 
               required
-              placeholder={t('emailPlaceholder')} 
+              placeholder={
+                role === 'student' 
+                  ? 'Ví dụ: HS2026-6A01 hoặc student@school.edu.vn'
+                  : role === 'teacher'
+                  ? 'Ví dụ: teacher@school.edu.vn hoặc 0912345678'
+                  : 'Ví dụ: 0987654321'
+              } 
               className="pl-10 pr-4 py-2.5 w-full bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow"
             />
           </div>
@@ -210,12 +220,9 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <p className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
-        {t('noAccount')} {' '}
-        <Link href={APP_ROUTES.REGISTER} className="font-semibold text-primary hover:text-primary-hover transition-colors">
-          {t('signup')}
-        </Link>
-      </p>
+      <div className="mt-8 p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-center text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+        💡 Tài khoản do Nhà trường cấp phát. Nếu bạn chưa có tài khoản hoặc cần cấp lại mật khẩu, vui lòng liên hệ Giáo viên chủ nhiệm hoặc Quản trị viên của trường.
+      </div>
     </div>
   );
 }

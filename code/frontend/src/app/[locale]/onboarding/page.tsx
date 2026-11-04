@@ -4,7 +4,6 @@ import { APP_ROUTES } from '@/constants/routes';
 import { useState, useEffect } from "react";
 import { Link, useRouter } from "@/i18n/routing";
 import { Camera, User, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTranslations } from "next-intl";
 import { fetchApi } from "@/lib/api-client";
 
@@ -90,7 +89,6 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center p-4 relative">
       <div className="absolute top-6 right-6">
-        <LanguageSwitcher />
       </div>
       <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-xl overflow-hidden min-h-[600px] flex flex-col relative border border-gray-100 dark:border-gray-800 mt-4">
         {isLoading ? (

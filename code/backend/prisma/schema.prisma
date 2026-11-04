@@ -27,19 +27,31 @@ enum SchoolLevel {
 }
 
 model School {
-  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  code      String      @unique
-  level     SchoolLevel @default(ALL)
-  isActive  Boolean     @default(true)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  code             String      @unique
+  level            SchoolLevel @default(ALL)
+  isActive         Boolean     @default(true)
 
-  users        User[]
-  courses      Course[]
-  documents    Document[]
-  quizzes      Quiz[]
-  chatSessions ChatSession[]
+  // SaaS License & AI Quota
+  licenseKey       String?     @unique
+  licenseExpiresAt DateTime?
+  maxUsers         Int         @default(500)
+  aiTokenQuota     Int         @default(10000000)
+  aiTokensUsed     Int         @default(0)
+  aiProvider       String      @default("SYSTEM") // "SYSTEM" | "BYOK"
+  customApiKey     String?
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  users         User[]
+  academicYears AcademicYear[]
+  classes       Class[]
+  courses       Course[]
+  documents     Document[]
+  quizzes       Quiz[]
+  chatSessions  ChatSession[]
 }
 
 enum SubscriptionTier {
@@ -48,23 +60,26 @@ enum SubscriptionTier {
 }
 
 model User {
-  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId         String?          @db.Uuid
-  school           School?          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  email            String           @unique
-  fullName         String?
-  avatarUrl        String?
-  role             Role             @default(STUDENT)
-  tier             SubscriptionTier @default(FREE)
-  passwordHash     String?
-  refreshTokenHash String?
-  isActive         Boolean          @default(true)
-  deviceToken      String? // For Firebase Push Notifications
-  grade            Int? // 1 to 12
-  linkCode         String?          @unique // For parents to link
-  linkExpiresAt    DateTime? // Token expiration
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId            String?              @db.Uuid
+  school              School?              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentCode         String?              // Mã định danh học sinh nội bộ
+  email               String?              @unique
+  phone               String?              // Số điện thoại (phụ huynh, giáo viên)
+  fullName            String?
+  avatarUrl           String?
+  role                Role                 @default(STUDENT)
+  tier                SubscriptionTier     @default(FREE)
+  passwordHash        String?
+  refreshTokenHash    String?
+  mustChangePassword  Boolean              @default(true)
+  isActive            Boolean              @default(true)
+  deviceToken         String?              // For Firebase Push Notifications
+  grade               Int?                 // 1 to 12
+  linkCode            String?              @unique // For parents to link
+  linkExpiresAt       DateTime?            // Token expiration
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   // Relationships
   gamificationProfile GamificationProfile?
@@ -79,6 +94,11 @@ model User {
   transactions        Transaction[]
   auditLogs           AuditLog[]
 
+  // School & Class relationships
+  homeroomClasses     Class[]              @relation("HomeroomTeacher")
+  subjectClasses      ClassSubjectTeacher[] @relation("SubjectTeacher")
+  classEnrollments    ClassEnrollment[]    @relation("StudentClassEnrollment")
+
   // Messaging & Proposals
   conversationsAsParticipant1 Conversation[]  @relation("Participant1")
   conversationsAsParticipant2 Conversation[]  @relation("Participant2")
@@ -92,6 +112,8 @@ model User {
 
   // Feedback
   feedbacks Feedback[]
+
+  @@unique([schoolId, studentCode])
 }
 
 // -----------------------------------------------------------------------
@@ -104,14 +126,83 @@ model Subject {
   description String?
 
   // Relations
-  courses      Course[]
-  quizzes      Quiz[]
-  chatSessions ChatSession[]
+  courses              Course[]
+  quizzes              Quiz[]
+  chatSessions         ChatSession[]
+  classSubjectTeachers ClassSubjectTeacher[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([name, grade])
+}
+
+// -----------------------------------------------------------------------
+// 1.5.1 School Academic Structure: Years, Classes & Assignments
+// -----------------------------------------------------------------------
+model AcademicYear {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String    @db.Uuid
+  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name      String    // e.g. "2025-2026"
+  startDate DateTime?
+  endDate   DateTime?
+  isCurrent Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  classes   Class[]
+
+  @@unique([schoolId, name])
+}
+
+model Class {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String       @db.Uuid
+  school            School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYearId    String       @db.Uuid
+  academicYear      AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  name              String       // e.g. "6A", "10A1"
+  grade             Int          // 1 to 12
+  homeroomTeacherId String?      @db.Uuid
+  homeroomTeacher   User?        @relation("HomeroomTeacher", fields: [homeroomTeacherId], references: [id], onDelete: SetNull)
+  inviteCode        String?      @unique
+  inviteExpiresAt   DateTime?
+  status            String       @default("ACTIVE") // "ACTIVE", "ARCHIVED"
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  subjectTeachers   ClassSubjectTeacher[]
+  enrollments       ClassEnrollment[]
+
+  @@unique([schoolId, academicYearId, name])
+}
+
+model ClassSubjectTeacher {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classId    String   @db.Uuid
+  class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subjectId  String   @db.Uuid
+  subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId  String   @db.Uuid
+  teacher    User     @relation("SubjectTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+  status     String   @default("ACTIVE")
+
+  @@unique([classId, subjectId])
+}
+
+model ClassEnrollment {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classId    String   @db.Uuid
+  class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  studentId  String   @db.Uuid
+  student    User     @relation("StudentClassEnrollment", fields: [studentId], references: [id], onDelete: Cascade)
+  status     String   @default("ACTIVE") // "ACTIVE", "TRANSFERRED", "GRADUATED"
+  enrolledAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([classId, studentId])
 }
 
 // -----------------------------------------------------------------------
@@ -328,14 +419,15 @@ model Notification {
 // 7. Parents & Links
 // -----------------------------------------------------------------------
 model ParentStudentLink {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  parentId  String    @db.Uuid
-  parent    User      @relation("ParentLinks", fields: [parentId], references: [id], onDelete: Cascade)
-  studentId String    @db.Uuid
-  student   User      @relation("StudentLinks", fields: [studentId], references: [id], onDelete: Cascade)
-  linkCode  String    @unique
-  expiresAt DateTime?
-  linkedAt  DateTime  @default(now())
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentId     String    @db.Uuid
+  parent       User      @relation("ParentLinks", fields: [parentId], references: [id], onDelete: Cascade)
+  studentId    String    @db.Uuid
+  student      User      @relation("StudentLinks", fields: [studentId], references: [id], onDelete: Cascade)
+  relationship String?   // "FATHER", "MOTHER", "GUARDIAN"
+  linkCode     String?   @unique
+  expiresAt    DateTime?
+  linkedAt     DateTime  @default(now())
 
   @@unique([parentId, studentId])
 }

@@ -5,7 +5,6 @@ import { Link } from "@/i18n/routing";
 import { Home, Link as LinkIcon, MessageSquare, Settings, Bell, LogOut, Edit3, MessageSquareWarning, X, CheckCircle2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { ThemeToggle } from "../ThemeToggle";
-import { LanguageSwitcher } from "../LanguageSwitcher";
 import { logout } from "@/app/[locale]/(auth)/actions";
 import { useTranslations } from "next-intl";
 import Image from "next/image";
@@ -105,7 +104,7 @@ export function ParentNavigation() {
 
         {/* Right: Notifications & ThemeToggle & LanguageSwitcher */}
         <div className="flex items-center gap-2">
-          <LanguageSwitcher />
+          
           <ThemeToggle />
           <button 
             onClick={() => setShowNotifications(!showNotifications)}
@@ -202,7 +201,7 @@ export function ParentNavigation() {
 
       {/* --- DESKTOP TOP RIGHT TOOLBAR --- */}
       <div className="hidden md:flex fixed top-4 right-6 z-50 items-center gap-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-2 rounded-full shadow-sm border border-gray-100 dark:border-gray-800">
-        <LanguageSwitcher />
+        
         <ThemeToggle />
         <button 
           onClick={() => setShowFeedbackModal(true)}

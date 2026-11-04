@@ -3,7 +3,6 @@ import { Link } from "@/i18n/routing";
 import { GraduationCap, LogOut, LayoutDashboard } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { ThemeToggle } from "../ThemeToggle";
-import { LanguageSwitcher } from "../LanguageSwitcher";
 import { cookies } from "next/headers";
 import { decodeJwt } from "jose";
 import { logout } from "@/app/[locale]/(auth)/actions";
@@ -40,7 +39,7 @@ export default async function Navbar() {
 
           {/* Controls & Auth Buttons */}
           <div className="hidden md:flex items-center space-x-4">
-            <LanguageSwitcher />
+            
             <ThemeToggle />
             <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2"></div>
             {user ? (

@@ -1,6 +1,5 @@
 import { Search, Printer, Grid, User } from "lucide-react";
 import { ThemeToggle } from "../ThemeToggle";
-import { LanguageSwitcher } from "../LanguageSwitcher";
 import { useTranslations } from "next-intl";
 import { NotificationBell } from "../common/NotificationBell";
 import { LogOut } from "lucide-react";
@@ -41,7 +40,7 @@ export function AdminHeader() {
             <Grid className="w-5 h-5" />
           </button>
           <ThemeToggle />
-          <LanguageSwitcher />
+          
         </div>
         
         <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-2"></div>

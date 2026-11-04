@@ -24,15 +24,14 @@ Tài liệu được dùng để:
 
 ## 1.2. Phạm vi sản phẩm
 
-AI Tutor là nền tảng giáo dục thông minh cung cấp giải pháp B2B cho các trường học. Nền tảng được phân phối (bán bản quyền/subscription) cho các trường để quản lý và hỗ trợ học tập cho học sinh của trường mình, bao quát 3 cấp học: Tiểu học (Lớp 1-5), Trung học cơ sở (THCS, Lớp 6-9), và Trung học phổ thông (THPT, Lớp 10-12). Hệ thống hỗ trợ học tập cá nhân hóa dựa trên tài liệu được giáo viên cung cấp, kết hợp RAG, bài kiểm tra, theo dõi tiến độ và kết nối phụ huynh – giáo viên – học sinh trong phạm vi nội bộ trường học.
+AI Tutor là giải pháp phần mềm giáo dục thông minh được đóng gói và bán bản quyền (software license / subscription) trực tiếp cho các Nhà trường. Mỗi trường học là một đơn vị độc lập sở hữu và vận hành hệ thống của mình, bao quát 3 cấp học: Tiểu học (Lớp 1-5), Trung học cơ sở (THCS, Lớp 6-9), và Trung học phổ thông (THPT, Lớp 10-12). Hệ thống hỗ trợ học tập cá nhân hóa dựa trên tài liệu được giáo viên cung cấp, kết hợp RAG, bài kiểm tra, theo dõi tiến độ và kết nối nhà trường – giáo viên – phụ huynh – học sinh trong phạm vi nội bộ của trường.
 
-Hệ thống có năm nhóm người dùng chính:
+Hệ thống có bốn nhóm người dùng (tác nhân) chính:
 
-- **Student**: người học chính, trực thuộc một trường cụ thể.
-- **Teacher**: người quản lý lớp và nội dung học tập, trực thuộc một trường.
-- **Parent**: người liên kết, giám sát và đồng hành với học sinh.
-- **School Admin**: người quản trị cấp trường, quản lý giáo viên, học sinh và lớp học của trường mình.
-- **System Admin**: người quản trị và vận hành tổng thể nền tảng, quản lý danh sách các trường (khách hàng).
+- **Student (Học sinh)**: người học chính trong trường.
+- **Teacher (Giáo viên)**: người quản lý lớp, tài liệu và hoạt động học tập do nhà trường phân công.
+- **Parent (Phụ huynh)**: người liên kết, giám sát tiến độ và đồng hành cùng học sinh.
+- **School (Nhà trường / School Admin)**: đơn vị sở hữu bản quyền, nắm quyền quản trị cao nhất của hệ thống: cấu hình thông tin trường, môn học, khối lớp, quản lý tài khoản giáo viên/học sinh, phân công lớp học, giám sát báo cáo và quản lý quota/bản quyền AI của trường.
 
 ## 1.3. Mục tiêu sản phẩm
 
@@ -44,8 +43,7 @@ Hệ thống hướng tới các mục tiêu:
 4. Hỗ trợ AI sinh câu hỏi nhưng bắt buộc giáo viên duyệt trước khi giao.
 5. Theo dõi chủ đề mạnh/yếu và đề xuất nội dung ôn tập cơ bản.
 6. Cho phép phụ huynh theo dõi tài khoản con đã liên kết hợp lệ.
-7. Cho phép School Admin quản lý toàn diện hoạt động của trường mình một cách độc lập.
-8. Cho phép System Admin quản lý khách hàng (trường học) và hệ thống theo nguyên tắc phân quyền tối thiểu.
+7. Cho phép Nhà trường (School Admin) quản trị độc lập, toàn diện người dùng, dữ liệu gốc, lớp học, báo cáo và quota AI theo gói bản quyền đã mua.
 
 ## 1.4. Thuật ngữ và viết tắt
 
@@ -103,51 +101,53 @@ Khi phát hiện mâu thuẫn ảnh hưởng đến quyền, dữ liệu, điể
 
 ### 2.1.2. Teacher
 
-- Tạo và quản lý lớp phụ trách.
-- Quản lý thành viên lớp theo phân công của trường.
-- Tải, xử lý, xuất bản và gỡ tài liệu.
-- Tạo hoặc dùng AI sinh quiz.
-- Duyệt nội dung do AI sinh trước khi giao.
-- Xem bài làm, điểm số và báo cáo của học sinh trong lớp.
+Hệ thống phân định rõ hai vai trò phân công của Giáo viên trong trường:
+- **Giáo viên chủ nhiệm**:
+  - Quản lý danh sách học sinh của lớp, duyệt hoặc gỡ thành viên lớp.
+  - Xem báo cáo tổng hợp tiến độ, điểm số của tất cả các môn học trong lớp phụ trách.
+- **Giáo viên bộ môn**:
+  - Được phân công giảng dạy môn học cụ thể cho lớp (ví dụ: Giáo viên dạy Toán lớp 6A).
+  - Tải lên, xử lý, xuất bản và gỡ tài liệu thuộc phạm vi môn mình phụ trách.
+  - Tạo quiz thủ công hoặc dùng AI sinh quiz cho môn học của mình.
+  - Duyệt nội dung do AI sinh trước khi giao cho học sinh.
+  - Xem bài làm, điểm số và chấm bài tự luận thuộc môn mình phụ trách.
+  - Không được chỉnh sửa tài liệu hay bài kiểm tra của môn học khác.
 
 ### 2.1.3. Parent
 
-- Liên kết với tài khoản con bằng token hoặc QR có thời hạn.
+- Đăng nhập bằng tài khoản được Nhà trường (School Admin) cấp phát thông qua file import danh sách học sinh - phụ huynh.
+- Tự động liên kết sẵn với tài khoản của con ngay sau khi tài khoản được kích hoạt/bàn giao.
+- Có thể sử dụng token hoặc mã QR dự phòng để kết nối lại hoặc bổ sung liên kết nếu có thay đổi hoặc sai lệch thông tin số điện thoại.
 - Xem báo cáo của tài khoản con đã liên kết.
 - Nhận cảnh báo và cấu hình thông báo.
 - Thanh toán hộ nếu module thanh toán được bật.
 
-### 2.1.4. School Admin
+### 2.1.4. School (Nhà trường / School Admin)
 
-- Cấu hình thông tin trường học (cấp học: Tiểu học, THCS, THPT).
-- Tạo mới hoặc import danh sách Teacher, Student từ file.
-- Quản lý lớp học, phân công Teacher chủ nhiệm/bộ môn.
+- Cấu hình thông tin trường học, niên khóa, cấp học (Tiểu học, THCS, THPT).
+- Quản lý kích hoạt và theo dõi bản quyền (License key, thời hạn bản quyền, quota token AI của trường).
+- Quản lý dữ liệu gốc cấp trường: danh mục môn học, khối lớp, mục tiêu học tập.
+- Tạo mới, kích hoạt, khóa hoặc import hàng loạt danh sách Teacher, Student, Parent từ file Excel theo template chuẩn (tự động tạo lớp, phân công giáo viên và liên kết phụ huynh - học sinh).
+- Quản lý phân công Teacher chủ nhiệm và Teacher bộ môn theo từng lớp học.
+- Quản lý biến động học sinh (chuyển lớp, thêm mới, sửa đổi) và xuất phiếu cấp/bàn giao tài khoản.
+- Kiểm duyệt nội dung, xử lý báo cáo vi phạm liên quan đến tài liệu hoặc câu trả lời AI trong trường.
 - Theo dõi báo cáo học tập, điểm số và vi phạm của toàn trường.
-- Quản lý quota AI được cấp cho trường.
+- Giám sát mức tiêu thụ quota AI và audit log toàn bộ hoạt động trong trường.
 
-### 2.1.5. System Admin
-
-- Quản lý danh sách các trường học, thiết lập gói dịch vụ và cấp tài khoản School Admin.
-- Quản lý tài khoản vận hành nội bộ.
-- Quản lý môn học, khối lớp chuẩn và dữ liệu gốc.
-- Kiểm duyệt nội dung theo quyền (khi có báo cáo leo thang).
-- Xem audit log, thống kê vận hành và chi phí AI tổng thể.
-- Quản lý cấu hình không chứa secret.
-
-### 2.1.6. Hệ thống bên ngoài
+### 2.1.5. Hệ thống bên ngoài
 
 - AI/Embedding Provider.
 - Firebase Cloud Messaging.
 - Object Storage.
 - Email/OTP Provider.
-- Payment Gateway ở giai đoạn sau.
+- Payment Gateway ở giai đoạn sau (dành cho gia hạn bản quyền hoặc dịch vụ giá trị gia tăng).
 
 ## 2.2. Nền tảng
 
 - Mobile App cho Student.
 - Mobile App hoặc Web Portal cho Parent theo quyết định sản phẩm.
 - Web Portal cho Teacher.
-- Web Portal cho Admin.
+- Web Portal cho Nhà trường (School Admin).
 - Backend API tập trung.
 
 ## 2.3. Phạm vi MVP
@@ -162,7 +162,7 @@ Khi phát hiện mâu thuẫn ảnh hưởng đến quyền, dữ liệu, điể
 | MVP-06 | Theo dõi tiến độ và chủ đề mạnh/yếu | MUST |
 | MVP-07 | Liên kết Parent–Student và dashboard phụ huynh | MUST |
 | MVP-08 | Notification trong ứng dụng và push | MUST |
-| MVP-09 | Admin quản lý user, master data, audit và AI usage | MUST |
+| MVP-09 | Nhà trường quản lý user, master data, audit và AI usage | MUST |
 | MVP-10 | XP cơ bản và streak | SHOULD |
 
 ## 2.4. Chức năng giai đoạn sau
@@ -230,32 +230,33 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 ## 4.1. Ma trận quyền tổng quát
 
-| Chức năng | Student | Teacher | Parent | School Admin | System Admin |
-|---|---:|---:|---:|---:|---:|
-| Xem hồ sơ của chính mình | Có | Có | Có | Có | Theo quyền |
-| Quản lý lớp | Không | Lớp phụ trách | Không | Toàn trường | Không |
-| Tham gia lớp | Có | Không | Không | Không | Không |
-| Upload tài liệu | Không | Có | Không | Có | Không mặc định |
-| Xuất bản tài liệu | Không | Tài liệu của mình | Không | Toàn trường | Kiểm duyệt |
-| Chat AI | Có | Có thể dùng công cụ hỗ trợ | Không mặc định | Không | Không mặc định |
-| Làm quiz | Có | Không | Không | Không | Không |
-| Tạo quiz | Không | Có | Không | Theo quyền đặc biệt | Không |
-| Xem kết quả Student | Chính mình | Học sinh trong lớp | Con đã liên kết | Toàn trường | Theo quyền/audit |
-| Sửa điểm thủ công | Không | Theo chính sách lớp | Không | Cho phép | Theo quyền đặc biệt |
-| Liên kết Parent–Student | Xác nhận nếu yêu cầu | Không | Có | Hỗ trợ (cấp trường) | Không |
-| Thanh toán (giai đoạn sau) | Không mặc định | Không | Có khi module bật | Thanh toán gói trường | Không |
-| Quản lý user/role | Không | Không | Không | User trong trường | User hệ thống/Trường |
-| Xem audit log | Không | Không | Không | Audit log trường | Toàn hệ thống |
+| Chức năng | Student | Teacher (Chủ nhiệm / Bộ môn) | Parent | School (Nhà trường) |
+|---|---:|---:|---:|---:|
+| Xem hồ sơ của chính mình | Có | Có | Có | Có |
+| Quản lý lớp, sĩ số | Không | Chủ nhiệm (Lớp mình) / Bộ môn: Không | Không | Toàn trường |
+| Phân công giảng dạy | Không | Không | Không | Toàn trường |
+| Tham gia lớp | Có | Không | Không | Không |
+| Upload / Xuất bản tài liệu | Không | Bộ môn: Theo môn phân công | Không | Toàn trường / Duyệt |
+| Chat AI (RAG) | Có | Có thể dùng công cụ hỗ trợ | Không mặc định | Có thể dùng kiểm thử |
+| Làm quiz | Có | Không | Không | Không |
+| Tạo / Giao quiz | Không | Bộ môn: Theo môn phân công | Không | Quản lý ngân hàng đề |
+| Xem kết quả Student | Chính mình | Chủ nhiệm: Toàn môn / Bộ môn: Theo môn | Con đã liên kết | Toàn trường |
+| Sửa điểm thủ công | Không | Bộ môn: Theo môn phụ trách (ghi audit) | Không | Cho phép (ghi audit) |
+| Liên kết Parent–Student | Xác nhận nếu yêu cầu | Không | Có | Hỗ trợ cấp trường |
+| Cấu hình niên khóa / bản quyền | Không | Không | Không | Toàn quyền |
+| Quản lý user/role | Không | Không | Không | Toàn quyền cấp trường |
+| Quản lý môn học, khối lớp | Không | Không | Không | Toàn quyền |
+| Xem audit log & AI usage | Không | Không | Không | Toàn trường |
 
 ## 4.2. Nguyên tắc phân quyền
 
-- Backend phải kiểm tra quyền cho từng resource.
+- Backend phải kiểm tra quyền cho từng resource và từng môn học được phân công.
 - Không chỉ dựa vào ẩn/hiện nút trên frontend.
-- Teacher chỉ truy cập lớp mình phụ trách.
+- Teacher chỉ truy cập lớp và môn học mình được phân công phụ trách. Giáo viên bộ môn này không được can thiệp vào tài liệu, bài tập của giáo viên bộ môn khác.
+- Giáo viên chủ nhiệm được xem tổng thể tiến độ và điểm số mọi môn của học sinh trong lớp mình quản lý để phục vụ công tác đánh giá học sinh.
 - Parent chỉ truy cập Student đã liên kết hợp lệ.
 - Student chỉ truy cập dữ liệu của chính mình và lớp đang tham gia.
-- School Admin chỉ quản lý dữ liệu thuộc trường của mình. Không thấy dữ liệu trường khác.
-- System Admin dùng permission cụ thể; không mặc định được đọc mọi dữ liệu riêng tư của trường.
+- Nhà trường (School Admin) là vai trò quản trị cao nhất của hệ thống, quản lý toàn bộ dữ liệu, người dùng, lớp học và tài nguyên của trường theo bản quyền đã kích hoạt.
 - Thao tác nhạy cảm phải ghi audit log.
 
 ---
@@ -264,24 +265,38 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 ## 5.1. Xác thực và tài khoản
 
-### FR-AUTH-001 — Đăng ký tài khoản
+### FR-AUTH-001 — Đóng đăng ký tự do và Cấp phát tài khoản tập trung
 
-- System Admin cấp tài khoản School Admin.
-- School Admin tạo/import tài khoản Teacher, Student. Teacher/Student có thể nhận email kích hoạt hoặc mật khẩu mặc định.
-- Tùy cấu hình, trường có thể cho phép Student tự đăng ký bằng mã nội bộ của trường.
-- Parent có thể tự đăng ký để tiến hành liên kết với Student.
+- **Chính sách không đăng ký tự do (No public self-registration)**: Student, Parent và Teacher **không được tự đăng ký tài khoản** trên hệ thống. Toàn bộ tài khoản người dùng do đơn vị mua bản quyền (Nhà trường - School Admin) tạo lập và quản lý nhằm kiểm soát bản quyền, bảo vệ quota token AI và đảm bảo an toàn dữ liệu học sinh.
+- **Tài khoản School Admin**: Được bàn giao và kích hoạt cùng với license bản quyền khi nhà trường ký kết hợp đồng triển khai.
+- **Khởi tạo và Cấp phát hàng loạt qua File Excel**: School Admin đưa file danh sách nhân sự, lớp học, học sinh và phụ huynh vào hệ thống theo template chuẩn:
+  - **Tài khoản Teacher**: Định danh bằng Email hoặc Số điện thoại. Được phân công sẵn vai trò (Giáo viên chủ nhiệm hoặc Giáo viên bộ môn) và các lớp/môn phụ trách.
+  - **Tài khoản Student**: Định danh bằng **Mã học sinh (`student_code` / `username`)**, trường Email là tùy chọn (đáp ứng học sinh Tiểu học, THCS chưa có email riêng). Học sinh được tự động xếp vào đúng lớp học tương ứng theo file.
+  - **Tài khoản Parent**: Định danh bằng **Số điện thoại** (hoặc Email). Hệ thống tự động khởi tạo và **liên kết sẵn với học sinh** theo thông tin phụ huynh khai báo trên cùng dòng học sinh.
+    - *Gộp tài khoản thông minh (Multi-child mapping)*: Nếu một số điện thoại phụ huynh xuất hiện ở nhiều học sinh (phụ huynh có nhiều con cùng học trong trường), hệ thống tự động gộp liên kết vào duy nhất một tài khoản phụ huynh, không tạo tài khoản trùng lặp.
+    - *Đa phụ huynh*: Cho phép khai báo thông tin Phụ huynh 1 (Bố) và Phụ huynh 2 (Mẹ) cho cùng một học sinh nếu cần.
+- **Cơ chế Bàn giao tài khoản (Onboarding)**:
+  - Hệ thống tự động sinh mật khẩu ban đầu an toàn cho tài khoản mới (ví dụ: theo định dạng ngày sinh chuẩn hoặc chuỗi bảo mật ngẫu nhiên).
+  - School Admin có chức năng **"Xuất phiếu cấp tài khoản" (PDF/Excel)** theo từng lớp để Giáo viên chủ nhiệm phát cho phụ huynh và học sinh.
+  - Bắt buộc đổi mật khẩu ở lần đăng nhập đầu tiên đối với mọi tài khoản mới.
+- **Cập nhật danh sách & An toàn dữ liệu (Upsert)**:
+  - Khi nhà trường import file bổ sung hoặc cập nhật danh sách đầu năm/giữa kỳ, hệ thống áp dụng cơ chế Upsert: nếu mã học sinh/SĐT đã tồn tại thì chỉ cập nhật thông tin lớp/trạng thái, **tuyệt đối không xóa hay làm mất lịch sử học tập, bài làm, điểm số, XP tích lũy**.
+  - School Admin có giao diện quản trị thủ công để thêm, sửa, chuyển lớp hoặc khóa tài khoản từng cá nhân cho các phát sinh đột xuất trong năm học.
 
 **Tiêu chí nghiệm thu:**
 
-- Không tạo hai tài khoản có cùng email.
-- Password không được lưu dưới dạng rõ.
-- Teacher chưa xác minh bị từ chối tại endpoint yêu cầu quyền Teacher đã xác minh.
+- Hệ thống từ chối mọi yêu cầu đăng ký tự do từ client công khai (API public sign-up bị đóng).
+- Không tạo hai tài khoản trùng Email (nếu có email), trùng SĐT hoặc trùng `student_code`/`username`.
+- Một phụ huynh có nhiều con cùng trường đăng nhập vào thấy đầy đủ danh sách các con đã liên kết.
+- Password được hash bằng bcrypt/argon2, không lưu dưới dạng rõ và không trả về qua API.
+- Cho phép Student đăng nhập thành công bằng `student_code` hoặc `email` kèm mật khẩu khởi tạo.
+- Bắt buộc kích hoạt đổi mật khẩu trong lần đăng nhập đầu tiên.
 
 ### FR-AUTH-002 — Đăng nhập
 
-- Người dùng đăng nhập bằng thông tin hợp lệ.
-- Hệ thống kiểm tra trạng thái tài khoản, phương thức xác thực bổ sung và thiết bị.
-- Tài khoản bị khóa không được tạo session mới.
+- Người dùng đăng nhập bằng thông tin hợp lệ (Email hoặc Username/Mã học sinh kèm Password).
+- Hệ thống kiểm tra trạng thái tài khoản, thời hạn bản quyền trường học, phương thức xác thực bổ sung và thiết bị.
+- Tài khoản bị khóa hoặc trường hết hạn bản quyền không được tạo session mới (trừ tài khoản School Admin để quản lý/gia hạn license).
 
 ### FR-AUTH-003 — Session và thiết bị
 
@@ -297,7 +312,7 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 ### FR-AUTH-005 — 2FA/OTP
 
-- Admin và Teacher phải hoàn tất 2FA hoặc OTP theo cấu hình.
+- School Admin và Teacher phải hoàn tất 2FA hoặc OTP theo cấu hình.
 - Mã xác minh có thời hạn, giới hạn số lần thử và không được log.
 
 ## 5.2. Hồ sơ và dữ liệu người dùng
@@ -309,7 +324,7 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 ### FR-USER-002 — Khóa và mở khóa tài khoản
 
-- Admin có permission phù hợp được khóa/mở khóa tài khoản.
+- School Admin có quyền khóa/mở khóa tài khoản người dùng trong trường.
 - Khóa tài khoản phải revoke session và ghi audit log.
 - Hệ thống phải lưu lý do, người thực hiện và thời gian.
 
@@ -320,52 +335,69 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 ## 5.3. Liên kết Parent–Student
 
-### FR-LINK-001 — Tạo mã liên kết
+- **Cơ chế liên kết chính (Primary)**: Hệ thống tự động liên kết tài khoản Phụ huynh với Học sinh ngay khi School Admin import danh sách học sinh - phụ huynh từ file Excel. Phụ huynh khi đăng nhập lần đầu đã có sẵn quyền truy cập dữ liệu học tập của con mà không cần quét mã.
 
-- Student hoặc luồng được ủy quyền tạo token/QR liên kết.
-- Token phải ngẫu nhiên, có thời hạn và chỉ dùng một lần.
+### FR-LINK-001 — Tạo mã liên kết dự phòng (Fallback / Self-service Recovery)
 
-### FR-LINK-002 — Xác nhận liên kết
+- Dùng trong trường hợp: nhà trường nhập sai số điện thoại phụ huynh trong file, phụ huynh đổi số điện thoại mới, hoặc muốn liên kết thêm người giám hộ thứ hai mà chưa kịp báo School Admin cập nhật.
+- Student hoặc luồng được ủy quyền tạo token/QR liên kết dự phòng.
+- Token phải ngẫu nhiên, có thời hạn ngắn (tối đa 15 phút) và chỉ dùng một lần.
 
-- Parent quét QR hoặc nhập token.
-- Backend xác minh token, trạng thái tài khoản và điều kiện đồng ý.
-- Liên kết chỉ hoạt động sau khi quy trình xác nhận hoàn tất.
+### FR-LINK-002 — Xác nhận liên kết dự phòng
 
-### FR-LINK-003 — Hủy liên kết
+- Parent quét QR hoặc nhập token từ ứng dụng của con.
+- Backend xác minh token, đối chiếu tính hợp lệ, trạng thái tài khoản và điều kiện đồng ý.
+- Liên kết bổ sung/sửa đổi chỉ hoạt động sau khi quy trình xác nhận hoàn tất và được ghi nhận audit log.
+
+### FR-LINK-003 — Hủy hoặc điều chỉnh liên kết
 
 - Bên có quyền được yêu cầu hủy liên kết.
 - Hủy liên kết phải chấm dứt quyền xem dữ liệu tương lai của Parent.
 - Thao tác phải ghi audit log.
 
-## 5.4. Trường học, Môn học, Khối lớp và Lớp học
+## 5.4. Trường học, Niên khóa, Môn học, Khối lớp và Lớp học
 
-### FR-SCHOOL-001 — Quản lý trường học (B2B)
+### FR-SCHOOL-001 — Cấu hình thông tin trường và bản quyền
 
-- System Admin tạo, cập nhật thông tin trường học (Tên trường, cấp học: Tiểu học, THCS, THPT).
-- Mỗi trường được cấp một School Admin đầu tiên.
-- Khóa trường học sẽ vô hiệu hóa đăng nhập của mọi user thuộc trường.
+- Nhà trường (School Admin) cấu hình và cập nhật thông tin trường học (Tên trường, địa chỉ, logo, cấp học: Tiểu học, THCS, THPT).
+- Quản lý kích hoạt và theo dõi thông tin bản quyền: License key, thời hạn bản quyền, giới hạn số tài khoản, gói quota token AI theo hợp đồng bản quyền.
+- Hỗ trợ 2 cơ chế AI Provider: Gói token tích hợp sẵn trong bản quyền, hoặc BYOK (Bring Your Own Key) cho phép nhà trường tự nhập API Key (Gemini/OpenAI) của trường.
+- Cảnh báo trực quan khi bản quyền hoặc quota AI chạm ngưỡng giới hạn (80%, 90%, 100%).
 
-### FR-SCHOOL-002 — Quản lý nhân sự và học sinh (School Admin)
+### FR-SCHOOL-002 — Quản lý Niên khóa và Học kỳ
 
-- School Admin quản lý danh sách giáo viên, học sinh (thêm, sửa, khóa tài khoản, import từ Excel).
-- Phân bổ học sinh vào các khối/lớp dựa trên cấu trúc của trường.
+- School Admin thiết lập danh mục Niên khóa (ví dụ: *2025 - 2026*, *2026 - 2027*) và Học kỳ (*HK1, HK2*).
+- Thiết lập một niên khóa hoạt động chính thức (`is_current = true`).
+- Hỗ trợ đóng/lưu trữ (archive) niên khóa cũ và kích hoạt năm học mới mà không làm mất lịch sử học tập.
+
+### FR-SCHOOL-003 — Quản lý nhân sự và học sinh (School Admin)
+
+- School Admin quản lý toàn diện danh sách giáo viên, học sinh, phụ huynh:
+  - **Import dữ liệu đồng bộ**: Nhập file Excel (theo template chuẩn gồm: Danh sách Lớp & Phân công giáo viên; Danh sách Học sinh & Phụ huynh đi kèm).
+  - **Cơ chế Dry-run / Báo cáo lỗi trước khi lưu**: Hệ thống tự động phân tích file, phát hiện trùng lặp mã, sai format số điện thoại, thiếu trường bắt buộc và hiển thị bảng xem trước lỗi (preview warnings/errors) trước khi School Admin xác nhận lưu dữ liệu.
+  - **Thực thi an toàn (Database Transaction)**: Quá trình import hàng loạt chạy trong database transaction; nếu phát sinh lỗi nghiêm trọng thì rollback toàn bộ để tránh rác dữ liệu.
+  - **Quản lý biến động thủ công**: Cung cấp giao diện Web Admin để thêm mới, chỉnh sửa thông tin, chuyển lớp cho học sinh hoặc khóa tài khoản từng cá nhân khi có biến động trong năm học mà không cần import lại toàn trường.
+- Phân bổ học sinh vào các khối/lớp dựa trên cấu trúc của trường trong niên khóa hiện tại.
 
 ### FR-MASTER-001 — Quản lý môn học và khối lớp
 
-- Admin có permission được tạo, sửa, kích hoạt hoặc ngừng sử dụng môn học/khối lớp.
+- School Admin tạo, sửa, kích hoạt hoặc ngừng sử dụng danh mục môn học, khối lớp phù hợp với cấp học của trường.
 - Dữ liệu đã được tham chiếu không được xóa cứng nếu làm hỏng lịch sử.
 
 ### FR-CLASS-001 — Tạo và phân công lớp
 
-- School Admin hoặc Teacher được ủy quyền có thể tạo lớp.
-- Lớp phải gắn với một trường, một khối lớp cụ thể (tương ứng cấp học của trường).
-- Lớp có thể có Teacher chủ nhiệm và nhiều Teacher bộ môn.
-- Có thể import danh sách học sinh vào lớp hàng loạt.
+- Lớp học được tạo thông qua file import của School Admin hoặc tạo trực tiếp trên hệ thống, gắn với khối lớp và niên khóa cụ thể.
+- Phân công tự động theo file import hoặc cấu hình của School Admin:
+  - 1 Giáo viên chủ nhiệm: quản lý sĩ số, nề nếp và báo cáo tổng hợp của lớp.
+  - Danh sách Giáo viên bộ môn: mỗi giáo viên phụ trách môn học cụ thể trong lớp theo thời khóa biểu/phân công chuyên môn.
+- Toàn bộ học sinh trong lớp được gán sẵn danh sách từ file import của nhà trường.
 
-### FR-CLASS-002 — Tham gia lớp
+### FR-CLASS-002 — Quản lý gia nhập và chuyển lớp
 
-- Student nhập mã lớp hợp lệ.
-- Tùy cấu hình, enrollment được kích hoạt ngay hoặc chờ Teacher duyệt.
+- Học sinh đã được xếp lớp sẵn ngay từ khi School Admin import danh sách, không cần tự xin vào lớp.
+- Với các trường hợp học sinh chuyển lớp hoặc nhập học bổ sung giữa kỳ:
+  - School Admin hoặc Giáo viên chủ nhiệm thực hiện chuyển lớp/thêm học sinh trực tiếp trên giao diện quản trị.
+  - Kênh dự phòng (nếu nhà trường bật tuyển sinh mở): Học sinh có thể dùng mã lớp hợp lệ để gửi yêu cầu tham gia và phải được Giáo viên chủ nhiệm phê duyệt.
 - Không tạo enrollment trùng đang hoạt động.
 
 ### FR-CLASS-003 — Quản lý thành viên
@@ -429,11 +461,15 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 - Student được đánh giá hữu ích/không hữu ích và báo cáo nội dung sai hoặc không phù hợp.
 - Báo cáo phải lưu message, loại vấn đề và trạng thái xử lý.
 
-### FR-RAG-005 — Quota và chi phí
+### FR-RAG-005 — Quota, chi phí và Suy thoái mềm (Graceful Degradation)
 
-- Hệ thống kiểm tra quota theo user/gói/use case.
+- Hệ thống kiểm tra quota token AI của trường trước mỗi lượt gọi LLM.
 - Lưu token usage, model, latency, trạng thái và chi phí ước tính.
 - Không lưu PII không cần thiết trong log usage.
+- **Cơ chế suy thoái mềm khi hết quota AI**:
+  - Hệ thống thông báo rõ ràng: *"Hạn mức AI của nhà trường đã tạm hết, vui lòng liên hệ Ban giám hiệu"*.
+  - Tạm khóa các tác vụ gọi LLM (RAG Chatbot, AI Quiz Generator).
+  - Toàn bộ các chức năng cốt lõi khác (đăng nhập, xem tài liệu đã xuất bản, làm bài quiz có sẵn, nộp bài, chấm điểm, xem tiến độ, liên kết phụ huynh) **vẫn hoạt động 100% bình thường**.
 
 ## 5.7. Quiz và bài làm
 
@@ -477,7 +513,7 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 ### FR-QUIZ-007 — Sửa điểm thủ công
 
-- Chỉ Teacher/Admin có permission phù hợp được sửa điểm.
+- Chỉ Teacher phụ trách hoặc School Admin mới có quyền sửa điểm (phải ghi audit log).
 - Phải lưu điểm cũ, điểm mới, lý do, người sửa và thời gian.
 
 ## 5.8. Tiến độ và cá nhân hóa
@@ -557,44 +593,46 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 - Người dùng được bật/tắt các loại thông báo không bắt buộc.
 - Thông báo bảo mật bắt buộc không bị tắt nếu chính sách yêu cầu.
 
-## 5.12. Dashboards Quản trị (School Admin & System Admin)
+## 5.12. Dashboard Quản trị Nhà trường (School Admin)
 
 ### FR-SCHOOLADMIN-001 — Tổng quan trường học
+
 - Xem thống kê số lượng giáo viên, học sinh, lớp học.
 - Báo cáo kết quả học tập trung bình theo khối, môn.
-- Giám sát AI usage của trường để không vượt gói đã mua.
+- Giám sát AI usage của trường so với gói bản quyền đã mua.
 
-### FR-SYSADMIN-001 — Quản lý khách hàng (Trường học)
-- Quản lý danh sách trường, gói subscription B2B (tính năng, quota token).
-- Kích hoạt/Vô hiệu hóa trường học.
+### FR-LICENSE-001 — Quản lý bản quyền và gói AI
 
-### FR-ADMIN-001 — Quản lý người dùng hệ thống
+- Xem thông tin bản quyền: gói dịch vụ, thời hạn bản quyền, số lượng user cho phép, hạn mức quota token AI.
+- Cảnh báo khi bản quyền hoặc quota AI sắp hết hạn để nhà trường chủ động gia hạn.
 
-- Tìm kiếm, lọc, xem trạng thái, khóa/mở khóa theo permission.
+### FR-ADMIN-001 — Quản lý người dùng trường học
+
+- Tìm kiếm, lọc, xem trạng thái, khóa/mở khóa tài khoản giáo viên, học sinh, phụ huynh theo quyền.
 - Không hiển thị password hash, refresh token hoặc secret.
 
-### FR-ADMIN-002 — Xác minh Teacher (Không áp dụng nếu School Admin tạo)
+### FR-ADMIN-002 — Xác minh / Kích hoạt tài khoản Teacher & Student
 
-- Admin được cấp quyền xem hồ sơ xác minh và phê duyệt/từ chối.
-- Phải lưu lý do và audit log.
+- School Admin phê duyệt hồ sơ hoặc kích hoạt tài khoản Teacher/Student theo danh sách nội bộ của trường.
+- Phải lưu lý do và audit log khi thao tác.
 
 ### FR-ADMIN-003 — Quản lý dữ liệu gốc
 
-- Quản lý môn học, khối lớp, mục tiêu học tập và trạng thái sử dụng.
+- Quản lý môn học, khối lớp, mục tiêu học tập và trạng thái sử dụng của trường.
 
 ### FR-ADMIN-004 — Kiểm duyệt nội dung
 
-- Admin có permission xem báo cáo nội dung và thực hiện hành động kiểm duyệt.
-- Không mặc định đọc hội thoại riêng tư nếu không có case, quyền và lý do hợp lệ.
+- School Admin xem báo cáo vi phạm nội dung (tài liệu hoặc câu trả lời AI) và thực hiện hành động kiểm duyệt/gỡ bỏ.
+- Không mặc định đọc hội thoại riêng tư nếu không có báo cáo vi phạm, lý do hợp lệ và audit log.
 
 ### FR-ADMIN-005 — AI Analytics
 
-- Hiển thị token, chi phí ước tính, latency, tỷ lệ lỗi theo thời gian/provider/use case.
+- Hiển thị token, chi phí ước tính, latency, tỷ lệ lỗi theo thời gian/lớp/môn/use case trong trường.
 - Không hiển thị secret trên UI.
 
 ### FR-ADMIN-006 — Audit Log
 
-- Cho phép tìm kiếm theo actor, action, resource, thời gian và kết quả.
+- Cho phép tìm kiếm theo actor, action, resource, thời gian và kết quả trong phạm vi trường học.
 - Audit log không được chỉnh sửa bởi người dùng thông thường.
 
 ## 5.13. Module giai đoạn sau
@@ -633,6 +671,12 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 - Mobile dùng Keychain/Keystore/secure storage, không dùng AsyncStorage cho token nhạy cảm.
 - Browser flow dùng cookie phải chống CSRF cho thao tác thay đổi trạng thái.
 
+## BR-AUTH-003 — Cấp phát tài khoản tập trung
+
+- Đóng hoàn toàn API đăng ký công khai (No public registration).
+- Chỉ School Admin mới có quyền khởi tạo tài khoản Teacher, Student, Parent thông qua file import hoặc thao tác quản trị được kiểm soát.
+- Mọi tài khoản mới tạo phải bắt buộc đổi mật khẩu ở lần đăng nhập đầu tiên.
+
 ## BR-USER-001 — Quyền resource
 
 - Mọi API theo ID phải kiểm tra ownership hoặc scope ở Backend.
@@ -640,20 +684,27 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 ## BR-LINK-001 — Parent–Student
 
-- Token liên kết có thời hạn, chỉ dùng một lần và có thể revoke.
-- Chỉ Parent có liên kết hoạt động mới truy cập được dữ liệu Student.
+- Liên kết cha mẹ - con cái được thiết lập tự động từ file import của nhà trường dựa trên số điện thoại phụ huynh và mã học sinh.
+- Hỗ trợ quan hệ 1-N: Một số điện thoại phụ huynh được liên kết với nhiều học sinh (trường hợp có nhiều con học cùng trường).
+- Token/QR liên kết là kênh dự phòng (fallback) để xử lý sai lệch thông tin hoặc thêm người giám hộ thứ hai: có thời hạn ngắn (tối đa 15 phút), chỉ dùng một lần và phải ghi audit log.
+- Chỉ Parent có liên kết hợp lệ và đang hoạt động mới truy cập được dữ liệu Student tương ứng.
 
 ## BR-CLASS-001 — Tham gia và quản lý lớp
 
-- Mã lớp phải duy nhất, có trạng thái và có thể có thời hạn.
-- Student chỉ tham gia lớp khi mã hợp lệ và đáp ứng quy trình duyệt của lớp.
-- Teacher chỉ quản lý lớp mình phụ trách.
-- Rời hoặc bị xóa khỏi lớp không được tự động xóa lịch sử bài làm nếu dữ liệu cần báo cáo hoặc audit.
+- Học sinh được phân lớp mặc định từ file import của School Admin.
+- Teacher chỉ quản lý lớp và môn học mà mình được phân công phụ trách.
+- Rời hoặc chuyển lớp không được tự động xóa lịch sử bài làm, điểm số, XP tích lũy nếu dữ liệu cần báo cáo hoặc audit.
 
 ## BR-DOC-001 — Tài liệu
 
 - Chỉ tài liệu xử lý thành công và đã xuất bản mới được dùng cho Student RAG.
-- Truy vấn phải lọc scope trước similarity ranking.
+- Truy vấn phải lọc scope môn học, lớp học trước similarity ranking.
+
+## BR-AI-QUOTA — Quản lý Quota AI và Suy thoái mềm (Graceful Degradation)
+
+- Hết quota AI tuyệt đối không làm gián đoạn các nghiệp vụ thông thường của trường học.
+- Chỉ các tính năng liên quan trực tiếp đến sinh nội dung bằng LLM bị tạm dừng.
+- Khi nhà trường gia hạn bản quyền hoặc cập nhật API Key mới (chế độ BYOK), các tính năng AI lập tức tự động hoạt động trở lại mà không cần khởi động lại dịch vụ.
 
 ## BR-RAG-001 — Grounding
 
@@ -699,7 +750,7 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 
 - Kết bạn và direct message không thuộc MVP mặc định.
 - Không triển khai khi chưa có quy trình chặn, báo cáo, kiểm duyệt, lưu bằng chứng và bảo vệ trẻ em.
-- Teacher/Admin không được đọc tùy ý tin nhắn riêng; việc truy cập phải có case, quyền cụ thể, lý do và audit log.
+- Teacher/School Admin không được đọc tùy ý tin nhắn riêng; việc truy cập phải có case, quyền cụ thể, lý do và audit log.
 
 ## BR-NOTIFY-001 — Gửi thông báo
 
@@ -786,7 +837,7 @@ AI không được tự động giao quiz ngay sau khi sinh.
 
 ## 7.6. Luồng khóa tài khoản
 
-1. Admin có permission chọn tài khoản và nhập lý do.
+1. School Admin chọn tài khoản và nhập lý do khóa.
 2. Backend cập nhật trạng thái tài khoản trong transaction.
 3. Thu hồi session liên quan.
 4. Ghi audit log.
@@ -820,14 +871,28 @@ AI không được tự động giao quiz ngay sau khi sinh.
 
 ### `users`
 
-- `id`, `email`, `password_hash`, `full_name`.
+- `id`, `username` (hoặc `student_code`), `email` (nullable cho Student), `password_hash`, `full_name`.
 - `status`, `email_verified_at`, `last_login_at`.
 - `created_at`, `updated_at`, `deleted_at` nếu áp dụng.
 
 ### `roles`, `permissions`, `user_roles`, `role_permissions`
 
-- Hỗ trợ RBAC và permission cụ thể.
+- Hỗ trợ RBAC với 4 vai trò chính: `STUDENT`, `TEACHER`, `PARENT`, `SCHOOL_ADMIN`.
 - Có unique constraint chống gán trùng.
+
+### `school_licenses`
+
+- `id`, `school_name`, `license_key`, `grade_bands` (Tiểu học, THCS, THPT).
+- `status`: `ACTIVE`, `SUSPENDED`, `EXPIRED`.
+- `valid_from`, `valid_until`.
+- `max_students`, `max_teachers`, `ai_provider_mode` (`PACKAGE_QUOTA` hoặc `BYOK`).
+- `ai_token_quota`, `ai_tokens_used`.
+- `created_at`, `updated_at`.
+
+### `academic_years`
+
+- `id`, `name` (ví dụ: "2025-2026"), `start_date`, `end_date`, `is_current`, `status`.
+- `created_at`, `updated_at`.
 
 ### `user_sessions`
 
@@ -842,13 +907,13 @@ AI không được tự động giao quiz ngay sau khi sinh.
 
 ### `students`
 
-- `id`, `user_id`.
+- `id`, `user_id`, `student_code`.
 - `academic_grade_id`, `learning_level`.
 - `lifetime_xp`, `streak`, `last_learning_activity_date`.
 
 ### `teachers`
 
-- `id`, `user_id`, `school_name`.
+- `id`, `user_id`, `teacher_code`.
 - `verification_status`, `verified_at`, `verified_by`.
 
 ### `parents`
@@ -865,14 +930,17 @@ AI không được tự động giao quiz ngay sau khi sinh.
 
 - `id`, `code`, `name`, `sort_order`, `status`.
 
-### `teacher_subjects`
-
-- `teacher_id`, `subject_id`, `grade_level_id` tùy nghiệp vụ.
-
 ### `classes`
 
-- `id`, `owner_teacher_id`, `subject_id`, `grade_level_id`.
+- `id`, `academic_year_id`, `grade_level_id`, `homeroom_teacher_id`.
 - `name`, `invite_code`, `invite_expires_at`, `status`.
+- `created_at`, `updated_at`.
+
+### `class_subject_teachers`
+
+- `id`, `class_id`, `subject_id`, `teacher_id`.
+- `assigned_at`, `status`.
+- Ràng buộc phân công: Mỗi môn trong một lớp do một giáo viên bộ môn phụ trách chính.
 
 ### `class_enrollments`
 
@@ -1139,7 +1207,7 @@ Mọi chuyển trạng thái phải được kiểm tra ở Backend. Client khô
 - Password được hash bằng thuật toán và cost phù hợp.
 - Refresh token hỗ trợ rotation/revoke và không lưu rõ nếu cần đối chiếu.
 - Web dùng cookie an toàn theo kiến trúc; Mobile dùng secure storage.
-- Admin và Teacher dùng 2FA/OTP theo chính sách.
+- School Admin và Teacher dùng 2FA/OTP theo chính sách.
 
 ## 10.2. Authorization
 
@@ -1160,7 +1228,7 @@ Mọi chuyển trạng thái phải được kiểm tra ở Backend. Client khô
 
 - Secret lưu trong environment/secret manager.
 - Không commit `.env`.
-- Admin UI không hiển thị giá trị API key.
+- School Admin UI không hiển thị giá trị API key.
 - Không ghi secret, token hoặc password vào log.
 
 ## 10.5. File upload
@@ -1330,16 +1398,17 @@ Audit log phải ghi actor, action, resource, thời gian, kết quả và lý d
 
 ## 14.2. Luồng E2E tối thiểu
 
-1. Teacher đăng ký, được xác minh và tạo lớp.
-2. Student tham gia lớp.
-3. Teacher upload, xử lý và xuất bản tài liệu.
-4. Student chat AI và nhận citation đúng phạm vi.
-5. Student không truy cập được tài liệu lớp khác.
-6. Teacher dùng AI sinh quiz, duyệt và giao bài.
-7. Student làm/nộp bài; gửi lại request không tạo điểm/XP trùng.
-8. Parent liên kết và xem đúng dữ liệu của con.
+1. School Admin kích hoạt license bản quyền, cấu hình thông tin trường, niên khóa, import danh sách Teacher/Student từ file Excel và phân công lớp học (GV chủ nhiệm, GV bộ môn).
+2. Teacher và Student đăng nhập bằng tài khoản được cấp (Student có thể đăng nhập bằng mã học sinh hoặc email), đổi mật khẩu khởi tạo.
+3. Teacher bộ môn upload, xử lý và xuất bản tài liệu thuộc môn học được phân công.
+4. Student chat AI và nhận citation đúng phạm vi tài liệu môn học được cấp quyền.
+5. Student không truy cập được tài liệu của lớp khác hoặc tài liệu chưa xuất bản.
+6. Teacher bộ môn dùng AI sinh quiz từ tài liệu môn mình phụ trách, kiểm duyệt từng câu và giao bài cho lớp.
+7. Student làm/nộp bài; gửi lại request không tạo điểm/XP trùng (idempotency).
+8. Parent đăng nhập bằng tài khoản được nhà trường cấp (đã liên kết sẵn với con qua file import) và xem đúng dữ liệu học tập của con; hoặc liên kết bổ sung bằng mã QR dự phòng nếu có điều chỉnh.
 9. Parent không xem được Student chưa liên kết.
-10. Admin khóa tài khoản, session bị revoke và audit được ghi.
+10. Kiểm tra cơ chế Graceful Degradation: Giả lập trường hết quota AI, tính năng chat AI hiển thị thông báo hết hạn mức trong khi bài quiz và tài liệu vẫn làm/xem bình thường.
+11. School Admin khóa tài khoản, session bị revoke ngay lập tức và audit log được ghi nhận đầy đủ.
 
 ## 14.3. Definition of Done
 
@@ -1371,6 +1440,7 @@ Một yêu cầu chỉ hoàn thành khi:
 | XP không bị cộng trùng | FR-XP-001..003 | BR-XP-001 | XP transaction test |
 | Push không phá nghiệp vụ | FR-NOTIFY-001..003 | BR-NOTIFY-001 | Queue retry test |
 | Thanh toán an toàn | FR-PAY-001 | BR-PAYMENT-001 | Webhook signature/idempotency |
+| Quản trị trường và bản quyền | FR-SCHOOL-001..002, FR-ADMIN-001..006 | BR-USER-001 | School admin E2E |
 
 ---
 
@@ -1384,7 +1454,7 @@ Các quyết định sau phải được chốt trước khi triển khai module
 | OD-002 | Object Storage chính thức | Cấu hình hạ tầng |
 | OD-003 | LLM và Embedding model đầu tiên | Chi phí, vector dimension |
 | OD-004 | Giới hạn dung lượng/số trang tài liệu | Upload và worker capacity |
-| OD-005 | Chính sách tuổi và đồng ý của Parent | Đăng ký và quyền riêng tư |
+| OD-005 | Chính sách tuổi và đồng ý của Parent | Cấp phát tài khoản và quyền riêng tư |
 | OD-006 | Cách tính mastery score | Báo cáo cá nhân hóa |
 | OD-007 | Quy tắc XP và streak cụ thể | Gamification |
 | OD-008 | Payment gateway đầu tiên | Module giai đoạn sau |

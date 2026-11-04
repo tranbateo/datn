@@ -8,7 +8,8 @@ import { cookies } from 'next/headers';
 const getApiUrl = () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export async function login(formData: FormData) {
-  const email = formData.get('email') as string;
+  const rawIdentifier = (formData.get('identifier') || formData.get('email')) as string;
+  const identifier = rawIdentifier ? rawIdentifier.trim() : '';
   const password = formData.get('password') as string;
   const selectedRole = formData.get('role') as string;
 
@@ -18,7 +19,7 @@ export async function login(formData: FormData) {
     const response = await fetch(`${getApiUrl()}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ identifier, email: identifier, password }),
     });
 
     if (!response.ok) {

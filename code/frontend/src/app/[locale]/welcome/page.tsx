@@ -4,7 +4,6 @@ import { APP_ROUTES } from '@/constants/routes';
 import { useState } from "react";
 import { Link } from "@/i18n/routing";
 import { GraduationCap, ArrowRight, Bot, Sparkles, ScanLine, Trophy } from "lucide-react";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTranslations } from "next-intl";
 
 export default function WelcomePage() {
@@ -52,7 +51,6 @@ export default function WelcomePage() {
             <span className="font-bold text-gray-900 dark:text-white">AI Tutor</span>
           </Link>
           <div className="flex items-center gap-3">
-            <LanguageSwitcher />
             {currentSlide < slides.length ? (
               <button 
                 onClick={() => setCurrentSlide(slides.length)}

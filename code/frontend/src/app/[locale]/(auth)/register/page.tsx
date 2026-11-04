@@ -1,268 +1,64 @@
 "use client";
 
 import { APP_ROUTES } from '@/constants/routes';
-import { useState } from 'react';
-import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/routing';
-import { Mail, Lock, User, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { signup, verifyOtp } from '../actions';
+import { ShieldAlert, ArrowLeft, School, Users, CheckCircle2 } from 'lucide-react';
 
 export default function RegisterPage() {
-  const t = useTranslations('Auth');
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
-  
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  
-  const [userEmail, setUserEmail] = useState("");
-
-  async function handleSignup(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setIsLoading(true);
-    setErrorMsg("");
-
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    
-    const result = await signup(formData);
-
-    if (result?.error) {
-      const knownErrors = ['EMAIL_EXISTS', 'EMAIL_SEND_FAILED', 'OTP_NOT_FOUND', 'OTP_EXPIRED', 'OTP_INVALID', 'UNAUTHORIZED_ADMIN_REGISTRATION', 'PENDING_APPROVAL', 'INVALID_CREDENTIALS', 'LOGIN_FAILED', 'NETWORK_ERROR', 'SIGNUP_FAILED', 'OTP_VERIFICATION_FAILED', 'NOT_ADMIN', 'roleMismatch'];
-      setErrorMsg(knownErrors.includes(result.error) ? t(`Errors.${result.error}` as Parameters<typeof t>[0]) : result.error);
-      setIsLoading(false);
-    } else {
-      setUserEmail(email);
-      setIsVerifyingOtp(true);
-      setIsLoading(false);
-    }
-  }
-
-  async function handleVerifyOtp(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setIsLoading(true);
-    setErrorMsg("");
-
-    const formData = new FormData(e.currentTarget);
-    formData.append('email', userEmail);
-    
-    const result = await verifyOtp(formData);
-
-    if (result?.error) {
-      const knownErrors = ['EMAIL_EXISTS', 'EMAIL_SEND_FAILED', 'OTP_NOT_FOUND', 'OTP_EXPIRED', 'OTP_INVALID', 'UNAUTHORIZED_ADMIN_REGISTRATION', 'PENDING_APPROVAL', 'INVALID_CREDENTIALS', 'LOGIN_FAILED', 'NETWORK_ERROR', 'SIGNUP_FAILED', 'OTP_VERIFICATION_FAILED', 'NOT_ADMIN', 'roleMismatch'];
-      setErrorMsg(knownErrors.includes(result.error) ? t(`Errors.${result.error}` as Parameters<typeof t>[0]) : result.error);
-      setIsLoading(false);
-    } else if (result?.success) {
-      setIsVerifyingOtp(false);
-      setIsSuccess(true);
-      setIsLoading(false);
-    }
-  }
-
-  if (isSuccess) {
-    return (
-      <div className="w-full text-center">
-        <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 className="w-8 h-8" />
-        </div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('verifySuccess')}</h1>
-        <p className="text-gray-500 dark:text-gray-400 mb-8">
-          Tài khoản của bạn đã được kích hoạt thành công. Vui lòng đăng nhập lại để sử dụng hệ thống.
-        </p>
-        <Link href={APP_ROUTES.LOGIN} className="w-full flex justify-center bg-primary hover:bg-primary-hover text-white py-3 rounded-xl text-sm font-semibold transition-colors">
-          Đến trang Đăng nhập
-        </Link>
-      </div>
-    );
-  }
-
-
-
-  if (isVerifyingOtp) {
-    return (
-      <div className="w-full">
-        <div className="mb-8 text-center">
-          <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Mail className="w-8 h-8" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('checkEmail')}</h1>
-          <p className="text-gray-500 dark:text-gray-400">
-            {t('checkEmailDesc')} <br/>
-            <span className="font-semibold text-gray-900 dark:text-white">{userEmail}</span>
-          </p>
-        </div>
-
-        {errorMsg && (
-          <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-800 text-sm text-red-600 dark:text-red-400 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleVerifyOtp} className="space-y-5">
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('verifyCode')}</label>
-            <input 
-              name="token"
-              type="text" 
-              required
-              maxLength={6}
-              placeholder="123456" 
-              className="px-4 py-3 w-full text-center tracking-widest text-2xl font-bold bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow"
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white py-3 rounded-xl text-sm font-semibold transition-colors disabled:opacity-70 disabled:cursor-not-allowed mt-4"
-          >
-            {isLoading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifyingBtn')}</>
-            ) : (
-              <><CheckCircle2 className="w-5 h-5" /> {t('verifyBtn')}</>
-            )}
-          </button>
-        </form>
-
-        <p className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
-          {t('resendCode')} {' '}
-          <button type="button" className="font-semibold text-primary hover:text-primary-hover transition-colors">
-            {t('resendBtn')}
-          </button>
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="w-full">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('createAccount')}</h1>
-        <p className="text-gray-500 dark:text-gray-400">{t('createAccountDesc')}</p>
+      <div className="mb-6 text-center sm:text-left">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400 mb-4 mx-auto sm:mx-0">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          Đăng ký tài khoản nội bộ
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
+          Nền tảng AI Tutor được đóng gói và vận hành theo mô hình bản quyền trường học.
+        </p>
       </div>
 
-      {errorMsg && (
-        <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-800 text-sm text-red-600 dark:text-red-400 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <span>{errorMsg}</span>
-        </div>
-      )}
-
-      <form onSubmit={handleSignup} className="space-y-5">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('firstName')}</label>
-            <div className="relative">
-              <User className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
-                name="firstName"
-                type="text" 
-                required
-                placeholder="John" 
-                className="pl-10 pr-4 py-2.5 w-full bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow"
-              />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('lastName')}</label>
-            <div className="relative">
-              <User className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
-                name="lastName"
-                type="text" 
-                required
-                placeholder="Doe" 
-                className="pl-10 pr-4 py-2.5 w-full bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow"
-              />
-            </div>
+      <div className="space-y-4 bg-gray-50 dark:bg-gray-800/50 p-5 rounded-2xl border border-gray-100 dark:border-gray-700/60 text-sm text-gray-600 dark:text-gray-300">
+        <div className="flex items-start gap-3">
+          <School className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold text-gray-900 dark:text-white">Cấp phát tài khoản tập trung:</span>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Tài khoản Học sinh, Phụ huynh và Giáo viên được Ban Giám hiệu / Quản trị viên Nhà trường khởi tạo tự động theo danh sách lớp.
+            </p>
           </div>
         </div>
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('emailLabel')}</label>
-          <div className="relative">
-            <Mail className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input 
-              name="email"
-              type="email" 
-              required
-              placeholder={t('emailPlaceholder')} 
-              className="pl-10 pr-4 py-2.5 w-full bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow"
-            />
+        <div className="flex items-start gap-3">
+          <Users className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold text-gray-900 dark:text-white">Liên kết lớp & Gia đình tự động:</span>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Khi nhận tài khoản từ trường, học sinh đã được xếp đúng lớp và phụ huynh đã được liên kết sẵn với con.
+            </p>
           </div>
         </div>
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('passwordLabel')}</label>
-          <div className="relative">
-            <Lock className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input 
-              name="password"
-              type="password" 
-              required
-              minLength={6}
-              placeholder={t('passwordPlaceholder')} 
-              className="pl-10 pr-4 py-2.5 w-full bg-white dark:bg-card-bg border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white transition-shadow"
-            />
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold text-gray-900 dark:text-white">Bắt đầu sử dụng:</span>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Vui lòng sử dụng Mã học sinh hoặc Số điện thoại do Giáo viên chủ nhiệm bàn giao để đăng nhập.
+            </p>
           </div>
-          <p className="text-xs text-gray-500 mt-1">{t('passwordMin')}</p>
         </div>
+      </div>
 
-        <div className="space-y-4 pt-2">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Bạn là ai?</label>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                name="role" 
-                value="STUDENT" 
-                defaultChecked
-                className="w-4 h-4 text-primary focus:ring-primary border-gray-300"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-300">Học sinh</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                name="role" 
-                value="PARENT" 
-                className="w-4 h-4 text-primary focus:ring-primary border-gray-300"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-300">Phụ huynh</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="radio" 
-                name="role" 
-                value="TEACHER" 
-                className="w-4 h-4 text-primary focus:ring-primary border-gray-300"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-300">Giáo viên</span>
-            </label>
-          </div>
-          <p className="text-xs text-gray-500 italic mt-1">* Tài khoản Giáo viên sẽ cần sự phê duyệt từ Quản trị viên sau khi đăng ký.</p>
-        </div>
-
-        <button 
-          type="submit" 
-          disabled={isLoading}
-          className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-70 disabled:cursor-not-allowed mt-2"
+      <div className="mt-8 space-y-3">
+        <Link
+          href={APP_ROUTES.LOGIN}
+          className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
         >
-          {isLoading ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> {t('creatingAccountBtn')}</>
-          ) : (
-            <><ArrowRight className="w-4 h-4" /> {t('createAccountBtn')}</>
-          )}
-        </button>
-      </form>
-
-      <p className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
-        {t('alreadyAccount')} {' '}
-        <Link href={APP_ROUTES.LOGIN} className="font-semibold text-primary hover:text-primary-hover transition-colors">
-          {t('login')}
+          <ArrowLeft className="w-4 h-4" /> Quay lại trang Đăng nhập
         </Link>
-      </p>
+      </div>
     </div>
   );
 }
