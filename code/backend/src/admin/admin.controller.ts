@@ -109,6 +109,102 @@ export class AdminController {
     return this.adminService.deleteClass(req.user.schoolId, req.user.id, id);
   }
 
+  @Post('classes/:id/subject-teachers')
+  async assignSubjectTeacher(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') classId: string,
+    @Body() dto: { subjectId: string; teacherId: string },
+  ) {
+    return this.adminService.assignSubjectTeacher(
+      req.user.schoolId,
+      req.user.id,
+      classId,
+      dto,
+    );
+  }
+
+  @Delete('classes/:id/subject-teachers/:subjectId')
+  async removeSubjectTeacher(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') classId: string,
+    @Param('subjectId') subjectId: string,
+  ) {
+    return this.adminService.removeSubjectTeacher(
+      req.user.schoolId,
+      req.user.id,
+      classId,
+      subjectId,
+    );
+  }
+
+  @Get('academic-years')
+  async getAcademicYears(@Req() req: AuthenticatedRequest) {
+    return this.adminService.getAcademicYears(req.user.schoolId);
+  }
+
+  @Post('academic-years')
+  async createAcademicYear(
+    @Req() req: AuthenticatedRequest,
+    @Body()
+    dto: {
+      name: string;
+      startDate?: string;
+      endDate?: string;
+      isCurrent?: boolean;
+    },
+  ) {
+    return this.adminService.createAcademicYear(
+      req.user.schoolId,
+      req.user.id,
+      dto,
+    );
+  }
+
+  @Patch('academic-years/:id/current')
+  async setCurrentAcademicYear(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.adminService.setCurrentAcademicYear(
+      req.user.schoolId,
+      req.user.id,
+      id,
+    );
+  }
+
+  @Delete('academic-years/:id')
+  async deleteAcademicYear(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.adminService.deleteAcademicYear(
+      req.user.schoolId,
+      req.user.id,
+      id,
+    );
+  }
+
+  @Get('subjects')
+  async getSubjects() {
+    return this.adminService.getSubjects();
+  }
+
+  @Post('subjects')
+  async createSubject(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: { name: string; grade: number; description?: string },
+  ) {
+    return this.adminService.createSubject(req.user.id, dto);
+  }
+
+  @Delete('subjects/:id')
+  async deleteSubject(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.adminService.deleteSubject(req.user.id, id);
+  }
+
   @Post('students/:studentId/transfer-class')
   async transferStudentClass(
     @Req() req: AuthenticatedRequest,

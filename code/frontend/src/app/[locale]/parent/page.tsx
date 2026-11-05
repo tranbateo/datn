@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { parentService, ParentDashboardData } from '@/services/parent.service';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Calendar, Bell, Clock, TrendingUp, AlertTriangle, School, UserCheck } from 'lucide-react';
+import { Loader2, Calendar, Bell, Clock, TrendingUp, AlertTriangle, School, UserCheck, KeyRound, Plus, X } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslations } from 'next-intl';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -11,21 +11,41 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 export default function ParentDashboardPage() {
   const [data, setData] = useState<ParentDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isLinkOpen, setIsLinkOpen] = useState(false);
+  const [linkCode, setLinkCode] = useState('');
+  const [linking, setLinking] = useState(false);
   const t = useTranslations("ParentUI.Dashboard");
 
+  const loadData = async () => {
+    try {
+      const result = await parentService.getDashboard();
+      setData(result);
+    } catch (error) {
+      console.error('Failed to load dashboard', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const result = await parentService.getDashboard();
-        setData(result);
-      } catch (error) {
-        console.error('Failed to load dashboard', error);
-      } finally {
-        setLoading(false);
-      }
-    };
     void loadData();
   }, []);
+
+  const handleLinkStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!linkCode.trim()) return;
+    setLinking(true);
+    try {
+      await parentService.linkStudent(linkCode.trim());
+      setLinkCode('');
+      setIsLinkOpen(false);
+      await loadData();
+    } catch (error: any) {
+      alert(error?.message || 'Mã liên kết không hợp lệ hoặc đã hết hạn.');
+    } finally {
+      setLinking(false);
+    }
+  };
 
   if (loading) {
     return <div className="flex justify-center items-center min-h-[50vh]"><Loader2 className="animate-spin w-10 h-10 text-indigo-500" /></div>;
@@ -33,21 +53,88 @@ export default function ParentDashboardPage() {
 
   if (!data?.students?.length) {
     return (
-      <div className="text-center p-12 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
+      <div className="text-center p-12 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 max-w-xl mx-auto">
         <h2 className="text-xl font-bold mb-3 text-slate-800 dark:text-white">{t("noLinkedAccount")}</h2>
         <p className="text-slate-500 dark:text-slate-400 mb-6">{t("noLinkedAccountDesc")}</p>
+        <form onSubmit={handleLinkStudent} className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto">
+          <input
+            type="text"
+            value={linkCode}
+            onChange={(e) => setLinkCode(e.target.value)}
+            placeholder="Nhập mã liên kết 6 số từ hồ sơ của con..."
+            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-mono text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+            required
+          />
+          <button
+            type="submit"
+            disabled={linking}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm disabled:opacity-50"
+          >
+            {linking ? "Đang liên kết..." : "Liên kết ngay"}
+          </button>
+        </form>
       </div>
     );
   }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{t("title")}</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">{t("subtitle")}</p>
         </div>
+        <button
+          onClick={() => setIsLinkOpen(true)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition-colors shadow-sm w-fit"
+        >
+          <Plus className="w-4 h-4" /> Liên kết thêm con bằng mã
+        </button>
       </div>
+
+      {isLinkOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md p-6 shadow-xl border border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-indigo-600" /> Liên kết tài khoản con (BR-LINK-001)
+              </h3>
+              <button onClick={() => setIsLinkOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+              Nhập mã liên kết 6 số có thời hạn 15 phút được hiển thị trong mục Hồ sơ cá nhân trên tài khoản của học sinh.
+            </p>
+            <form onSubmit={handleLinkStudent} className="space-y-4">
+              <input
+                type="text"
+                value={linkCode}
+                onChange={(e) => setLinkCode(e.target.value)}
+                placeholder="VD: 482910"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-mono font-bold tracking-widest text-center text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                required
+              />
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsLinkOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={linking}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50"
+                >
+                  {linking ? "Đang xác thực..." : "Xác nhận liên kết"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       
       <Tabs defaultValue={data.students[0].student.id} className="w-full">
         {data.students.length > 1 && (

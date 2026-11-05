@@ -575,6 +575,16 @@ Hệ thống sử dụng kiến trúc Client–Server với Backend API tập tr
 - Parent nhận cảnh báo về điểm thấp liên tục, bài cần chú ý, tài khoản hoặc subscription theo cấu hình.
 - Cảnh báo hành vi nhạy cảm phải tuân theo chính sách kiểm duyệt, không tự động kết luận Student vi phạm nếu chưa đủ bằng chứng.
 
+### FR-PARENT-004 — Liên lạc Phụ huynh – Giáo viên & Đơn kiến nghị
+
+- Parent được nhắn tin trao đổi trực tiếp với Giáo viên chủ nhiệm (GVCN) và Giáo viên bộ môn (GVBM) dạy lớp của con mình (`Conversation`, `DirectMessage`).
+- Parent được gửi đơn xin phép nghỉ học hoặc kiến nghị học tập (`Proposal`) tới Giáo viên phụ trách; Giáo viên duyệt hoặc phản hồi trạng thái (`PENDING`, `APPROVED`, `REJECTED`).
+
+### FR-CAL-001 — Lịch học và Quét OCR Thời khóa biểu
+
+- Student và Teacher quản lý sự kiện lịch học, lịch thi và hạn nộp bài (`CalendarEvent`).
+- Hỗ trợ tải ảnh thời khóa biểu (kiểm tra chữ ký MIME và giới hạn dung lượng 10MB) để trích xuất sự kiện tự động qua Vision AI và lưu vào lịch học cá nhân.
+
 ## 5.11. Notification
 
 ### FR-NOTIFY-001 — Notification trong ứng dụng
@@ -867,99 +877,61 @@ AI không được tự động giao quiz ngay sau khi sinh.
 - Trạng thái dùng enum/check constraint hoặc bảng danh mục được quản lý.
 - Mọi thay đổi schema phải qua migration.
 
-## 8.2. User và RBAC
+## 8.2. Trường học, Người dùng và RBAC (Triển khai thực tế trên Prisma / PostgreSQL)
 
-### `users`
+### `School`
 
-- `id`, `username` (hoặc `student_code`), `email` (nullable cho Student), `password_hash`, `full_name`.
-- `status`, `email_verified_at`, `last_login_at`.
-- `created_at`, `updated_at`, `deleted_at` nếu áp dụng.
+- `id` (UUID), `name`, `code` (unique), `level` (`PRIMARY`, `MIDDLE`, `HIGH`, `ALL`), `isActive`.
+- Quản lý bản quyền & hạn mức AI: `licenseKey`, `licenseExpiresAt`, `maxUsers`, `aiTokenQuota`, `aiTokensUsed`, `aiProvider` (`SYSTEM` hoặc `BYOK`), `customApiKey` (chỉ lưu server-side).
+- `createdAt`, `updatedAt`.
 
-### `roles`, `permissions`, `user_roles`, `role_permissions`
+### `User`
 
-- Hỗ trợ RBAC với 4 vai trò chính: `STUDENT`, `TEACHER`, `PARENT`, `SCHOOL_ADMIN`.
-- Có unique constraint chống gán trùng.
+- Hợp nhất thông tin người dùng với phân quyền RBAC qua enum `Role`: `STUDENT`, `TEACHER`, `PARENT`, `SCHOOL_ADMIN` (`ADMIN`).
+- `id` (UUID), `schoolId`, `studentCode` (mã học sinh hoặc mã giáo viên nội bộ trường, unique theo `schoolId`), `email` (nullable đối với học sinh tiểu học/THCS), `phone`, `fullName`, `avatarUrl`.
+- Bảo mật & phiên: `passwordHash`, `refreshTokenHash` (lưu hash để đối chiếu và thu hồi phiên), `mustChangePassword` (mặc định `true` khi trường khởi tạo tài khoản), `isActive`, `deviceToken`.
+- Học tập & liên kết: `grade` (khối lớp chính thức `1..12`), `linkCode` và `linkExpiresAt` (mã liên kết phụ huynh dùng 1 lần có thời hạn).
+- `createdAt`, `updatedAt`.
 
-### `school_licenses`
+### `AcademicYear`
 
-- `id`, `school_name`, `license_key`, `grade_bands` (Tiểu học, THCS, THPT).
-- `status`: `ACTIVE`, `SUSPENDED`, `EXPIRED`.
-- `valid_from`, `valid_until`.
-- `max_students`, `max_teachers`, `ai_provider_mode` (`PACKAGE_QUOTA` hoặc `BYOK`).
-- `ai_token_quota`, `ai_tokens_used`.
-- `created_at`, `updated_at`.
-
-### `academic_years`
-
-- `id`, `name` (ví dụ: "2025-2026"), `start_date`, `end_date`, `is_current`, `status`.
-- `created_at`, `updated_at`.
-
-### `user_sessions`
-
-- `id`, `user_id`, `refresh_token_hash`.
-- `device_id`, `ip_address`, `user_agent`.
-- `expires_at`, `revoked_at`, `replaced_by_session_id`.
-
-### `user_devices`
-
-- `id`, `user_id`, `fcm_token`, `platform`.
-- `last_active_at`, `disabled_at`.
-
-### `students`
-
-- `id`, `user_id`, `student_code`.
-- `academic_grade_id`, `learning_level`.
-- `lifetime_xp`, `streak`, `last_learning_activity_date`.
-
-### `teachers`
-
-- `id`, `user_id`, `teacher_code`.
-- `verification_status`, `verified_at`, `verified_by`.
-
-### `parents`
-
-- `id`, `user_id`, `phone_number`.
+- `id`, `schoolId`, `name` (ví dụ: `"2025-2026"`), `startDate`, `endDate`, `isCurrent`.
+- Ràng buộc duy nhất `@@unique([schoolId, name])`.
 
 ## 8.3. Dữ liệu gốc và lớp học
 
-### `subjects`
+### `Subject`
 
-- `id`, `code`, `name`, `status`.
+- `id`, `name` (ví dụ: `"Toán học"`, `"Ngữ văn"`), `grade` (`1..12`), `description`.
+- Ràng buộc duy nhất `@@unique([name, grade])`.
 
-### `grade_levels`
+### `Class`
 
-- `id`, `code`, `name`, `sort_order`, `status`.
+- `id`, `schoolId`, `academicYearId`, `name` (ví dụ: `"6A1"`, `"9A2"`), `grade` (`1..12`), `homeroomTeacherId` (Giáo viên chủ nhiệm - GVCN).
+- `inviteCode`, `inviteExpiresAt`, `status` (`ACTIVE`, `ARCHIVED`).
+- `createdAt`, `updatedAt`.
 
-### `classes`
+### `ClassSubjectTeacher`
 
-- `id`, `academic_year_id`, `grade_level_id`, `homeroom_teacher_id`.
-- `name`, `invite_code`, `invite_expires_at`, `status`.
-- `created_at`, `updated_at`.
+- `id`, `classId`, `subjectId`, `teacherId`, `assignedAt`, `status`.
+- Ràng buộc phân công `@@unique([classId, subjectId])`: Mỗi môn học trong một lớp do một giáo viên bộ môn (GVBM) phụ trách chính.
 
-### `class_subject_teachers`
+### `ClassEnrollment`
 
-- `id`, `class_id`, `subject_id`, `teacher_id`.
-- `assigned_at`, `status`.
-- Ràng buộc phân công: Mỗi môn trong một lớp do một giáo viên bộ môn phụ trách chính.
+- `id`, `classId`, `studentId`, `status` (`ACTIVE`, `TRANSFERRED`, `GRADUATED`), `enrolledAt`, `updatedAt`.
+- Ràng buộc duy nhất `@@unique([classId, studentId])`.
 
-### `class_enrollments`
+## 8.4. Liên kết Parent–Student và Liên lạc Nhà trường
 
-- `id`, `class_id`, `student_id`.
-- `status`: `PENDING`, `ACTIVE`, `REJECTED`, `LEFT`, `REMOVED`.
-- `joined_at`, `ended_at`.
+### `ParentStudentLink`
 
-## 8.4. Liên kết Parent–Student
+- `id`, `parentId`, `studentId`, `relationship` (`Phụ huynh`, `FATHER`, `MOTHER`, `GUARDIAN`), `linkCode`, `expiresAt`, `linkedAt`.
+- Ràng buộc duy nhất `@@unique([parentId, studentId])`.
 
-### `parent_student_link_tokens`
+### `Conversation`, `DirectMessage`, `Proposal`
 
-- `id`, `student_id`, `token_hash`.
-- `expires_at`, `used_at`, `revoked_at`.
-
-### `parent_student_links`
-
-- `id`, `parent_id`, `student_id`.
-- `relationship_type`, `status`.
-- `consented_at`, `linked_at`, `revoked_at`.
+- `Conversation` & `DirectMessage`: Kênh trao đổi trực tiếp giữa Phụ huynh và Giáo viên phụ trách lớp của con.
+- `Proposal`: Đơn xin phép hoặc kiến nghị của Phụ huynh gửi tới Giáo viên (`parentId`, `teacherId`, `studentId`, `title`, `content`, `status`: `PENDING`, `APPROVED`, `REJECTED`).
 
 ## 8.5. Tài liệu và RAG
 
@@ -1444,23 +1416,21 @@ Một yêu cầu chỉ hoàn thành khi:
 
 ---
 
-# 16. CÁC QUYẾT ĐỊNH CÒN MỞ
+# 16. CÁC QUYẾT ĐỊNH KIẾN TRÚC VÀ NGHIỆP VỤ ĐÃ CHỐT
 
-Các quyết định sau phải được chốt trước khi triển khai module tương ứng:
+Các quyết định kỹ thuật và nghiệp vụ sau đã được chốt và triển khai thống nhất trên toàn hệ thống:
 
-| Mã | Quyết định | Ảnh hưởng |
+| Mã | Hạng mục | Quyết định đã chốt trong hệ thống |
 |---|---|---|
-| OD-001 | Parent dùng Web, Mobile hay cả hai trong MVP | Phạm vi frontend |
-| OD-002 | Object Storage chính thức | Cấu hình hạ tầng |
-| OD-003 | LLM và Embedding model đầu tiên | Chi phí, vector dimension |
-| OD-004 | Giới hạn dung lượng/số trang tài liệu | Upload và worker capacity |
-| OD-005 | Chính sách tuổi và đồng ý của Parent | Cấp phát tài khoản và quyền riêng tư |
-| OD-006 | Cách tính mastery score | Báo cáo cá nhân hóa |
-| OD-007 | Quy tắc XP và streak cụ thể | Gamification |
-| OD-008 | Payment gateway đầu tiên | Module giai đoạn sau |
-| OD-009 | Thời gian retention từng loại dữ liệu | Privacy và chi phí lưu trữ |
-
-Các mục còn mở không cho phép nhóm phát triển tự mặc định nếu quyết định có thể làm thay đổi nghiệp vụ, chi phí hoặc quyền riêng tư.
+| OD-001 | Nền tảng dành cho Parent | Hỗ trợ đồng thời Web Portal (`/parent`) và Mobile App với cùng REST API phân quyền `Role.PARENT` |
+| OD-002 | Lưu trữ dữ liệu & Vector DB | Supabase PostgreSQL kết hợp `pgvector` cho lưu trữ học liệu RAG và Prisma ORM cho dữ liệu nghiệp vụ |
+| OD-003 | LLM và Embedding model | Google Gemini (`gemini-3.1-flash-lite-preview` cho Chat/Vision/Quiz và `gemini-embedding-001` cho Vector) cấu hình qua biến môi trường & hỗ trợ BYOK theo trường |
+| OD-004 | Giới hạn tài liệu và ảnh upload | Tài liệu PDF tối đa 20MB (kiểm tra chữ ký `%PDF-`); ảnh OCR tối đa 10MB (kiểm tra magic bytes JPEG/PNG/WEBP) |
+| OD-005 | Cấp phát tài khoản & Liên kết | Nhà trường cấp phát qua Import Excel/tạo trực tiếp (mật khẩu khởi tạo `mustChangePassword = true`); hỗ trợ mã liên kết dự phòng dùng 1 lần (hết hạn sau 15 phút) |
+| OD-006 | Đánh giá mức độ thành thạo | Tổng hợp từ lịch sử `QuizAttempt` theo môn học/khối lớp và thời lượng tương tác học tập thực tế |
+| OD-007 | Quy tắc XP và Streak | Quản lý tại `GamificationProfile` (`lifetimeXp`, `spendableXp`, `level`, `currentStreak`); chống cộng XP lặp khi nộp bài Quiz nhiều lần |
+| OD-008 | Mô hình thương mại hóa | Ưu tiên B2B School License & AI Token Quota (`aiTokenQuota`, `aiTokensUsed`, `BYOK`) trong MVP; cổng thanh toán B2C giữ ở giai đoạn mở rộng |
+| OD-009 | Audit Log & Bảo mật phiên | Lưu lịch sử thao tác quản trị tại bảng `AuditLog`; JWT lưu trên cookie `httpOnly` (Web) / SecureStore (Mobile) và thu hồi `refreshTokenHash` ngay khi đăng xuất hoặc khóa tài khoản |
 
 ---
 

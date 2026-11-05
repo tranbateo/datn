@@ -383,7 +383,7 @@ export class TeacherService {
   }
 
   async getCourses(teacherId: string) {
-    const courses = await this.prisma.course.findMany({
+    let courses = await this.prisma.course.findMany({
       where: { teacherId },
       include: {
         subject: true,
@@ -397,6 +397,47 @@ export class TeacherService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    if (courses.length === 0) {
+      const scope = await this.getTeacherScope(teacherId);
+      for (const sc of scope.subjectClasses) {
+        const exists = await this.prisma.course.findFirst({
+          where: {
+            teacherId,
+            subjectId: sc.subjectId,
+            grade: sc.class.grade,
+          },
+        });
+        if (!exists) {
+          await this.prisma.course.create({
+            data: {
+              schoolId: scope.schoolId,
+              teacherId,
+              subjectId: sc.subjectId,
+              grade: sc.class.grade,
+              title: `${sc.subject.name} - Khối ${sc.class.grade} (${sc.class.name})`,
+              description: `Học phần chính khóa môn ${sc.subject.name} lớp ${sc.class.name}`,
+            },
+          });
+        }
+      }
+      if (scope.subjectClasses.length > 0) {
+        courses = await this.prisma.course.findMany({
+          where: { teacherId },
+          include: {
+            subject: true,
+            _count: {
+              select: {
+                enrollments: true,
+                lessons: true,
+                documents: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+    }
 
     return courses.map((course) => ({
       id: course.id,
@@ -691,7 +732,8 @@ export class TeacherService {
         d.status.toLowerCase() === 'pending' ||
         d.status.toLowerCase() === 'processing'
           ? 'processing'
-          : d.status.toLowerCase() === 'unpublished'
+          : d.status.toLowerCase() === 'unpublished' ||
+              d.status.toLowerCase() === 'archived'
             ? 'unpublished'
             : 'ready',
       date: new Date(d.uploadedAt).toLocaleDateString('vi-VN'),

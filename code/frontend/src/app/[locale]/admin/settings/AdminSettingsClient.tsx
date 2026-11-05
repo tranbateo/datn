@@ -2,7 +2,7 @@
 /* eslint-disable react/no-unescaped-entities */
 
 import { useState, useEffect } from "react";
-import { Settings, Bot, Shield, Trophy, Save, Key, CheckCircle2, Globe, Building, Mail, AlertTriangle, Loader2 } from "lucide-react";
+import { Settings, Bot, Shield, Trophy, Save, Key, CheckCircle2, Globe, Building, Mail, AlertTriangle, Loader2, BookOpen, Plus, Trash2, Calendar } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { fetchApi } from "@/lib/api-client";
 
@@ -31,6 +31,29 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
   const [customApiKey, setCustomApiKey] = useState("");
   const [savingByok, setSavingByok] = useState(false);
 
+  const [academicYears, setAcademicYears] = useState<any[]>([]);
+  const [newYearName, setNewYearName] = useState("");
+  const [newYearCurrent, setNewYearCurrent] = useState(false);
+  const [creatingYear, setCreatingYear] = useState(false);
+
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [newSubjectGrade, setNewSubjectGrade] = useState(6);
+  const [creatingSubject, setCreatingSubject] = useState(false);
+
+  const loadMasterData = async () => {
+    try {
+      const [yearsRes, subjectsRes] = await Promise.all([
+        fetchApi<any[]>("/admin/academic-years").catch(() => []),
+        fetchApi<any[]>("/admin/subjects").catch(() => []),
+      ]);
+      setAcademicYears(Array.isArray(yearsRes) ? yearsRes : []);
+      setSubjects(Array.isArray(subjectsRes) ? subjectsRes : []);
+    } catch (err) {
+      console.error("Failed to load master data:", err);
+    }
+  };
+
   useEffect(() => {
     async function loadLicense() {
       try {
@@ -45,7 +68,83 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
       }
     }
     loadLicense();
+    loadMasterData();
   }, []);
+
+  const handleCreateAcademicYear = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newYearName.trim()) return;
+    setCreatingYear(true);
+    try {
+      await fetchApi("/admin/academic-years", {
+        method: "POST",
+        body: JSON.stringify({
+          name: newYearName.trim(),
+          isCurrent: newYearCurrent,
+        }),
+      });
+      setNewYearName("");
+      setNewYearCurrent(false);
+      await loadMasterData();
+    } catch (err: any) {
+      alert(err?.message || "Không thể tạo niên khóa");
+    } finally {
+      setCreatingYear(false);
+    }
+  };
+
+  const handleSetCurrentYear = async (id: string) => {
+    try {
+      const updated = await fetchApi<any[]>(`/admin/academic-years/${id}/current`, {
+        method: "PATCH",
+      });
+      if (Array.isArray(updated)) setAcademicYears(updated);
+      else await loadMasterData();
+    } catch (err: any) {
+      alert(err?.message || "Không thể đặt niên khóa hiện hành");
+    }
+  };
+
+  const handleDeleteYear = async (id: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa niên khóa này?")) return;
+    try {
+      await fetchApi(`/admin/academic-years/${id}`, { method: "DELETE" });
+      setAcademicYears((prev) => prev.filter((y) => y.id !== id));
+    } catch (err: any) {
+      alert(err?.message || "Không thể xóa niên khóa đang có lớp học");
+    }
+  };
+
+  const handleCreateSubject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubjectName.trim()) return;
+    setCreatingSubject(true);
+    try {
+      await fetchApi("/admin/subjects", {
+        method: "POST",
+        body: JSON.stringify({
+          name: newSubjectName.trim(),
+          grade: Number(newSubjectGrade),
+        }),
+      });
+      setNewSubjectName("");
+      await loadMasterData();
+    } catch (err: any) {
+      alert(err?.message || "Không thể thêm môn học");
+    } finally {
+      setCreatingSubject(false);
+    }
+  };
+
+  const handleDeleteSubject = async (id: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa môn học này?")) return;
+    try {
+      await fetchApi(`/admin/subjects/${id}`, { method: "DELETE" });
+      setSubjects((prev) => prev.filter((s) => s.id !== id));
+    } catch (err: any) {
+      alert(err?.message || "Không thể xóa môn học");
+    }
+  };
 
   const handleSaveByok = async () => {
     setSavingByok(true);
@@ -79,6 +178,7 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
 
   const tabs = [
     { id: "ai", label: "Bản quyền & AI Quota (BYOK)", icon: Bot },
+    { id: "master", label: "Niên khóa & Danh mục Môn học", icon: BookOpen },
     { id: "general", label: t('general'), icon: Settings },
     { id: "rbac", label: t('rbac'), icon: Shield },
     { id: "gamification", label: t('gamification'), icon: Trophy },
@@ -277,8 +377,163 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
                     <Bot className="w-5 h-5 text-purple-500" /> Mô hình ngôn ngữ đang kích hoạt
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Model mặc định được cấu hình qua Adapter: <span className="font-mono font-bold text-blue-600">{initialData?.aiModel || 'gemini-2.5-flash'}</span>
+                    Model mặc định được cấu hình qua Adapter: <span className="font-mono font-bold text-blue-600">{initialData?.aiModel || 'gemini-3.1-flash-lite-preview'}</span>
                   </p>
+                </div>
+              </div>
+            )}
+
+            {/* --- Academic Year & Master Data Subjects Tab (FR-SCHOOL-002 & FR-MASTER-001) --- */}
+            {activeTab === "master" && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {/* Academic Years */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-blue-600" /> Quản lý Niên khóa (Academic Years)
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Thiết lập năm học hiện hành cho nhà trường để phân lớp và tổng kết học tập (FR-SCHOOL-002).
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleCreateAcademicYear} className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="text"
+                      value={newYearName}
+                      onChange={(e) => setNewYearName(e.target.value)}
+                      placeholder="VD: 2025-2026, 2026-2027"
+                      className="px-3.5 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white"
+                      required
+                    />
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newYearCurrent}
+                        onChange={(e) => setNewYearCurrent(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600"
+                      />
+                      Đặt làm niên khóa hiện hành
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={creatingYear}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+                    >
+                      <Plus className="w-4 h-4" /> Thêm niên khóa
+                    </button>
+                  </form>
+
+                  <div className="space-y-2">
+                    {academicYears.map((y) => (
+                      <div
+                        key={y.id}
+                        className="flex items-center justify-between p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-gray-900 dark:text-white">
+                            Năm học {y.name}
+                          </span>
+                          {y.isCurrent && (
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                              Hiện hành
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-500">
+                            ({y._count?.classes || 0} lớp học)
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!y.isCurrent && (
+                            <button
+                              type="button"
+                              onClick={() => handleSetCurrentYear(y.id)}
+                              className="px-3 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 rounded-lg"
+                            >
+                              Chọn làm hiện hành
+                            </button>
+                          )}
+                          {(!y._count?.classes || y._count.classes === 0) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteYear(y.id)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                              title="Xóa niên khóa"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-px bg-gray-100 dark:bg-gray-800" />
+
+                {/* Master Data Subjects */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <BookOpen className="w-5 h-5 text-emerald-600" /> Danh mục Môn học chuẩn theo Khối (FR-MASTER-001)
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Quản lý danh sách môn học theo khối lớp để phân công giáo viên bộ môn và phân loại tài liệu RAG.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleCreateSubject} className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="text"
+                      value={newSubjectName}
+                      onChange={(e) => setNewSubjectName(e.target.value)}
+                      placeholder="Tên môn (VD: Toán học, Tiếng Anh...)"
+                      className="px-3.5 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white min-w-[220px]"
+                      required
+                    />
+                    <select
+                      value={newSubjectGrade}
+                      onChange={(e) => setNewSubjectGrade(Number(e.target.value))}
+                      className="px-3.5 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white"
+                    >
+                      {[6, 7, 8, 9, 10, 11, 12].map((g) => (
+                        <option key={g} value={g}>
+                          Khối {g}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={creatingSubject}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+                    >
+                      <Plus className="w-4 h-4" /> Thêm môn học
+                    </button>
+                  </form>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-80 overflow-y-auto pr-1">
+                    {subjects.map((subj) => (
+                      <div
+                        key={subj.id}
+                        className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700 text-sm"
+                      >
+                        <div>
+                          <span className="font-bold text-gray-900 dark:text-white">{subj.name}</span>
+                          <span className="ml-2 px-2 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs font-semibold">
+                            Khối {subj.grade}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSubject(subj.id)}
+                          className="text-gray-400 hover:text-red-500 p-1"
+                          title="Xóa môn học"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

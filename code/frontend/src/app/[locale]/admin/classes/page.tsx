@@ -8,6 +8,7 @@ import SchoolImportModal from "@/components/admin/SchoolImportModal";
 export default function AdminClassesPage() {
   const [classes, setClasses] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [gradeFilter, setGradeFilter] = useState("ALL");
@@ -22,6 +23,10 @@ export default function AdminClassesPage() {
   const [editHomeroomId, setEditHomeroomId] = useState("");
   const [updating, setUpdating] = useState(false);
 
+  const [selectedSubjectId, setSelectedSubjectId] = useState("");
+  const [selectedSubjectTeacherId, setSelectedSubjectTeacherId] = useState("");
+  const [assigningGvbm, setAssigningGvbm] = useState(false);
+
   const [className, setClassName] = useState("");
   const [grade, setGrade] = useState(6);
   const [homeroomTeacherId, setHomeroomTeacherId] = useState("");
@@ -30,12 +35,14 @@ export default function AdminClassesPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [classesRes, teachersRes] = await Promise.all([
+      const [classesRes, teachersRes, subjectsRes] = await Promise.all([
         fetchApi<any[]>("/admin/classes").catch(() => []),
         fetchApi<any>("/admin/users/teachers").catch(() => []),
+        fetchApi<any[]>("/admin/subjects").catch(() => []),
       ]);
       setClasses(Array.isArray(classesRes) ? classesRes : []);
       setTeachers(Array.isArray(teachersRes) ? teachersRes : teachersRes?.teachers || []);
+      setSubjects(Array.isArray(subjectsRes) ? subjectsRes : []);
     } catch (error) {
       console.error("Failed to fetch classes:", error);
     } finally {
@@ -77,6 +84,47 @@ export default function AdminClassesPage() {
     setEditName(cls.name || "");
     setEditGrade(cls.grade || 6);
     setEditHomeroomId(cls.homeroomTeacher?.id || "");
+    setSelectedSubjectId("");
+    setSelectedSubjectTeacherId("");
+  };
+
+  const handleAssignSubjectTeacher = async () => {
+    if (!editingClass || !selectedSubjectId || !selectedSubjectTeacherId) {
+      alert("Vui lòng chọn cả Môn học và Giáo viên bộ môn!");
+      return;
+    }
+    setAssigningGvbm(true);
+    try {
+      const updated = await fetchApi(`/admin/classes/${editingClass.id}/subject-teachers`, {
+        method: "POST",
+        body: JSON.stringify({
+          subjectId: selectedSubjectId,
+          teacherId: selectedSubjectTeacherId,
+        }),
+      });
+      setEditingClass(updated);
+      setClasses((prev) => prev.map((c) => (c.id === editingClass.id ? updated : c)));
+      setSelectedSubjectId("");
+      setSelectedSubjectTeacherId("");
+    } catch (error: any) {
+      alert(error?.message || "Không thể phân công giáo viên bộ môn");
+    } finally {
+      setAssigningGvbm(false);
+    }
+  };
+
+  const handleRemoveSubjectTeacher = async (subjectId: string) => {
+    if (!editingClass) return;
+    try {
+      const updated = await fetchApi(
+        `/admin/classes/${editingClass.id}/subject-teachers/${subjectId}`,
+        { method: "DELETE" },
+      );
+      setEditingClass(updated);
+      setClasses((prev) => prev.map((c) => (c.id === editingClass.id ? updated : c)));
+    } catch (error: any) {
+      alert(error?.message || "Không thể gỡ phân công giáo viên bộ môn");
+    }
   };
 
   const handleUpdateClass = async (e: React.FormEvent) => {
@@ -427,85 +475,167 @@ export default function AdminClassesPage() {
         </div>
       )}
 
-      {/* Edit Class / Assign Homeroom Teacher Modal */}
+      {/* Edit Class / Assign Homeroom & Subject Teachers Modal */}
       {editingClass && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                Cập nhật lớp học & Phân công GVCN
+                Cập nhật lớp {editingClass.name} & Phân công Giáo viên
               </h3>
               <button onClick={() => setEditingClass(null)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleUpdateClass} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Tên lớp *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                  />
+            <div className="p-6 space-y-5 overflow-y-auto">
+              <form onSubmit={handleUpdateClass} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Tên lớp *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Khối lớp *
+                    </label>
+                    <select
+                      value={editGrade}
+                      onChange={(e) => setEditGrade(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                    >
+                      {[6, 7, 8, 9, 10, 11, 12].map((g) => (
+                        <option key={g} value={g}>
+                          Khối {g}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Khối lớp *
+                    Giáo viên chủ nhiệm (GVCN)
                   </label>
                   <select
-                    value={editGrade}
-                    onChange={(e) => setEditGrade(Number(e.target.value))}
+                    value={editHomeroomId}
+                    onChange={(e) => setEditHomeroomId(e.target.value)}
                     className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                   >
-                    {[6, 7, 8, 9, 10, 11, 12].map((g) => (
-                      <option key={g} value={g}>
-                        Khối {g}
+                    <option value="">-- Chưa phân công --</option>
+                    {teachers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.fullName} ({t.email || t.studentCode})
                       </option>
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Giáo viên chủ nhiệm (GVCN)
-                </label>
-                <select
-                  value={editHomeroomId}
-                  onChange={(e) => setEditHomeroomId(e.target.value)}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                >
-                  <option value="">-- Chưa phân công --</option>
-                  {teachers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.fullName} ({t.email || t.studentCode})
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={updating}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50"
+                  >
+                    {updating ? "Đang lưu..." : "Lưu thông tin & GVCN"}
+                  </button>
+                </div>
+              </form>
 
-              <div className="pt-4 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setEditingClass(null)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-xl"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={updating}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50"
-                >
-                  {updating ? "Đang lưu..." : "Lưu thay đổi"}
-                </button>
+              {/* Subject Teachers (GVBM) Assignment Section */}
+              <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-3">
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Phân công Giáo viên bộ môn (GVBM)
+                </h4>
+                {editingClass.subjectTeachers && editingClass.subjectTeachers.length > 0 ? (
+                  <div className="space-y-2">
+                    {editingClass.subjectTeachers.map((st: any) => (
+                      <div
+                        key={st.id}
+                        className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/70 border border-gray-100 dark:border-gray-700 text-sm"
+                      >
+                        <div>
+                          <span className="font-bold text-blue-600 dark:text-blue-400">
+                            {st.subject?.name} (Khối {st.subject?.grade}):
+                          </span>{" "}
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {st.teacher?.fullName}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSubjectTeacher(st.subjectId || st.subject?.id)}
+                          className="text-red-500 hover:text-red-700 p-1 rounded"
+                          title="Gỡ phân công môn này"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 italic">
+                    Chưa có giáo viên bộ môn nào được phân công riêng cho lớp này.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <select
+                    value={selectedSubjectId}
+                    onChange={(e) => setSelectedSubjectId(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                  >
+                    <option value="">-- Chọn môn học --</option>
+                    {subjects
+                      .filter((s) => !editGrade || Number(s.grade) === Number(editGrade))
+                      .concat(subjects.filter((s) => editGrade && Number(s.grade) !== Number(editGrade)))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} (Khối {s.grade})
+                        </option>
+                      ))}
+                  </select>
+
+                  <select
+                    value={selectedSubjectTeacherId}
+                    onChange={(e) => setSelectedSubjectTeacherId(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                  >
+                    <option value="">-- Chọn giáo viên dạy --</option>
+                    {teachers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.fullName} ({t.studentCode || t.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex justify-between items-center pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAssignSubjectTeacher}
+                    disabled={assigningGvbm || !selectedSubjectId || !selectedSubjectTeacherId}
+                    className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl disabled:opacity-50"
+                  >
+                    {assigningGvbm ? "Đang gán..." : "+ Gán GV bộ môn cho lớp"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingClass(null)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-xl"
+                  >
+                    Đóng
+                  </button>
+                </div>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

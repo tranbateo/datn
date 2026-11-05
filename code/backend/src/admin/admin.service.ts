@@ -486,6 +486,405 @@ export class AdminService {
     return { success: true };
   }
 
+  async assignSubjectTeacher(
+    schoolId: string | null,
+    actorId: string,
+    classId: string,
+    dto: { subjectId: string; teacherId: string },
+  ) {
+    if (!dto.subjectId || !dto.teacherId) {
+      throw new BadRequestException('Vui lòng chọn môn học và giáo viên bộ môn.');
+    }
+
+    const existingClass = await this.prisma.class.findUnique({
+      where: { id: classId },
+    });
+    if (!existingClass) {
+      throw new NotFoundException('Không tìm thấy lớp học.');
+    }
+    if (schoolId && existingClass.schoolId !== schoolId) {
+      throw new ForbiddenException('Không có quyền phân công cho lớp của trường khác.');
+    }
+
+    const subject = await this.prisma.subject.findUnique({
+      where: { id: dto.subjectId },
+    });
+    if (!subject) {
+      throw new NotFoundException('Không tìm thấy môn học.');
+    }
+
+    await this.prisma.classSubjectTeacher.upsert({
+      where: {
+        classId_subjectId: {
+          classId,
+          subjectId: dto.subjectId,
+        },
+      },
+      update: {
+        teacherId: dto.teacherId,
+        status: 'ACTIVE',
+      },
+      create: {
+        classId,
+        subjectId: dto.subjectId,
+        teacherId: dto.teacherId,
+        status: 'ACTIVE',
+      },
+    });
+
+    // Ensure the assigned Subject Teacher has a Course record for this subject & class grade so they can upload RAG documents immediately
+    const existingCourse = await this.prisma.course.findFirst({
+      where: {
+        schoolId: existingClass.schoolId,
+        teacherId: dto.teacherId,
+        subjectId: dto.subjectId,
+        grade: existingClass.grade,
+      },
+    });
+    if (!existingCourse) {
+      await this.prisma.course.create({
+        data: {
+          schoolId: existingClass.schoolId,
+          teacherId: dto.teacherId,
+          subjectId: dto.subjectId,
+          grade: existingClass.grade,
+          title: `${subject.name} - Khối ${existingClass.grade} (${existingClass.name})`,
+          description: `Học phần chính khóa môn ${subject.name} lớp ${existingClass.name}`,
+        },
+      });
+    }
+
+    await this.auditLogService.logAction(
+      actorId,
+      'ASSIGN_SUBJECT_TEACHER',
+      'ClassSubjectTeacher',
+      {
+        classId,
+        className: existingClass.name,
+        subjectId: dto.subjectId,
+        subjectName: subject.name,
+        teacherId: dto.teacherId,
+      },
+    );
+
+    return this.prisma.class.findUnique({
+      where: { id: classId },
+      include: {
+        academicYear: true,
+        homeroomTeacher: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+            studentCode: true,
+          },
+        },
+        subjectTeachers: {
+          include: {
+            subject: { select: { id: true, name: true, grade: true } },
+            teacher: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                studentCode: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: { enrollments: true },
+        },
+      },
+    });
+  }
+
+  async removeSubjectTeacher(
+    schoolId: string | null,
+    actorId: string,
+    classId: string,
+    subjectId: string,
+  ) {
+    const existingClass = await this.prisma.class.findUnique({
+      where: { id: classId },
+    });
+    if (!existingClass) {
+      throw new NotFoundException('Không tìm thấy lớp học.');
+    }
+    if (schoolId && existingClass.schoolId !== schoolId) {
+      throw new ForbiddenException('Không có quyền thao tác lớp của trường khác.');
+    }
+
+    await this.prisma.classSubjectTeacher.deleteMany({
+      where: { classId, subjectId },
+    });
+
+    await this.auditLogService.logAction(
+      actorId,
+      'REMOVE_SUBJECT_TEACHER',
+      'ClassSubjectTeacher',
+      {
+        classId,
+        subjectId,
+      },
+    );
+
+    return this.prisma.class.findUnique({
+      where: { id: classId },
+      include: {
+        academicYear: true,
+        homeroomTeacher: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+            studentCode: true,
+          },
+        },
+        subjectTeachers: {
+          include: {
+            subject: { select: { id: true, name: true, grade: true } },
+            teacher: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                studentCode: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: { enrollments: true },
+        },
+      },
+    });
+  }
+
+  async getAcademicYears(schoolId?: string | null) {
+    let targetSchoolId = schoolId;
+    if (!targetSchoolId) {
+      const firstSchool = await this.prisma.school.findFirst({
+        orderBy: { createdAt: 'asc' },
+      });
+      targetSchoolId = firstSchool?.id || null;
+    }
+    if (!targetSchoolId) return [];
+
+    return this.prisma.academicYear.findMany({
+      where: { schoolId: targetSchoolId },
+      include: {
+        _count: { select: { classes: true } },
+      },
+      orderBy: [{ isCurrent: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async createAcademicYear(
+    schoolId: string | null,
+    actorId: string,
+    dto: {
+      name: string;
+      startDate?: string;
+      endDate?: string;
+      isCurrent?: boolean;
+    },
+  ) {
+    if (!dto.name || !dto.name.trim()) {
+      throw new BadRequestException('Vui lòng nhập tên niên khóa (VD: 2025-2026).');
+    }
+
+    let targetSchoolId = schoolId;
+    if (!targetSchoolId) {
+      const firstSchool = await this.prisma.school.findFirst({
+        orderBy: { createdAt: 'asc' },
+      });
+      targetSchoolId = firstSchool?.id || null;
+    }
+    if (!targetSchoolId) {
+      throw new BadRequestException('Không tìm thấy trường học để tạo niên khóa.');
+    }
+
+    if (dto.isCurrent) {
+      await this.prisma.academicYear.updateMany({
+        where: { schoolId: targetSchoolId },
+        data: { isCurrent: false },
+      });
+    }
+
+    const year = await this.prisma.academicYear.upsert({
+      where: {
+        schoolId_name: {
+          schoolId: targetSchoolId,
+          name: dto.name.trim(),
+        },
+      },
+      update: {
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+        endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+        ...(dto.isCurrent !== undefined ? { isCurrent: dto.isCurrent } : {}),
+      },
+      create: {
+        schoolId: targetSchoolId,
+        name: dto.name.trim(),
+        startDate: dto.startDate ? new Date(dto.startDate) : null,
+        endDate: dto.endDate ? new Date(dto.endDate) : null,
+        isCurrent: dto.isCurrent ?? false,
+      },
+      include: {
+        _count: { select: { classes: true } },
+      },
+    });
+
+    await this.auditLogService.logAction(
+      actorId,
+      'UPSERT_ACADEMIC_YEAR',
+      'AcademicYear',
+      {
+        academicYearId: year.id,
+        name: year.name,
+        isCurrent: year.isCurrent,
+      },
+    );
+
+    return year;
+  }
+
+  async setCurrentAcademicYear(
+    schoolId: string | null,
+    actorId: string,
+    id: string,
+  ) {
+    const existing = await this.prisma.academicYear.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy niên khóa.');
+    }
+    if (schoolId && existing.schoolId !== schoolId) {
+      throw new ForbiddenException('Không có quyền thao tác niên khóa trường khác.');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.academicYear.updateMany({
+        where: { schoolId: existing.schoolId },
+        data: { isCurrent: false },
+      }),
+      this.prisma.academicYear.update({
+        where: { id },
+        data: { isCurrent: true },
+      }),
+    ]);
+
+    await this.auditLogService.logAction(
+      actorId,
+      'SET_CURRENT_ACADEMIC_YEAR',
+      'AcademicYear',
+      {
+        academicYearId: id,
+        name: existing.name,
+      },
+    );
+
+    return this.getAcademicYears(existing.schoolId);
+  }
+
+  async deleteAcademicYear(
+    schoolId: string | null,
+    actorId: string,
+    id: string,
+  ) {
+    const existing = await this.prisma.academicYear.findUnique({
+      where: { id },
+      include: { _count: { select: { classes: true } } },
+    });
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy niên khóa.');
+    }
+    if (schoolId && existing.schoolId !== schoolId) {
+      throw new ForbiddenException('Không có quyền xóa niên khóa trường khác.');
+    }
+    if (existing._count.classes > 0) {
+      throw new BadRequestException(
+        'Không thể xóa niên khóa đang có lớp học hoạt động.',
+      );
+    }
+
+    await this.prisma.academicYear.delete({ where: { id } });
+
+    await this.auditLogService.logAction(
+      actorId,
+      'DELETE_ACADEMIC_YEAR',
+      'AcademicYear',
+      {
+        academicYearId: id,
+        name: existing.name,
+      },
+    );
+
+    return { success: true };
+  }
+
+  async getSubjects() {
+    return this.prisma.subject.findMany({
+      orderBy: [{ grade: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async createSubject(
+    actorId: string,
+    dto: { name: string; grade: number; description?: string },
+  ) {
+    if (!dto.name || !dto.name.trim()) {
+      throw new BadRequestException('Vui lòng nhập tên môn học.');
+    }
+    const gradeNum = Number(dto.grade) || 6;
+
+    const subject = await this.prisma.subject.upsert({
+      where: {
+        name_grade: {
+          name: dto.name.trim(),
+          grade: gradeNum,
+        },
+      },
+      update: {
+        description: dto.description || undefined,
+      },
+      create: {
+        name: dto.name.trim(),
+        grade: gradeNum,
+        description: dto.description || `Môn ${dto.name.trim()} Khối ${gradeNum}`,
+      },
+    });
+
+    await this.auditLogService.logAction(actorId, 'UPSERT_SUBJECT', 'Subject', {
+      subjectId: subject.id,
+      name: subject.name,
+      grade: subject.grade,
+    });
+
+    return subject;
+  }
+
+  async deleteSubject(actorId: string, id: string) {
+    const existing = await this.prisma.subject.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy môn học.');
+    }
+
+    await this.prisma.subject.delete({ where: { id } });
+
+    await this.auditLogService.logAction(actorId, 'DELETE_SUBJECT', 'Subject', {
+      subjectId: id,
+      name: existing.name,
+      grade: existing.grade,
+    });
+
+    return { success: true };
+  }
+
   async transferStudentClass(
     schoolId: string | null,
     actorId: string,

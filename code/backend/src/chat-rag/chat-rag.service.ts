@@ -163,7 +163,9 @@ export class ChatRagService {
       const publishedDocs = await this.prisma.document.findMany({
         where: {
           courseId: { in: courseIds },
-          status: { notIn: ['Failed', 'FAILED', 'UNPUBLISHED'] },
+          status: {
+            notIn: ['Failed', 'FAILED', 'UNPUBLISHED', 'ARCHIVED', 'Pending', 'Processing'],
+          },
         },
         take: 3,
       });

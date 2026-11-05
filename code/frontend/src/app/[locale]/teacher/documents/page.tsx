@@ -73,7 +73,7 @@ export default function TeacherDocumentsPage() {
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
-      await fetchApi(`/documents/upload?courseId=${encodeURIComponent(selectedCourseId)}`, {
+      await fetchApi(`/documents/upload/${encodeURIComponent(selectedCourseId)}`, {
         method: "POST",
         body: formData,
       });
@@ -183,7 +183,7 @@ export default function TeacherDocumentsPage() {
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                         <CheckCircle2 className="w-3.5 h-3.5" /> Đã xuất bản (READY)
                       </span>
-                    ) : doc.rawStatus === "ARCHIVED" ? (
+                    ) : doc.rawStatus === "ARCHIVED" || doc.status === "unpublished" ? (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
                         <EyeOff className="w-3.5 h-3.5" /> Đã gỡ (ARCHIVED)
                       </span>

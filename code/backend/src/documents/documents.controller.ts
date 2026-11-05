@@ -5,6 +5,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Param,
+  Query,
   Req,
   UseGuards,
   BadRequestException,
@@ -41,6 +42,20 @@ export class DocumentsController {
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
   async getAllDocuments(@Req() req: { user: { schoolId: string | null } }) {
     return this.documentsService.findAll(req.user.schoolId);
+  }
+
+  @Post('upload')
+  @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadDocumentByQuery(
+    @Req() req: { user: { id: string; schoolId: string | null } },
+    @UploadedFile() file: Express.Multer.File,
+    @Query('courseId') courseId: string,
+  ) {
+    if (!courseId) {
+      throw new BadRequestException('Vui lòng chọn khóa học áp dụng.');
+    }
+    return this.uploadDocument(req, file, courseId);
   }
 
   @Post('upload/:courseId')
