@@ -6,6 +6,7 @@ import { getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/toaster";
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ["latin", "vietnamese"],
@@ -65,10 +66,9 @@ export async function generateMetadata({
     publisher: "AI Tutor Edu",
     alternates: {
       canonical: `/${locale}`,
-      languages: {
-        vi: "/vi",
-        en: "/en",
-      },
+      languages: Object.fromEntries(
+        routing.locales.map((l) => [l, `/${l}`]),
+      ),
     },
     openGraph: {
       type: "website",
@@ -125,6 +125,7 @@ export default async function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <NextIntlClientProvider messages={messages}>
             {children}
+            <Toaster />
           </NextIntlClientProvider>
         </ThemeProvider>
       </body>

@@ -42,11 +42,15 @@ export function NotificationBell({ className }: NotificationBellProps) {
   }, []);
 
   return (
-    <>
+    <span
+      className="relative inline-flex items-center justify-center p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+      role="img"
+      aria-label={hasUnread ? "Bạn có thông báo chưa đọc" : "Không có thông báo mới"}
+    >
       <Bell className={className || "w-5 h-5"} />
       {hasUnread && (
-        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-gray-900"></span>
+        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-900" />
       )}
-    </>
+    </span>
   );
 }

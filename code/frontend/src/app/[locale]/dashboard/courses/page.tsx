@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { useState, useEffect, useMemo } from "react";
 import { BookOpen, Search, Loader2, Bot, GraduationCap } from "lucide-react";
@@ -32,9 +33,9 @@ export default function StudentCoursesPage() {
     setEnrolling(courseId);
     try {
       await fetchApi(API_ENDPOINTS.COURSES.ENROLL(courseId), { method: "POST" });
-      alert("Đăng ký khóa học thành công!");
+      notify("Đăng ký khóa học thành công!");
     } catch (err: any) {
-      alert(err.message || "Đăng ký khóa học thất bại.");
+      notify(err.message || "Đăng ký khóa học thất bại.");
     } finally {
       setEnrolling(null);
     }

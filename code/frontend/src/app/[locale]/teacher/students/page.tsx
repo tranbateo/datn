@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { Search, Filter, Download, Users, TrendingUp, AlertTriangle, Edit, X } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -120,7 +121,7 @@ export default function TeacherStudentsPage() {
       setEditingStudent(null);
       await loadStudents();
     } catch (error: any) {
-      alert(error?.message || "Không thể cập nhật điểm bài làm.");
+      notify(error?.message || "Không thể cập nhật điểm bài làm.");
     } finally {
       setSavingScore(false);
     }

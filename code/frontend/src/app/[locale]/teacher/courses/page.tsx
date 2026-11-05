@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { API_ENDPOINTS } from "@/constants/api";
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -215,11 +216,11 @@ function CourseRow({ course, onUploaded }: { course: any; onUploaded: () => void
         method: "POST",
         body: formData,
       });
-      alert("Tải lên thành công! Tài liệu đã được đưa vào kho tri thức RAG của khóa học.");
+      notify("Tải lên thành công! Tài liệu đã được đưa vào kho tri thức RAG của khóa học.");
       onUploaded();
     } catch (err) {
       console.error(err);
-      alert("Có lỗi xảy ra khi tải tài liệu");
+      notify("Có lỗi xảy ra khi tải tài liệu");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

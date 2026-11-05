@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { usePathname } from "next/navigation";
 import { Link } from "@/i18n/routing";
@@ -74,7 +75,7 @@ export function ParentNavigation() {
       setFeedbackContent("");
       setFeedbackStatus("success");
     } catch (error: any) {
-      alert(error?.message || "Không thể gửi phản hồi");
+      notify(error?.message || "Không thể gửi phản hồi");
       setFeedbackStatus("idle");
     }
   };
@@ -163,7 +164,7 @@ export function ParentNavigation() {
                   notifications.slice(0, 6).map((n: any) => (
                     <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{n.message}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{n.body || n.message}</p>
                       <p className="text-[10px] text-blue-500 mt-1">
                         {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}
                       </p>
@@ -272,7 +273,7 @@ export function ParentNavigation() {
                   notifications.slice(0, 8).map((n: any) => (
                     <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                       <p className="text-sm font-bold text-gray-900 dark:text-white">{n.title}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{n.message}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{n.body || n.message}</p>
                       <p className="text-[10px] font-medium text-blue-500 mt-1.5 uppercase tracking-wider">
                         {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}
                       </p>

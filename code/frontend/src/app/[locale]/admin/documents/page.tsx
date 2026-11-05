@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { API_ENDPOINTS } from "@/constants/api";
 import {
@@ -53,7 +54,7 @@ export default function ResourceLibrary() {
       if (courses && courses.length > 0) {
         courseId = courses[0].id;
       } else {
-        alert("Vui lòng tạo khóa học trước khi upload tài liệu.");
+        notify("Vui lòng tạo khóa học trước khi upload tài liệu.");
         return;
       }
 
@@ -65,11 +66,11 @@ export default function ResourceLibrary() {
         body: formData,
       });
 
-      alert("Tài liệu đã được tải lên và đang được xử lý nhúng Vector RAG.");
+      notify("Tài liệu đã được tải lên và đang được xử lý nhúng Vector RAG.");
       loadDocs();
     } catch (error) {
       console.error(error);
-      alert("Lỗi khi tải tài liệu");
+      notify("Lỗi khi tải tài liệu");
     } finally {
       setUploading(false);
       e.target.value = "";

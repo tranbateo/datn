@@ -1,51 +1,60 @@
- 
-import { Search, User } from "lucide-react";
-import { ThemeToggle } from "../ThemeToggle";
+"use client";
 
+import { useEffect, useState } from "react";
+import { User } from "lucide-react";
+import { ThemeToggle } from "../ThemeToggle";
 import { NotificationBell } from "../common/NotificationBell";
+import { fetchApi } from "@/lib/api-client";
+import { Link } from "@/i18n/routing";
+
+interface TeacherProfile {
+  fullName?: string | null;
+  school?: { name?: string | null } | null;
+}
 
 export function TeacherHeader() {
+  const [profile, setProfile] = useState<TeacherProfile | null>(null);
 
-
+  useEffect(() => {
+    fetchApi<TeacherProfile>("/users/profile")
+      .then(setProfile)
+      .catch(() => setProfile(null));
+  }, []);
 
   return (
-    <header className="h-20 bg-white dark:bg-card-bg border-b border-gray-100 dark:border-card-border flex items-center justify-between px-8 sticky top-0 z-10">
-      <div className="flex items-center gap-8">
-        <h1 className="text-xl font-bold text-primary max-w-[200px] leading-tight">
-          Teacher<br/>Portal
+    <header className="h-16 bg-white/90 dark:bg-card-bg/90 backdrop-blur-md border-b border-slate-200/80 dark:border-card-border flex items-center justify-between px-6 sm:px-8 sticky top-0 z-10">
+      <div className="min-w-0">
+        <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
+          Cổng Giáo viên
         </h1>
-        
-        <div className="relative hidden md:block">
-          <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input 
-            type="text" 
-            placeholder="Search..." 
-            className="pl-10 pr-4 py-2 w-80 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-gray-200"
-          />
-        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+          {profile?.school?.name || "Quản lý lớp học, tài liệu và đề kiểm tra"}
+        </p>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+          <NotificationBell />
           <ThemeToggle />
-          
-          
-          <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors relative">
-            <NotificationBell />
-          </button>
         </div>
 
-        <div className="h-8 w-px bg-gray-200 dark:bg-gray-800 mx-2"></div>
+        <div className="h-8 w-px bg-slate-200 dark:bg-slate-800" />
 
-        <button className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-1.5 rounded-xl transition-colors">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center text-primary">
+        <Link
+          href="/teacher/settings"
+          className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-800 p-1.5 rounded-xl transition-colors"
+          aria-label="Mở cài đặt tài khoản giáo viên"
+        >
+          <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
             <User className="w-5 h-5" />
           </div>
           <div className="text-left hidden sm:block">
-            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Teacher</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">EduAI Staff</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-tight">
+              {profile?.fullName || "Giáo viên"}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Tài khoản của tôi</p>
           </div>
-        </button>
+        </Link>
       </div>
     </header>
   );

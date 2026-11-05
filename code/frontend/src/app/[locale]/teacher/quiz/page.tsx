@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { Sparkles, CheckCircle2, Lock, Send, Plus, Trash2, X } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -69,7 +70,7 @@ export default function TeacherQuestionBankPage() {
       );
     } catch (err) {
       console.error(err);
-      alert("Cập nhật trạng thái đề thi thất bại.");
+      notify("Cập nhật trạng thái đề thi thất bại.");
     }
   };
 
@@ -105,7 +106,7 @@ export default function TeacherQuestionBankPage() {
       setManualQuestions([{ content: "", options: ["", "", "", ""], correctOption: 0, explanation: "" }]);
       await loadQuizzes();
     } catch (err: any) {
-      alert(err?.message || "Không thể tạo đề kiểm tra thủ công.");
+      notify(err?.message || "Không thể tạo đề kiểm tra thủ công.");
     } finally {
       setSavingManual(false);
     }

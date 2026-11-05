@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { Search, CheckCircle2, XCircle, Clock, Check } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -38,7 +39,7 @@ export default function AdminFeedbackClient({ initialData }: { initialData: any[
       );
     } catch (error) {
       console.error(error);
-      alert("Cập nhật trạng thái phản hồi thất bại.");
+      notify("Cập nhật trạng thái phản hồi thất bại.");
     }
   };
 

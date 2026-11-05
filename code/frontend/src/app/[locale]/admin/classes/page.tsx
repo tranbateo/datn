@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { useState, useEffect } from "react";
 import { School, Plus, Users, GraduationCap, Download, Upload, Search, KeyRound, X, Edit, Trash2 } from "lucide-react";
@@ -73,7 +74,7 @@ export default function AdminClassesPage() {
       setIsCreateOpen(false);
       await fetchData();
     } catch (error: any) {
-      alert(error?.message || "Không thể tạo lớp học");
+      notify(error?.message || "Không thể tạo lớp học");
     } finally {
       setCreating(false);
     }
@@ -90,7 +91,7 @@ export default function AdminClassesPage() {
 
   const handleAssignSubjectTeacher = async () => {
     if (!editingClass || !selectedSubjectId || !selectedSubjectTeacherId) {
-      alert("Vui lòng chọn cả Môn học và Giáo viên bộ môn!");
+      notify("Vui lòng chọn cả Môn học và Giáo viên bộ môn!");
       return;
     }
     setAssigningGvbm(true);
@@ -107,7 +108,7 @@ export default function AdminClassesPage() {
       setSelectedSubjectId("");
       setSelectedSubjectTeacherId("");
     } catch (error: any) {
-      alert(error?.message || "Không thể phân công giáo viên bộ môn");
+      notify(error?.message || "Không thể phân công giáo viên bộ môn");
     } finally {
       setAssigningGvbm(false);
     }
@@ -123,7 +124,7 @@ export default function AdminClassesPage() {
       setEditingClass(updated);
       setClasses((prev) => prev.map((c) => (c.id === editingClass.id ? updated : c)));
     } catch (error: any) {
-      alert(error?.message || "Không thể gỡ phân công giáo viên bộ môn");
+      notify(error?.message || "Không thể gỡ phân công giáo viên bộ môn");
     }
   };
 
@@ -143,7 +144,7 @@ export default function AdminClassesPage() {
       setClasses((prev) => prev.map((c) => (c.id === editingClass.id ? updated : c)));
       setEditingClass(null);
     } catch (error: any) {
-      alert(error?.message || "Không thể cập nhật lớp học");
+      notify(error?.message || "Không thể cập nhật lớp học");
     } finally {
       setUpdating(false);
     }
@@ -155,7 +156,7 @@ export default function AdminClassesPage() {
       await fetchApi(`/admin/classes/${cls.id}`, { method: "DELETE" });
       setClasses((prev) => prev.filter((c) => c.id !== cls.id));
     } catch (error: any) {
-      alert(error?.message || "Không thể xóa lớp học");
+      notify(error?.message || "Không thể xóa lớp học");
     }
   };
 

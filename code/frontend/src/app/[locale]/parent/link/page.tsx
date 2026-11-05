@@ -1,4 +1,5 @@
 'use client';
+import { notify } from "@/lib/toast";
 
 import { useState, useEffect } from 'react';
 import { parentService, ParentDashboardData } from '@/services/parent.service';
@@ -60,7 +61,7 @@ export default function ParentLinkPage() {
       await parentService.unlinkStudent(studentId);
       await loadLinkedStudents();
     } catch (err: any) {
-      alert(err?.message || 'Hủy liên kết thất bại.');
+      notify(err?.message || 'Hủy liên kết thất bại.');
     }
   };
 

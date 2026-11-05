@@ -1,3 +1,4 @@
+import { notify } from "@/lib/toast";
 import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Loader2, Save } from 'lucide-react';
 import { fetchApi } from '@/lib/api-client';
@@ -41,7 +42,7 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
 
   const handleGenerate = async () => {
     if (!title || !courseId) {
-      alert('Vui lòng nhập Tên đề thi và chọn Khóa học / Lớp học!');
+      notify('Vui lòng nhập Tên đề thi và chọn Khóa học / Lớp học!');
       return;
     }
     setLoading(true);
@@ -58,7 +59,7 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
       setPreviewData(data as any);
     } catch (err: any) {
       console.error(err);
-      alert(err?.message || 'Tạo quiz thất bại. Vui lòng thử lại.');
+      notify(err?.message || 'Tạo quiz thất bại. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -84,7 +85,7 @@ export default function AiQuizBuilderModal({ isOpen, onClose, onSuccess }: AiQui
         onClose();
       } catch (err) {
         console.error(err);
-        alert('Lưu quiz thất bại. Vui lòng thử lại.');
+        notify('Lưu quiz thất bại. Vui lòng thử lại.');
       } finally {
         setSaving(false);
       }

@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { APP_ROUTES } from "@/constants/routes";
 import Image from "next/image";
@@ -52,7 +53,7 @@ export default function SettingsPage() {
       };
       if (password.trim()) {
         if (password.trim().length < 6) {
-          alert("Mật khẩu mới phải có ít nhất 6 ký tự.");
+          notify("Mật khẩu mới phải có ít nhất 6 ký tự.");
           setSaving(false);
           return;
         }
@@ -67,7 +68,7 @@ export default function SettingsPage() {
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch (error: unknown) {
       const err = error as Error;
-      alert("Lỗi: " + err.message);
+      notify("Lỗi: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -80,7 +81,7 @@ export default function SettingsPage() {
       setLinkCode(res.linkCode);
     } catch (error: unknown) {
       const err = error as Error;
-      alert("Không thể tạo mã liên kết: " + err.message);
+      notify("Không thể tạo mã liên kết: " + err.message);
     } finally {
       setGeneratingCode(false);
     }

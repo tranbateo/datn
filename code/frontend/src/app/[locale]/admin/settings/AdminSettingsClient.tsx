@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 /* eslint-disable react/no-unescaped-entities */
 
 import { useState, useEffect } from "react";
@@ -87,7 +88,7 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
       setNewYearCurrent(false);
       await loadMasterData();
     } catch (err: any) {
-      alert(err?.message || "Không thể tạo niên khóa");
+      notify(err?.message || "Không thể tạo niên khóa");
     } finally {
       setCreatingYear(false);
     }
@@ -101,7 +102,7 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
       if (Array.isArray(updated)) setAcademicYears(updated);
       else await loadMasterData();
     } catch (err: any) {
-      alert(err?.message || "Không thể đặt niên khóa hiện hành");
+      notify(err?.message || "Không thể đặt niên khóa hiện hành");
     }
   };
 
@@ -111,7 +112,7 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
       await fetchApi(`/admin/academic-years/${id}`, { method: "DELETE" });
       setAcademicYears((prev) => prev.filter((y) => y.id !== id));
     } catch (err: any) {
-      alert(err?.message || "Không thể xóa niên khóa đang có lớp học");
+      notify(err?.message || "Không thể xóa niên khóa đang có lớp học");
     }
   };
 
@@ -130,7 +131,7 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
       setNewSubjectName("");
       await loadMasterData();
     } catch (err: any) {
-      alert(err?.message || "Không thể thêm môn học");
+      notify(err?.message || "Không thể thêm môn học");
     } finally {
       setCreatingSubject(false);
     }
@@ -142,7 +143,7 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
       await fetchApi(`/admin/subjects/${id}`, { method: "DELETE" });
       setSubjects((prev) => prev.filter((s) => s.id !== id));
     } catch (err: any) {
-      alert(err?.message || "Không thể xóa môn học");
+      notify(err?.message || "Không thể xóa môn học");
     }
   };
 
@@ -166,11 +167,11 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
       if (updated) {
         setLicense({ ...updated, name: schoolName.trim() || updated.name });
         setCustomApiKey("");
-        alert("Đã lưu cấu hình trường học và AI lên cơ sở dữ liệu thành công!");
+        notify("Đã lưu cấu hình trường học và AI lên cơ sở dữ liệu thành công!");
       }
     } catch (err) {
       console.error(err);
-      alert("Không thể cập nhật cấu hình trường học.");
+      notify("Không thể cập nhật cấu hình trường học.");
     } finally {
       setSavingByok(false);
     }

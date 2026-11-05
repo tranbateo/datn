@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { API_ENDPOINTS } from '@/constants/api';
 import { useState, useRef, useEffect } from "react";
@@ -283,10 +284,10 @@ export default function AITutorPage() {
           content: feedbackContent || "Báo cáo tin nhắn AI",
         }),
       });
-      alert('Cảm ơn bạn đã phản hồi!');
+      notify('Cảm ơn bạn đã phản hồi!');
     } catch (error) {
       console.error(error);
-      alert('Có lỗi xảy ra khi gửi phản hồi.');
+      notify('Có lỗi xảy ra khi gửi phản hồi.');
     } finally {
       setFeedbackMsgId(null);
       setFeedbackContent('');

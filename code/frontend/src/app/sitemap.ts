@@ -1,13 +1,13 @@
 import type { MetadataRoute } from "next";
+import { routing } from "@/i18n/routing";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://aitutor.edu.vn";
   const now = new Date();
 
-  const routes = ["", "/features", "/pricing", "/login"];
-  const locales = ["vi", "en"];
+  const routes = ["", "/features", "/pricing"];
 
-  return locales.flatMap((locale) =>
+  return routing.locales.flatMap((locale) =>
     routes.map((route) => ({
       url: `${siteUrl}/${locale}${route}`,
       lastModified: now,
@@ -16,4 +16,3 @@ export default function sitemap(): MetadataRoute.Sitemap {
     })),
   );
 }
-

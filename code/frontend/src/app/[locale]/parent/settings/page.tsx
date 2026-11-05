@@ -1,4 +1,5 @@
 'use client';
+import { notify } from "@/lib/toast";
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
@@ -60,7 +61,7 @@ export default function ParentSettingsPage() {
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
       console.error("Failed to update profile", error);
-      alert("Failed to update profile");
+      notify("Không thể cập nhật hồ sơ. Vui lòng thử lại.");
     } finally {
       setSaving(false);
     }

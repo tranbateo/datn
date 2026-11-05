@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { useTranslations } from "next-intl";
 import { Upload, FileText, Search, CheckCircle2, Clock, Trash2, EyeOff, Eye, Loader2, X } from "lucide-react";
@@ -66,7 +67,7 @@ export default function TeacherDocumentsPage() {
   const handleUploadDocument = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile || !selectedCourseId) {
-      alert("Vui lòng chọn Khóa học / Lớp và file PDF tài liệu!");
+      notify("Vui lòng chọn Khóa học / Lớp và file PDF tài liệu!");
       return;
     }
     setUploading(true);
@@ -82,7 +83,7 @@ export default function TeacherDocumentsPage() {
       await loadDocuments();
     } catch (err: any) {
       console.error(err);
-      alert(err?.message || "Tải lên tài liệu thất bại.");
+      notify(err?.message || "Tải lên tài liệu thất bại.");
     } finally {
       setUploading(false);
     }
@@ -95,7 +96,7 @@ export default function TeacherDocumentsPage() {
       await loadDocuments();
     } catch (err) {
       console.error(err);
-      alert("Không thể cập nhật trạng thái tài liệu.");
+      notify("Không thể cập nhật trạng thái tài liệu.");
     }
   };
 
@@ -106,7 +107,7 @@ export default function TeacherDocumentsPage() {
       setDocuments((prev) => prev.filter((d) => d.id !== id));
     } catch (err) {
       console.error(err);
-      alert("Không thể xóa tài liệu.");
+      notify("Không thể xóa tài liệu.");
     }
   };
 

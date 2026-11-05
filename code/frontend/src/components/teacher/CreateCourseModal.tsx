@@ -1,3 +1,4 @@
+import { notify } from "@/lib/toast";
 import React, { useState } from 'react';
 import { X, Loader2, Save } from 'lucide-react';
 import { fetchApi } from '@/lib/api-client';
@@ -19,7 +20,7 @@ export default function CreateCourseModal({ isOpen, onClose, onSuccess }: Create
 
   const handleCreate = async () => {
     if (!title) {
-      alert('Vui lòng nhập tên khóa học!');
+      notify('Vui lòng nhập tên khóa học!');
       return;
     }
     setLoading(true);
@@ -32,12 +33,12 @@ export default function CreateCourseModal({ isOpen, onClose, onSuccess }: Create
           grade: Number(grade)
         }),
       });
-      alert('Tạo khóa học thành công!');
+      notify('Tạo khóa học thành công!');
       onSuccess();
       onClose();
     } catch (err) {
       console.error(err);
-      alert('Có lỗi xảy ra khi tạo khóa học.');
+      notify('Có lỗi xảy ra khi tạo khóa học.');
     } finally {
       setLoading(false);
     }

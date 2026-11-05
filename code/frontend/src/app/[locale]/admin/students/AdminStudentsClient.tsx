@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { Search, Plus, Filter, Download, ChevronLeft, ChevronRight, TrendingUp, Users, Edit, Trash2, FileSpreadsheet, ArrowRightLeft, X } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -110,7 +111,7 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
       );
       setTransferStudent(null);
     } catch (error: any) {
-      alert(error?.message || "Không thể chuyển lớp");
+      notify(error?.message || "Không thể chuyển lớp");
     } finally {
       setTransferring(false);
     }

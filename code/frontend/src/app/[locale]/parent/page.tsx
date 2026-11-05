@@ -1,4 +1,5 @@
 'use client';
+import { notify } from "@/lib/toast";
 
 import { useState, useEffect } from 'react';
 import { parentService, ParentDashboardData } from '@/services/parent.service';
@@ -41,7 +42,7 @@ export default function ParentDashboardPage() {
       setIsLinkOpen(false);
       await loadData();
     } catch (error: any) {
-      alert(error?.message || 'Mã liên kết không hợp lệ hoặc đã hết hạn.');
+      notify(error?.message || 'Mã liên kết không hợp lệ hoặc đã hết hạn.');
     } finally {
       setLinking(false);
     }

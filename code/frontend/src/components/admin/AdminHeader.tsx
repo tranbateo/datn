@@ -1,4 +1,4 @@
-import { Search, User, LogOut } from "lucide-react";
+import { User, LogOut, Download, Plus } from "lucide-react";
 import { ThemeToggle } from "../ThemeToggle";
 import { useTranslations } from "next-intl";
 import { NotificationBell } from "../common/NotificationBell";
@@ -9,56 +9,50 @@ export function AdminHeader() {
   const t = useTranslations("Admin.Header");
 
   return (
-    <header className="h-20 bg-white dark:bg-card-bg border-b border-gray-100 dark:border-card-border flex items-center justify-between px-8 sticky top-0 z-10">
-      <div className="flex items-center gap-8">
-        <h1 className="text-xl font-bold text-primary max-w-[200px] leading-tight">
-          {t('title').split(' ').map((word, i) => (
-            <span key={i} className="block">{word}</span>
-          ))}
-        </h1>
-        
-        <div className="relative hidden md:block">
-          <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input 
-            type="text" 
-            placeholder={t('search')} 
-            className="pl-10 pr-4 py-2 w-80 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-gray-200"
-          />
-        </div>
-      </div>
+    <header className="h-16 bg-white/90 dark:bg-card-bg/90 backdrop-blur-md border-b border-slate-200/80 dark:border-card-border flex items-center justify-between px-6 sm:px-8 sticky top-0 z-10">
+      <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
+        {t("title")}
+      </h1>
 
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-          <div className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors relative">
-            <NotificationBell />
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+          <NotificationBell />
           <ThemeToggle />
         </div>
-        
-        <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-2"></div>
-        
-        <div className="flex items-center gap-3">
-          <a
-            href="/api/proxy/schools/export/credentials"
-            className="text-primary font-medium text-sm px-4 py-2 border border-primary/20 hover:bg-primary/5 rounded-lg transition-colors"
+
+        <div className="hidden sm:block h-8 w-px bg-slate-200 dark:bg-slate-700" />
+
+        <a
+          href="/api/proxy/schools/export/credentials"
+          className="hidden md:inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200 font-semibold text-sm px-3.5 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
+        >
+          <Download className="w-4 h-4" />
+          {t("exportData")}
+        </a>
+        <Link
+          href="/admin/classes"
+          className="hidden sm:inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-3.5 py-2 rounded-xl shadow-sm transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          {t("createNew")}
+        </Link>
+        <Link
+          href="/admin/settings"
+          aria-label="Cài đặt nhà trường"
+          className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+        >
+          <User className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+        </Link>
+        <form action={logout}>
+          <button
+            type="submit"
+            title="Đăng xuất"
+            aria-label="Đăng xuất"
+            className="w-9 h-9 rounded-full bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 flex items-center justify-center border border-red-100 dark:border-red-900/50 transition-colors"
           >
-            {t('exportData')}
-          </a>
-          <Link
-            href="/admin/classes"
-            className="bg-primary hover:bg-primary-hover text-white font-medium text-sm px-4 py-2 rounded-lg transition-colors"
-          >
-            {t('createNew')}
-          </Link>
-          <form action={logout}>
-            <button type="submit" title="Đăng xuất" className="w-10 h-10 rounded-full bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 flex items-center justify-center border border-red-100 dark:border-red-900/50 transition-colors">
-              <LogOut className="w-4 h-4 ml-1" />
-            </button>
-          </form>
-          <Link href="/admin/settings" className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-200 dark:border-gray-700">
-            <User className="w-5 h-5 text-gray-500" />
-          </Link>
-        </div>
+            <LogOut className="w-4 h-4" />
+          </button>
+        </form>
       </div>
     </header>
   );

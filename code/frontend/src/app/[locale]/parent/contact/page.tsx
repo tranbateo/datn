@@ -1,4 +1,5 @@
 'use client';
+import { notify } from "@/lib/toast";
 
 import { useState, useEffect } from 'react';
 import { parentService } from '@/services/parent.service';
@@ -78,7 +79,7 @@ export default function ParentContactPage() {
       setNewMessage('');
       await loadMessages(selectedTeacherId);
     } catch {
-      alert('Failed to send message');
+      notify('Không thể gửi tin nhắn. Vui lòng thử lại.');
     } finally {
       setSendingMessage(false);
     }
@@ -93,12 +94,12 @@ export default function ParentContactPage() {
       await parentService.createProposal(selectedTeacherId, proposalTitle, proposalContent);
       setProposalTitle('');
       setProposalContent('');
-      alert('Gửi đề xuất thành công!');
+      notify('Gửi đề xuất thành công!');
       
       const pData = await parentService.getProposals();
       setProposals(pData);
     } catch {
-      alert('Failed to send proposal');
+      notify('Không thể gửi đề xuất. Vui lòng thử lại.');
     } finally {
       setSendingProposal(false);
     }

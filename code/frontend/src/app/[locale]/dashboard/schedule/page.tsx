@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { API_ENDPOINTS } from '@/constants/api';
 import { Calendar as CalendarIcon, Clock, MoreVertical, Plus, ChevronLeft, ChevronRight, CheckCircle2, Video, X, Link as LinkIcon, Info } from "lucide-react";
@@ -51,14 +52,14 @@ export default function SchedulePage() {
             body: JSON.stringify(ev),
           });
         }
-        alert(`Đã trích xuất và lưu ${response.length} lịch học!`);
+        notify(`Đã trích xuất và lưu ${response.length} lịch học!`);
         loadEvents();
       } else {
-        alert('Không tìm thấy lịch học nào trong ảnh');
+        notify('Không tìm thấy lịch học nào trong ảnh');
       }
     } catch (error) {
       console.error(error);
-      alert('Lỗi khi quét ảnh (OCR)');
+      notify('Lỗi khi quét ảnh (OCR)');
     } finally {
       setUploading(false);
       e.target.value = '';

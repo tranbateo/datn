@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { APP_ROUTES } from '@/constants/routes';
 import { useState, useEffect } from "react";
@@ -80,7 +81,7 @@ export default function TakeQuizPage() {
       });
     } catch (err) {
       console.error(err);
-      alert("Có lỗi xảy ra khi nộp bài");
+      notify("Có lỗi xảy ra khi nộp bài");
     } finally {
       setSubmitting(false);
     }

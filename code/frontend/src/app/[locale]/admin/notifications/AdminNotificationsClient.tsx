@@ -1,4 +1,5 @@
 "use client";
+import { notify } from "@/lib/toast";
 
 import { Send, CheckCircle2, Clock, Users, Search, Info, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -24,7 +25,7 @@ export default function AdminNotificationsClient({ initialData }: { initialData:
 
   const handleSendNotification = async () => {
     if (!title.trim() || !body.trim()) {
-      alert("Vui lòng nhập đầy đủ tiêu đề và nội dung thông báo!");
+      notify("Vui lòng nhập đầy đủ tiêu đề và nội dung thông báo!");
       return;
     }
     setSending(true);
@@ -47,10 +48,10 @@ export default function AdminNotificationsClient({ initialData }: { initialData:
       setNotifications([newNotif, ...notifications]);
       setTitle("");
       setBody("");
-      alert(res?.message || "Đã gửi thông báo thành công!");
+      notify(res?.message || "Đã gửi thông báo thành công!");
     } catch (error) {
       console.error(error);
-      alert("Gửi thông báo thất bại. Vui lòng thử lại.");
+      notify("Gửi thông báo thất bại. Vui lòng thử lại.");
     } finally {
       setSending(false);
     }
