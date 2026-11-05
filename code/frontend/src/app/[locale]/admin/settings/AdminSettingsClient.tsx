@@ -26,6 +26,7 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
   const t = useTranslations("Admin.Settings");
 
   const [license, setLicense] = useState<LicenseData | null>(null);
+  const [schoolName, setSchoolName] = useState("");
   const [aiProvider, setAiProvider] = useState("SYSTEM_QUOTA");
   const [customApiKey, setCustomApiKey] = useState("");
   const [savingByok, setSavingByok] = useState(false);
@@ -36,6 +37,7 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
         const data = await fetchApi<LicenseData>("/schools/license/me");
         if (data) {
           setLicense(data);
+          setSchoolName(data.name || "");
           setAiProvider(data.aiProvider || "SYSTEM_QUOTA");
         }
       } catch (err) {
@@ -48,6 +50,13 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
   const handleSaveByok = async () => {
     setSavingByok(true);
     try {
+      if (license?.id && schoolName.trim() && schoolName.trim() !== license.name) {
+        await fetchApi(`/schools/${license.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ name: schoolName.trim() }),
+        });
+      }
+
       const updated = await fetchApi<LicenseData>("/schools/license/byok", {
         method: "PUT",
         body: JSON.stringify({
@@ -56,13 +65,13 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
         }),
       });
       if (updated) {
-        setLicense(updated);
+        setLicense({ ...updated, name: schoolName.trim() || updated.name });
         setCustomApiKey("");
-        alert("Cập nhật cấu hình AI & BYOK của nhà trường thành công!");
+        alert("Đã lưu cấu hình trường học và AI lên cơ sở dữ liệu thành công!");
       }
     } catch (err) {
       console.error(err);
-      alert("Không thể cập nhật cấu hình BYOK.");
+      alert("Không thể cập nhật cấu hình trường học.");
     } finally {
       setSavingByok(false);
     }
@@ -284,7 +293,13 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Tên trường học</label>
                     <div className="relative">
                       <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input type="text" defaultValue={license?.name || "THCS Nguyễn Trãi"} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                      <input
+                        type="text"
+                        value={schoolName}
+                        onChange={(e) => setSchoolName(e.target.value)}
+                        placeholder="THCS Nguyễn Trãi"
+                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                      />
                     </div>
                   </div>
                   

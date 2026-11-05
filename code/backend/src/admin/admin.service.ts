@@ -393,6 +393,99 @@ export class AdminService {
     return newClass;
   }
 
+  async updateClass(
+    schoolId: string | null,
+    actorId: string,
+    classId: string,
+    dto: {
+      name?: string;
+      grade?: number;
+      homeroomTeacherId?: string | null;
+    },
+  ) {
+    const existing = await this.prisma.class.findUnique({
+      where: { id: classId },
+    });
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy lớp học.');
+    }
+    if (schoolId && existing.schoolId !== schoolId) {
+      throw new ForbiddenException('Không có quyền chỉnh sửa lớp của trường khác.');
+    }
+
+    const updated = await this.prisma.class.update({
+      where: { id: classId },
+      data: {
+        ...(dto.name ? { name: dto.name.trim() } : {}),
+        ...(dto.grade !== undefined ? { grade: Number(dto.grade) } : {}),
+        ...(dto.homeroomTeacherId !== undefined
+          ? { homeroomTeacherId: dto.homeroomTeacherId || null }
+          : {}),
+      },
+      include: {
+        academicYear: true,
+        homeroomTeacher: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+            studentCode: true,
+          },
+        },
+        subjectTeachers: {
+          include: {
+            subject: { select: { id: true, name: true, grade: true } },
+            teacher: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                studentCode: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: { enrollments: true },
+        },
+      },
+    });
+
+    await this.auditLogService.logAction(actorId, 'UPDATE_CLASS', 'Class', {
+      classId: updated.id,
+      name: updated.name,
+      homeroomTeacherId: updated.homeroomTeacherId,
+    });
+
+    return updated;
+  }
+
+  async deleteClass(
+    schoolId: string | null,
+    actorId: string,
+    classId: string,
+  ) {
+    const existing = await this.prisma.class.findUnique({
+      where: { id: classId },
+    });
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy lớp học.');
+    }
+    if (schoolId && existing.schoolId !== schoolId) {
+      throw new ForbiddenException('Không có quyền xóa lớp của trường khác.');
+    }
+
+    await this.prisma.class.delete({ where: { id: classId } });
+
+    await this.auditLogService.logAction(actorId, 'DELETE_CLASS', 'Class', {
+      classId,
+      name: existing.name,
+    });
+
+    return { success: true };
+  }
+
   async transferStudentClass(
     schoolId: string | null,
     actorId: string,
@@ -711,6 +804,7 @@ export class AdminService {
         fullName: dto.fullName,
         role: dto.role,
         grade: dto.grade,
+        isActive: dto.isActive ?? true,
         mustChangePassword: dto.mustChangePassword ?? true,
         avatarUrl: dto.avatarUrl,
       },
@@ -824,6 +918,42 @@ export class AdminService {
         isActive: true,
         mustChangePassword: true,
         createdAt: true,
+        courses: {
+          select: { id: true, title: true },
+        },
+        homeroomClasses: {
+          select: { id: true, name: true, grade: true },
+        },
+        subjectClasses: {
+          include: {
+            class: { select: { id: true, name: true } },
+            subject: { select: { id: true, name: true } },
+          },
+        },
+        gamificationProfile: {
+          select: { lifetimeXp: true, level: true, currentStreak: true },
+        },
+        classEnrollments: {
+          where: { status: 'ACTIVE' },
+          include: {
+            class: {
+              select: { id: true, name: true, grade: true },
+            },
+          },
+        },
+        parentLinks: {
+          include: {
+            student: {
+              select: {
+                id: true,
+                studentCode: true,
+                fullName: true,
+                email: true,
+                grade: true,
+              },
+            },
+          },
+        },
       },
     });
 

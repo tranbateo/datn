@@ -144,7 +144,7 @@ export function StudentNavigation() {
           {showProfileMenu && (
             <div className="absolute top-12 left-0 w-48 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden py-2 animate-in fade-in zoom-in-95 duration-200">
               <Link 
-                href={APP_ROUTES.ONBOARDING} 
+                href={APP_ROUTES.SETTINGS} 
                 onClick={() => setShowProfileMenu(false)}
                 className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
@@ -243,7 +243,7 @@ export function StudentNavigation() {
 
         {/* User Profile Snippet in Sidebar */}
         <div className="p-4 mt-auto border-t border-gray-100 dark:border-gray-800">
-          <Link href={APP_ROUTES.ONBOARDING} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors border border-transparent dark:border-gray-800">
+          <Link href={APP_ROUTES.SETTINGS} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors border border-transparent dark:border-gray-800">
             <div className="w-10 h-10 rounded-full shrink-0 relative overflow-hidden">
               <Image
                 src={userProfile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile?.fullName || 'User'}`}

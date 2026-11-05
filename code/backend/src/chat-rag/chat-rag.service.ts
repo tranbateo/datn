@@ -31,9 +31,10 @@ export class ChatRagService {
     private prisma: PrismaService,
     private gamificationService: GamificationService,
   ) {
-    const defaultModel = process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest';
+    const defaultModel =
+      process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview';
     const embeddingModel =
-      process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004';
+      process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
 
     this.model = new ChatGoogleGenerativeAI({
       model: defaultModel,
@@ -66,7 +67,7 @@ export class ChatRagService {
       aiProvider && aiProvider.trim().toLowerCase().startsWith('gemini-');
     const resolvedModel = isModelOverride
       ? aiProvider.trim()
-      : process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest';
+      : process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview';
     const resolvedKey =
       (customApiKey && customApiKey.trim()) ||
       process.env.GEMINI_API_KEY ||

@@ -22,7 +22,7 @@ export class DocumentsService {
 
     const embeddings = new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
-      model: process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004',
+      model: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
     });
 
     this.vectorStore = new SupabaseVectorStore(embeddings, {

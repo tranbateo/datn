@@ -8,7 +8,7 @@ export default function ProfileRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/dashboard/progress");
+    router.replace("/dashboard/settings");
   }, [router]);
 
   return (

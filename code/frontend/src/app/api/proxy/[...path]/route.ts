@@ -50,12 +50,15 @@ async function proxyRequest(request: NextRequest, pathArray: string[]) {
     method: request.method,
     headers,
     redirect: 'manual',
+    cache: 'no-store',
     duplex: 'half',
   };
 
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const contentType = request.headers.get('content-type');
     if (contentType?.includes('multipart/form-data')) {
+      // Remove browser boundary header so fetch generates matching boundary for new FormData
+      headers.delete('content-type');
       options.body = await request.formData();
     } else {
       const bodyText = await request.text();

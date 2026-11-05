@@ -21,7 +21,7 @@ export class SchedulesService {
     const visionModel =
       process.env.GEMINI_VISION_MODEL ||
       process.env.GEMINI_MODEL ||
-      'gemini-1.5-flash';
+      'gemini-3.1-flash-lite-preview';
     this.model = new ChatGoogleGenerativeAI({
       model: visionModel,
       maxOutputTokens: 2048,

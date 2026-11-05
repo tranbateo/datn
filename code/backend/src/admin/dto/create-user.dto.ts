@@ -48,6 +48,10 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   mustChangePassword?: boolean;
 
   @IsOptional()

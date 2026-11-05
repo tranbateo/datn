@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { School, Plus, Users, GraduationCap, Download, Upload, Search, KeyRound, X } from "lucide-react";
+import { School, Plus, Users, GraduationCap, Download, Upload, Search, KeyRound, X, Edit, Trash2 } from "lucide-react";
 import { fetchApi } from "@/lib/api-client";
 import SchoolImportModal from "@/components/admin/SchoolImportModal";
 
@@ -16,6 +16,12 @@ export default function AdminClassesPage() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [creating, setCreating] = useState(false);
 
+  const [editingClass, setEditingClass] = useState<any | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editGrade, setEditGrade] = useState(6);
+  const [editHomeroomId, setEditHomeroomId] = useState("");
+  const [updating, setUpdating] = useState(false);
+
   const [className, setClassName] = useState("");
   const [grade, setGrade] = useState(6);
   const [homeroomTeacherId, setHomeroomTeacherId] = useState("");
@@ -26,10 +32,10 @@ export default function AdminClassesPage() {
     try {
       const [classesRes, teachersRes] = await Promise.all([
         fetchApi<any[]>("/admin/classes").catch(() => []),
-        fetchApi<any>("/admin/users/teachers").catch(() => ({ teachers: [] })),
+        fetchApi<any>("/admin/users/teachers").catch(() => []),
       ]);
       setClasses(Array.isArray(classesRes) ? classesRes : []);
-      setTeachers(teachersRes?.teachers || []);
+      setTeachers(Array.isArray(teachersRes) ? teachersRes : teachersRes?.teachers || []);
     } catch (error) {
       console.error("Failed to fetch classes:", error);
     } finally {
@@ -63,6 +69,45 @@ export default function AdminClassesPage() {
       alert(error?.message || "Không thể tạo lớp học");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleOpenEdit = (cls: any) => {
+    setEditingClass(cls);
+    setEditName(cls.name || "");
+    setEditGrade(cls.grade || 6);
+    setEditHomeroomId(cls.homeroomTeacher?.id || "");
+  };
+
+  const handleUpdateClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClass || !editName.trim()) return;
+    setUpdating(true);
+    try {
+      const updated = await fetchApi(`/admin/classes/${editingClass.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: editName.trim(),
+          grade: Number(editGrade),
+          homeroomTeacherId: editHomeroomId || null,
+        }),
+      });
+      setClasses((prev) => prev.map((c) => (c.id === editingClass.id ? updated : c)));
+      setEditingClass(null);
+    } catch (error: any) {
+      alert(error?.message || "Không thể cập nhật lớp học");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDeleteClass = async (cls: any) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa lớp ${cls.name}?`)) return;
+    try {
+      await fetchApi(`/admin/classes/${cls.id}`, { method: "DELETE" });
+      setClasses((prev) => prev.filter((c) => c.id !== cls.id));
+    } catch (error: any) {
+      alert(error?.message || "Không thể xóa lớp học");
     }
   };
 
@@ -183,7 +228,7 @@ export default function AdminClassesPage() {
                 <th className="py-3.5 px-6">Giáo viên bộ môn (GVBM)</th>
                 <th className="py-3.5 px-6">Sĩ số</th>
                 <th className="py-3.5 px-6">Mã tham gia</th>
-                <th className="py-3.5 px-6 text-right">Phiếu tài khoản</th>
+                <th className="py-3.5 px-6 text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
@@ -259,12 +304,28 @@ export default function AdminClassesPage() {
                       </span>
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <a
-                        href={`/api/proxy/schools/export/credentials?classId=${cls.id}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 transition-colors"
-                      >
-                        <Download className="w-3.5 h-3.5" /> Xuất phiếu TK lớp
-                      </a>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenEdit(cls)}
+                          title="Đổi GVCN / Sửa lớp"
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClass(cls)}
+                          title="Xóa lớp"
+                          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <a
+                          href={`/api/proxy/schools/export/credentials?classId=${cls.id}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Xuất TK
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -339,7 +400,7 @@ export default function AdminClassesPage() {
                   <option value="">-- Chọn giáo viên chủ nhiệm --</option>
                   {teachers.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.fullName} ({t.email})
+                      {t.fullName} ({t.email || t.studentCode})
                     </option>
                   ))}
                 </select>
@@ -359,6 +420,89 @@ export default function AdminClassesPage() {
                   className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50"
                 >
                   {creating ? "Đang tạo..." : "Tạo lớp học"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Class / Assign Homeroom Teacher Modal */}
+      {editingClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                Cập nhật lớp học & Phân công GVCN
+              </h3>
+              <button onClick={() => setEditingClass(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateClass} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Tên lớp *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Khối lớp *
+                  </label>
+                  <select
+                    value={editGrade}
+                    onChange={(e) => setEditGrade(Number(e.target.value))}
+                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                  >
+                    {[6, 7, 8, 9, 10, 11, 12].map((g) => (
+                      <option key={g} value={g}>
+                        Khối {g}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Giáo viên chủ nhiệm (GVCN)
+                </label>
+                <select
+                  value={editHomeroomId}
+                  onChange={(e) => setEditHomeroomId(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                >
+                  <option value="">-- Chưa phân công --</option>
+                  {teachers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.fullName} ({t.email || t.studentCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingClass(null)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-xl"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50"
+                >
+                  {updating ? "Đang lưu..." : "Lưu thay đổi"}
                 </button>
               </div>
             </form>

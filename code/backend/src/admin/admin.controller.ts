@@ -82,6 +82,33 @@ export class AdminController {
     return this.adminService.createClass(schoolId, req.user.id, dto);
   }
 
+  @Patch('classes/:id')
+  async updateClass(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body()
+    dto: {
+      name?: string;
+      grade?: number;
+      homeroomTeacherId?: string | null;
+    },
+  ) {
+    return this.adminService.updateClass(
+      req.user.schoolId,
+      req.user.id,
+      id,
+      dto,
+    );
+  }
+
+  @Delete('classes/:id')
+  async deleteClass(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.adminService.deleteClass(req.user.schoolId, req.user.id, id);
+  }
+
   @Post('students/:studentId/transfer-class')
   async transferStudentClass(
     @Req() req: AuthenticatedRequest,

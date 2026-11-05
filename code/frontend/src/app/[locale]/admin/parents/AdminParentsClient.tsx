@@ -20,11 +20,11 @@ export default function AdminParentsClient({ initialData }: { initialData: any[]
 
   const handleSaveUser = async (data: Partial<User>) => {
     if (selectedUser) {
-      await fetchApi(`/admin/users/${selectedUser.id}`, {
+      const updatedUser = await fetchApi<any>(`/admin/users/${selectedUser.id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       });
-      setParents(parents.map(s => s.id === selectedUser.id ? { ...s, ...data } : s));
+      setParents(parents.map(s => s.id === selectedUser.id ? { ...s, ...data, ...updatedUser } : s));
     } else {
       const newUser = await fetchApi<any>(`/admin/users`, {
         method: 'POST',

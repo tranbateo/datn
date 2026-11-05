@@ -59,11 +59,11 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
 
   const handleSaveUser = async (data: Partial<User>) => {
     if (selectedUser) {
-      await fetchApi(`/admin/users/${selectedUser.id}`, {
+      const updatedUser = await fetchApi<Student>(`/admin/users/${selectedUser.id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       });
-      setStudents(students.map(s => s.id === selectedUser.id ? { ...s, ...data } as unknown as Student : s));
+      setStudents(students.map(s => s.id === selectedUser.id ? { ...s, ...data, ...updatedUser } as unknown as Student : s));
     } else {
       const newUser = await fetchApi<Student>(`/admin/users`, {
         method: 'POST',

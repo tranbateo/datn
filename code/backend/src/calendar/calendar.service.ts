@@ -33,7 +33,7 @@ export class CalendarService {
       const visionModel =
         process.env.GEMINI_VISION_MODEL ||
         process.env.GEMINI_MODEL ||
-        'gemini-1.5-flash';
+        'gemini-3.1-flash-lite-preview';
       const model = new ChatGoogleGenerativeAI({
         model: visionModel,
         maxOutputTokens: 2048,
