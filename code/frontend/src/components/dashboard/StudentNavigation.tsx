@@ -9,8 +9,8 @@ import { useState, useEffect } from "react";
 import { ThemeToggle } from "../ThemeToggle";
 import { logout } from "@/app/[locale]/(auth)/actions";
 import { useTranslations } from "next-intl";
-import Image from "next/image";
 import { fetchApi } from "@/lib/api-client";
+import { formatClassLabel, getFallbackAvatar } from "@/services/users.service";
 
 const PROFILE_CACHE_KEY = "eduai_student_profile_cache";
 const PROFILE_TTL_MS = 60_000;
@@ -130,14 +130,22 @@ export function StudentNavigation() {
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="w-10 h-10 rounded-full overflow-hidden border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 transition-colors shrink-0 relative"
           >
-            <Image src={userProfile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile?.fullName || 'User'}`} alt="Avatar" fill className="object-cover bg-gray-100" sizes="40px" />
+            <img
+              src={userProfile?.avatarUrl || getFallbackAvatar(userProfile?.fullName)}
+              alt="Avatar"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = getFallbackAvatar(userProfile?.fullName);
+              }}
+              className="w-full h-full object-cover bg-gray-100"
+            />
             <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full"></div>
           </button>
 
           <div className="flex flex-col">
             <span className="font-bold text-blue-600 dark:text-blue-500 text-sm truncate max-w-[120px]">{userProfile?.fullName || 'Học viên'}</span>
             <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
-              {activeClassName ? `Lớp ${activeClassName}` : userProfile?.grade ? `Khối ${userProfile.grade}` : t("greetingMobile")}
+              {activeClassName || userProfile?.grade ? formatClassLabel(activeClassName, userProfile?.grade) : t("greetingMobile")}
             </span>
           </div>
 
@@ -254,19 +262,21 @@ export function StudentNavigation() {
           )}
           <Link href={APP_ROUTES.SETTINGS} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors border border-transparent dark:border-gray-800">
             <div className="w-10 h-10 rounded-full shrink-0 relative overflow-hidden">
-              <Image
-                src={userProfile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile?.fullName || 'User'}`}
+              <img
+                src={userProfile?.avatarUrl || getFallbackAvatar(userProfile?.fullName)}
                 alt="Avatar"
-                fill
-                className="bg-gray-100 object-cover"
-                sizes="40px"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = getFallbackAvatar(userProfile?.fullName);
+                }}
+                className="w-full h-full bg-gray-100 object-cover"
               />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{userProfile?.fullName || 'Học viên'}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                 {userProfile?.studentCode ? `${userProfile.studentCode} • ` : ""}
-                {activeClassName ? `Lớp ${activeClassName}` : userProfile?.grade ? `Khối ${userProfile.grade}` : t("role")}
+                {activeClassName || userProfile?.grade ? formatClassLabel(activeClassName, userProfile?.grade) : t("role")}
               </p>
             </div>
           </Link>

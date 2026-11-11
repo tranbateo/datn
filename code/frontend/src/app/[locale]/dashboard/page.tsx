@@ -20,7 +20,7 @@ import {
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { gamificationService, GamificationProfile } from "@/services/gamification.service";
-import { usersService, UserProfile } from "@/services/users.service";
+import { usersService, UserProfile, formatClassLabel } from "@/services/users.service";
 import { curriculumService, Subject } from "@/services/curriculum.service";
 import { calendarService, CalendarEvent } from "@/services/calendar.service";
 
@@ -103,7 +103,7 @@ export default function StudentDashboard() {
               )}
               {activeClass?.name && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-400/20 backdrop-blur-md text-emerald-100 px-3 py-1 rounded-full border border-emerald-300/30">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Lớp {activeClass.name}
+                  <CheckCircle2 className="w-3.5 h-3.5" /> {formatClassLabel(activeClass.name)}
                 </span>
               )}
               {profile?.studentCode && (
@@ -201,7 +201,7 @@ export default function StudentDashboard() {
                 Đơn vị học tập
               </p>
               <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mt-0.5">
-                {activeClass?.name ? `Lớp ${activeClass.name}` : `Khối ${profile?.grade || 9}`}
+                {formatClassLabel(activeClass?.name, profile?.grade || 9)}
               </h2>
             </div>
             <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-100 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">

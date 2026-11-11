@@ -216,7 +216,7 @@ export default function LoginPage() {
         <div className="space-y-1.5">
           <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
             {role === "student" && "Mã học sinh hoặc Email"}
-            {role === "teacher" && "Email hoặc Số điện thoại"}
+            {role === "teacher" && "Mã giáo viên, Email hoặc Số điện thoại"}
             {role === "parent" && "Số điện thoại hoặc Email đã đăng ký"}
           </label>
           <div className="relative">
@@ -231,9 +231,9 @@ export default function LoginPage() {
               required
               placeholder={
                 role === "student"
-                  ? "Ví dụ: HS0001 hoặc hs0001@thcsnt.edu.vn"
+                  ? "Ví dụ: HS0001 hoặc hs0001@nguyentrai.edu.vn"
                   : role === "teacher"
-                    ? "Ví dụ: gv01@thcsnt.edu.vn hoặc 0912000001"
+                    ? "Ví dụ: GV01, mai.nguyen@nguyentrai.edu.vn hoặc 0912345001"
                     : "Ví dụ: 0901000001"
               }
               className="pl-11 pr-4 py-3 w-full bg-slate-50/70 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"

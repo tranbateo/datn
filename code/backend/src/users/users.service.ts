@@ -126,6 +126,13 @@ export class UsersService {
             subject: { select: { id: true, name: true, grade: true } },
           },
         },
+        studentLinks: {
+          include: {
+            parent: {
+              select: { id: true, fullName: true, phone: true, email: true },
+            },
+          },
+        },
       },
     });
     if (!user) throw new NotFoundException('User not found');
