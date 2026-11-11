@@ -2,8 +2,6 @@ export const APP_ROUTES = {
   HOME: '/',
   FEATURES: '/features',
   PRICING: '/pricing',
-  BLOG: '/blog',
-  FAQ: '/faq',
   LOGIN: '/login',
   REGISTER: '/register',
   FORGOT_PASSWORD: '/forgot-password',
@@ -14,7 +12,6 @@ export const APP_ROUTES = {
   PROGRESS: '/dashboard/progress',
   AI_TUTOR: '/dashboard/ai-tutor',
   SETTINGS: '/dashboard/settings',
-  ONBOARDING: '/onboarding',
   ADMIN_DASHBOARD: '/admin',
   TEACHER_DASHBOARD: '/teacher',
 } as const;

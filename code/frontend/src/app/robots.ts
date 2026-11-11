@@ -3,7 +3,7 @@ import { routing } from "@/i18n/routing";
 
 export default function robots(): MetadataRoute.Robots {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://aitutor.edu.vn";
-  const privateAreas = ["admin", "dashboard", "teacher", "parent", "onboarding", "login"];
+  const privateAreas = ["admin", "dashboard", "teacher", "parent", "login"];
 
   return {
     rules: [

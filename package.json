@@ -1,7 +1,7 @@
 {
   "name": "datn",
   "version": "1.0.0",
-  "description": "��#\u0000 \u0000d\u0000a\u0000t\u0000n\u0000\r\u0000 \u0000",
+  "description": "AI Tutor - Nền tảng học tập và trợ giảng thông minh K-12",
   "main": "index.js",
   "directories": {
     "doc": "docs",
