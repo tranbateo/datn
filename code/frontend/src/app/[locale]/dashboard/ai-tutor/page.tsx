@@ -374,14 +374,35 @@ export default function AITutorPage() {
             <div className="max-w-4xl mx-auto p-4 sm:p-6">
               
               {messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full mt-32 text-center px-4">
-                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mb-6 shadow-sm">
-                    <Bot className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                <div className="flex flex-col items-center justify-center h-full mt-16 sm:mt-24 text-center px-4">
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mb-6 shadow-md shadow-blue-600/20 text-white">
+                    <Bot className="w-8 h-8" />
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Gia sư AI (RAG Trường học)</h2>
-                  <p className="text-gray-500 dark:text-gray-400 max-w-md">
-                    Đặt câu hỏi về bài giảng, tài liệu của lớp bạn. Mọi câu trả lời từ tài liệu đều đi kèm trích dẫn nguồn (BR-RAG-001).
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">
+                    Gia sư AI (RAG Trường học)
+                  </h2>
+                  <p className="text-slate-500 dark:text-slate-400 max-w-lg text-sm sm:text-base leading-relaxed mb-8">
+                    Đặt câu hỏi về bài giảng, đề cương và tài liệu của lớp bạn. Mọi câu trả lời từ tài liệu đều đi kèm trích dẫn nguồn minh bạch (BR-RAG-001).
                   </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl text-left">
+                    {[
+                      "Tóm tắt nội dung trọng tâm của tài liệu môn học mới nhất trong lớp",
+                      "Giải thích chi tiết công thức và cho ví dụ minh họa dễ hiểu",
+                      "Tạo 5 câu hỏi trắc nghiệm ôn tập nhanh theo bài học hôm nay",
+                      "Hướng dẫn cách phân tích dạng bài tập thường gặp trong đề kiểm tra",
+                    ].map((suggestion, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setInputText(suggestion)}
+                        className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 hover:bg-blue-50/60 dark:bg-slate-900/60 dark:hover:bg-blue-950/30 hover:border-blue-300 dark:hover:border-blue-800 transition-all text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 flex items-start gap-2.5"
+                      >
+                        <BookOpen className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                        <span>{suggestion}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-8">

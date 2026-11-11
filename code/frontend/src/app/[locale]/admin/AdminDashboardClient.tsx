@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, GraduationCap, BookOpen, DollarSign, MoreVertical } from "lucide-react";
+import { Users, GraduationCap, BookOpen, DollarSign, MoreVertical, TrendingUp } from "lucide-react";
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useTranslations } from "next-intl";
 import { DashboardStats, ActivityItem, TokenUsage } from "@/types";
@@ -45,7 +45,7 @@ export default function AdminDashboardClient({ data }: { data: DashboardStats })
               <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <span className="text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-1 rounded-full flex items-center gap-1">
-              ↗
+              <TrendingUp className="w-3.5 h-3.5" />
             </span>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1 uppercase tracking-wider">{t('totalStudents')}</p>
@@ -58,7 +58,7 @@ export default function AdminDashboardClient({ data }: { data: DashboardStats })
               <GraduationCap className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
             <span className="text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-1 rounded-full flex items-center gap-1">
-              ↗
+              <TrendingUp className="w-3.5 h-3.5" />
             </span>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1 uppercase tracking-wider">{t('activeTeachers')}</p>
@@ -71,7 +71,7 @@ export default function AdminDashboardClient({ data }: { data: DashboardStats })
               <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </div>
             <span className="text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-1 rounded-full flex items-center gap-1">
-              ↗
+              <TrendingUp className="w-3.5 h-3.5" />
             </span>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1 uppercase tracking-wider">{t('totalLessons')}</p>
