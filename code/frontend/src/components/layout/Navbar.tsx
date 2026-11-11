@@ -4,7 +4,6 @@ import {
   GraduationCap,
   LogOut,
   LayoutDashboard,
-  ShieldCheck,
   ArrowRight,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
@@ -76,13 +75,6 @@ export default async function Navbar() {
             >
               {t("pricing")}
             </Link>
-            <Link
-              href="/admin/login"
-              className="text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium text-sm flex items-center gap-1.5 transition-colors"
-            >
-              <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              Cổng Nhà trường
-            </Link>
           </nav>
 
           {/* Controls & Auth Buttons */}
@@ -110,12 +102,6 @@ export default async function Navbar() {
               </div>
             ) : (
               <div className="flex items-center gap-2.5">
-                <Link
-                  href="/admin/login"
-                  className="hidden lg:inline-flex items-center text-slate-600 dark:text-slate-300 font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-3 py-2 text-sm"
-                >
-                  Quản trị viên
-                </Link>
                 <Link
                   href={APP_ROUTES.LOGIN}
                   className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-5 py-2.5 rounded-xl text-sm font-semibold shadow-sm shadow-blue-600/20 hover:shadow-md transition-all"

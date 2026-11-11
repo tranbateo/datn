@@ -15,7 +15,7 @@
     "badge": "Trợ lý học tập AI K-12",
     "title1": "Học tập thông minh hơn với",
     "title2": "Trợ lý AI",
-    "description": "Nâng cao kết quả học tập với gia sư AI cá nhân hóa. Hỗ trợ giải bài tập, lập thời gian biểu và học tập qua trò chơi cho học sinh từ lớp 1 đến lớp 12.",
+    "description": "Nâng cao kết quả học tập với gia sư AI cá nhân hóa. Hỗ trợ giải bài tập, lập thời gian biểu và học tập cho học sinh từ lớp 1 đến lớp 12.",
     "startNow": "Bắt đầu ngay",
     "watchDemo": "Xem Demo",
     "stat1Value": "100k+",
@@ -124,7 +124,7 @@
     "Dashboard": {
       "overview": "Tổng quan",
       "welcome": "Chào mừng trở lại. Dưới đây là hoạt động trên nền tảng hôm nay.",
-      "last30Days": "30 ngày qua v",
+      "last30Days": "30 ngày qua ",
       "totalStudents": "TỔNG HỌC SINH",
       "activeTeachers": "GIÁO VIÊN H.ĐỘNG",
       "totalLessons": "TỔNG BÀI GIẢNG",

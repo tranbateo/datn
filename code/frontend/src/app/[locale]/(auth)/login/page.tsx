@@ -15,7 +15,6 @@ import {
   BookOpen,
   Users,
   Phone,
-  ShieldCheck,
 } from "lucide-react";
 import { login, verifyLoginOtpAction } from "../actions";
 
@@ -295,17 +294,7 @@ export default function LoginPage() {
       </form>
 
       <div className="mt-7 p-3.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
-        Tài khoản Học sinh, Giáo viên và Phụ huynh do Nhà trường cấp phát. Nếu cần cấp lại mật khẩu, vui lòng liên hệ Giáo viên chủ nhiệm hoặc Quản trị viên trường.
-      </div>
-
-      <div className="mt-4 text-center">
-        <Link
-          href="/admin/login"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
-        >
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Bạn là Quản trị viên Nhà trường? Đăng nhập tại đây</span>
-        </Link>
+        Tài khoản Học sinh, Giáo viên và Phụ huynh do Nhà trường cấp phát. Nếu cần cấp lại mật khẩu, vui lòng liên hệ Giáo viên chủ nhiệm hoặc Văn phòng nhà trường.
       </div>
     </div>
   );

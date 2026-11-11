@@ -4,12 +4,11 @@ import {
   BookOpen,
   Bot,
   CheckCircle2,
+  Compass,
   FileCheck2,
   GraduationCap,
   Layers,
   Lock,
-  School,
-  ShieldCheck,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -70,18 +69,6 @@ export default function Home() {
       href: "/login",
       cta: "Đăng nhập Phụ huynh",
     },
-    {
-      title: "Quản trị Nhà trường (Admin)",
-      badge: "Quản trị B2B & AI Quota",
-      description:
-        "Khởi tạo niên khóa, lớp học, import danh sách toàn trường từ Excel, phân công GVCN/GVBM, quản lý hạn mức AI Token (System Quota / BYOK) và nhật ký bảo mật.",
-      icon: School,
-      color: "text-amber-600 dark:text-amber-400",
-      bg: "bg-amber-50 dark:bg-amber-950/40",
-      border: "border-amber-100 dark:border-amber-900/50",
-      href: "/admin/login",
-      cta: "Cổng Quản trị Trường",
-    },
   ];
 
   return (
@@ -121,11 +108,11 @@ export default function Home() {
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
-                href="/admin/login"
+                href="/features"
                 className="inline-flex justify-center items-center gap-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:border-blue-300 hover:bg-blue-50/40 dark:hover:bg-slate-700 px-6 py-3.5 rounded-xl font-semibold text-sm sm:text-base transition-colors"
               >
-                <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span>Cổng Quản trị Nhà trường</span>
+                <Compass className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span>Khám phá Tính năng</span>
               </Link>
             </div>
 
@@ -133,7 +120,7 @@ export default function Home() {
             <div className="pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
               <div className="flex items-center gap-2 font-medium">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>RAG trích dẫn đúng tài liệu lớp</span>
+                <span>RAG trích dẫn đúng tài liệu</span>
               </div>
               <div className="flex items-center gap-2 font-medium">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -141,7 +128,7 @@ export default function Home() {
               </div>
               <div className="flex items-center gap-2 font-medium">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Phân tách dữ liệu chuẩn B2B</span>
+                <span>Kết nối trực tiếp Phụ huynh – GV</span>
               </div>
             </div>
           </div>
@@ -235,21 +222,21 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 4-ROLE SCHOOL ECOSYSTEM SECTION */}
+      {/* 3-ROLE SCHOOL ECOSYSTEM SECTION */}
       <section className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
         <div className="text-center max-w-3xl mx-auto mb-14">
           <span className="text-xs font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">
-            Kiến trúc giáo dục đồng bộ
+            Không gian học tập & giảng dạy
           </span>
           <h2 className="text-2xl sm:text-4xl font-extrabold text-slate-900 dark:text-white mt-2 mb-4">
-            Kết nối chặt chẽ 4 vai trò trong một Trường học
+            Kết nối chặt chẽ Học sinh – Giáo viên – Phụ huynh
           </h2>
           <p className="text-slate-600 dark:text-slate-400 text-sm sm:text-base">
-            Mỗi vai trò được thiết kế không gian làm việc chuyên biệt, phân quyền chặt chẽ theo trường, khối lớp và môn học phụ trách.
+            Mỗi nhóm người dùng được thiết kế cổng làm việc riêng biệt, phân quyền chặt chẽ theo trường, khối lớp và môn học phụ trách.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {roles.map((r) => (
             <div
               key={r.title}
@@ -328,10 +315,10 @@ export default function Home() {
                 <Lock className="w-5 h-5" />
               </div>
               <h3 className="font-bold text-slate-900 dark:text-white text-lg">
-                Quản trị Hạn mức AI & Bảo mật B2B
+                An toàn Dữ liệu Học đường
               </h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Hỗ trợ cả hạn mức gói bản quyền trường học (System Quota) và tự cấu hình API Key riêng (BYOK), kèm Audit Log cho mọi thao tác nhạy cảm.
+                Dữ liệu học tập, kết quả kiểm tra và thông tin cá nhân của học sinh được phân tách độc lập theo từng trường và lớp học.
               </p>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { APP_ROUTES } from "@/constants/routes";
 import { Link } from "@/i18n/routing";
-import { GraduationCap, ShieldCheck, BookOpen, Users } from "lucide-react";
+import { GraduationCap, Compass, BookOpen, Users } from "lucide-react";
 
 export default function Footer() {
   return (
@@ -55,15 +55,15 @@ export default function Footer() {
 
           <div>
             <h3 className="font-bold text-slate-900 dark:text-white text-sm uppercase tracking-wider mb-4 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" /> Quản trị Trường học
+              <Compass className="w-4 h-4 text-emerald-600" /> Khám phá Hệ thống
             </h3>
             <ul className="space-y-2.5 text-sm">
               <li>
                 <Link
-                  href="/admin/login"
+                  href={APP_ROUTES.HOME}
                   className="text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                 >
-                  Cổng School Admin
+                  Trang chủ giới thiệu
                 </Link>
               </li>
               <li>
@@ -71,7 +71,7 @@ export default function Footer() {
                   href={APP_ROUTES.FEATURES}
                   className="text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                 >
-                  Kiến trúc RAG & Bảo mật dữ liệu
+                  Tính năng & Kiến trúc RAG
                 </Link>
               </li>
               <li>
@@ -79,7 +79,7 @@ export default function Footer() {
                   href={APP_ROUTES.PRICING}
                   className="text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                 >
-                  Bản quyền B2B & AI Token Quota
+                  Gói bản quyền dành cho Nhà trường
                 </Link>
               </li>
             </ul>
