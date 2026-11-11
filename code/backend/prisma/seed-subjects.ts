@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const defaultSubjects = [
+export const GDPT_2018_SUBJECTS = [
   // Lớp 1, 2
   {
     grades: [1, 2],
@@ -12,7 +12,7 @@ const defaultSubjects = [
       'Đạo đức',
       'Tự nhiên và Xã hội',
       'Giáo dục thể chất',
-      'Nghệ thuật (Âm nhạc, Mỹ thuật)',
+      'Nghệ thuật',
       'Hoạt động trải nghiệm',
     ],
   },
@@ -22,13 +22,13 @@ const defaultSubjects = [
     names: [
       'Toán',
       'Tiếng Việt',
+      'Tiếng Anh',
       'Đạo đức',
       'Tự nhiên và Xã hội',
+      'Tin học và Công nghệ',
       'Giáo dục thể chất',
-      'Nghệ thuật (Âm nhạc, Mỹ thuật)',
+      'Nghệ thuật',
       'Hoạt động trải nghiệm',
-      'Tin học',
-      'Ngoại ngữ 1',
     ],
   },
   // Lớp 4, 5
@@ -37,43 +37,26 @@ const defaultSubjects = [
     names: [
       'Toán',
       'Tiếng Việt',
+      'Tiếng Anh',
       'Đạo đức',
       'Lịch sử và Địa lí',
       'Khoa học',
+      'Tin học và Công nghệ',
       'Giáo dục thể chất',
-      'Nghệ thuật (Âm nhạc, Mỹ thuật)',
+      'Nghệ thuật',
       'Hoạt động trải nghiệm',
-      'Tin học',
-      'Ngoại ngữ 1',
     ],
   },
-  // Lớp 6
+  // Cấp THCS: Lớp 6, 7, 8, 9 (Chương trình GDPT 2018 - Kết nối tri thức với cuộc sống)
   {
-    grades: [6],
+    grades: [6, 7, 8, 9],
     names: [
       'Toán',
       'Ngữ văn',
-      'Ngoại ngữ 1',
-      'Giáo dục công dân',
-      'Lịch sử và Địa lí',
+      'Tiếng Anh',
       'Khoa học tự nhiên',
-      'Tin học',
-      'Công nghệ',
-      'Giáo dục thể chất',
-      'Nghệ thuật (Âm nhạc hoặc Mỹ thuật)',
-      'Hoạt động trải nghiệm, hướng nghiệp',
-    ],
-  },
-  // Lớp 7, 8, 9
-  {
-    grades: [7, 8, 9],
-    names: [
-      'Toán',
-      'Ngữ văn',
-      'Ngoại ngữ 1',
-      'Giáo dục công dân',
       'Lịch sử và Địa lí',
-      'Khoa học tự nhiên',
+      'Giáo dục công dân',
       'Tin học',
       'Công nghệ',
       'Giáo dục thể chất',
@@ -81,45 +64,33 @@ const defaultSubjects = [
       'Hoạt động trải nghiệm, hướng nghiệp',
     ],
   },
-  // Lớp 10, 11, 12
+  // Cấp THPT: Lớp 10, 11, 12 (Chương trình GDPT 2018)
   {
     grades: [10, 11, 12],
     names: [
       'Toán',
       'Ngữ văn',
-      'Ngoại ngữ 1',
-      'Giáo dục thể chất',
-      'Giáo dục quốc phòng và an ninh',
-      'Hoạt động trải nghiệm, hướng nghiệp',
-      'Nội dung giáo dục địa phương',
-      'Vật lí',
-      'Hóa học',
-      'Sinh học',
+      'Tiếng Anh',
       'Lịch sử',
       'Địa lí',
       'Giáo dục kinh tế và pháp luật',
+      'Vật lí',
+      'Hóa học',
+      'Sinh học',
       'Tin học',
       'Công nghệ',
-      'Âm nhạc',
-      'Mỹ thuật',
+      'Giáo dục thể chất',
+      'Giáo dục quốc phòng và an ninh',
+      'Nghệ thuật',
+      'Hoạt động trải nghiệm, hướng nghiệp',
     ],
   },
 ];
 
 async function main() {
-  console.log('Start seeding subjects...');
+  console.log('Start seeding GDPT 2018 subjects...');
 
-  // Xóa các môn học cũ để tránh rác (chỉ dùng trong dev, nếu lỗi foreign key có thể bỏ qua xóa)
-  try {
-    await prisma.subject.deleteMany({});
-    console.log('Deleted old subjects.');
-  } catch {
-    console.log(
-      'Could not delete all old subjects (possibly due to foreign keys). Will upsert instead.',
-    );
-  }
-
-  for (const group of defaultSubjects) {
+  for (const group of GDPT_2018_SUBJECTS) {
     for (const grade of group.grades) {
       for (const name of group.names) {
         await prisma.subject.upsert({
@@ -129,25 +100,29 @@ async function main() {
               grade,
             },
           },
-          update: {},
+          update: {
+            description: `Môn ${name} - Khối ${grade} (Chương trình GDPT 2018 - Kết nối tri thức với cuộc sống)`,
+          },
           create: {
             name,
             grade,
-            description: `Môn ${name} dành cho học sinh lớp ${grade}`,
+            description: `Môn ${name} - Khối ${grade} (Chương trình GDPT 2018 - Kết nối tri thức với cuộc sống)`,
           },
         });
       }
     }
   }
 
-  console.log('Seeding finished.');
+  console.log('Seeding GDPT 2018 subjects finished.');
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

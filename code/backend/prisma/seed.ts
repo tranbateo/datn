@@ -1,10 +1,18 @@
 import { PrismaClient, Role, SchoolLevel } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
+import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase';
+import { createClient } from '@supabase/supabase-js';
+import { GDPT_2018_SUBJECTS } from './seed-subjects';
+import { CURRICULUM_KNTT_6_7, CurriculumCourseSeed } from './curriculum-kntt-67.data';
+import { CURRICULUM_KNTT_8_9 } from './curriculum-kntt-89.data';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Starting comprehensive B2B School seed...');
+  console.log('============================================================');
+  console.log('Starting GDPT 2018 (Kết nối tri thức với cuộc sống) Seed...');
+  console.log('============================================================');
 
   const pepper = process.env.PASSWORD_PEPPER || 'DEFAULT_PEPPER';
   const adminPasswordHash = await bcrypt.hash('Admin@123' + pepper, 10);
@@ -12,7 +20,9 @@ async function main() {
   const studentPasswordHash = await bcrypt.hash('Student@123' + pepper, 10);
   const parentPasswordHash = await bcrypt.hash('Parent@123' + pepper, 10);
 
-  // 1. Sample School: THCS Nguyễn Trãi
+  // -------------------------------------------------------------------------
+  // 1. Sample School: Trường THCS Nguyễn Trãi
+  // -------------------------------------------------------------------------
   const school = await prisma.school.upsert({
     where: { code: 'THCSNT' },
     update: {
@@ -37,9 +47,11 @@ async function main() {
       aiProvider: 'SYSTEM',
     },
   });
-  console.log(`School: ${school.name} (${school.code})`);
+  console.log(`[1/8] School: ${school.name} (${school.code})`);
 
-  // 2. School Admin (Role.ADMIN) for THCS Nguyễn Trãi (logs in at /vi/admin/login)
+  // -------------------------------------------------------------------------
+  // 2. School Admins
+  // -------------------------------------------------------------------------
   const schoolAdmin = await prisma.user.upsert({
     where: { email: 'admin@nguyentrai.edu.vn' },
     update: {
@@ -61,7 +73,6 @@ async function main() {
     },
   });
 
-  // Also keep admin@eduai.vn and schooladmin@nguyentrai.edu.vn synced to the same School with Role.ADMIN
   await prisma.user.upsert({
     where: { email: 'admin@eduai.vn' },
     update: {
@@ -104,42 +115,77 @@ async function main() {
       isActive: true,
     },
   });
-  console.log(`School Admin (Role.ADMIN): ${schoolAdmin.email} / admin@eduai.vn (Password: Admin@123)`);
+  console.log(`[2/8] School Admin: ${schoolAdmin.email} / admin@eduai.vn`);
 
-  // 4. Seed Standard Subjects for Grades 6 - 12
-  const subjectNames = [
-    'Toán học',
-    'Ngữ văn',
-    'Tiếng Anh',
-    'Vật lý',
-    'Hóa học',
-    'Sinh học',
-    'Lịch sử',
-    'Địa lý',
-    'GDCD',
-    'Tin học',
-    'Công nghệ',
-    'Thể dục',
-  ];
-
+  // -------------------------------------------------------------------------
+  // 3. Synchronize & Clean Subjects according to GDPT 2018
+  // -------------------------------------------------------------------------
   const subjectMap = new Map<string, string>(); // `${name}_${grade}` -> id
-  for (const grade of [6, 7, 8, 9, 10, 11, 12]) {
-    for (const name of subjectNames) {
-      const subj = await prisma.subject.upsert({
-        where: { name_grade: { name, grade } },
-        update: {},
-        create: {
-          name,
-          grade,
-          description: `Môn ${name} Khối ${grade}`,
-        },
-      });
-      subjectMap.set(`${name}_${grade}`, subj.id);
+  const validSubjectKeys = new Set<string>();
+
+  for (const group of GDPT_2018_SUBJECTS) {
+    for (const grade of group.grades) {
+      for (const name of group.names) {
+        const subj = await prisma.subject.upsert({
+          where: { name_grade: { name, grade } },
+          update: {
+            description: `Môn ${name} - Khối ${grade} (Chương trình GDPT 2018 - Kết nối tri thức với cuộc sống)`,
+          },
+          create: {
+            name,
+            grade,
+            description: `Môn ${name} - Khối ${grade} (Chương trình GDPT 2018 - Kết nối tri thức với cuộc sống)`,
+          },
+        });
+        const key = `${name}_${grade}`;
+        subjectMap.set(key, subj.id);
+        validSubjectKeys.add(key);
+      }
     }
   }
-  console.log(`Seeded ${subjectMap.size} subjects across grades 6-12`);
 
-  // 5. Academic Year 2025-2026
+  // Migrate legacy/non-GDPT-2018 subjects (e.g. "Toán học" -> "Toán", "GDCD" -> "Giáo dục công dân", etc.)
+  const allSubjects = await prisma.subject.findMany();
+  for (const oldSubj of allSubjects) {
+    const key = `${oldSubj.name}_${oldSubj.grade}`;
+    if (validSubjectKeys.has(key)) continue;
+
+    let targetName = 'Toán';
+    const n = oldSubj.name.toLowerCase();
+    if (n.includes('toán')) targetName = 'Toán';
+    else if (n.includes('văn') || n.includes('tiếng việt')) {
+      targetName = oldSubj.grade <= 5 ? 'Tiếng Việt' : 'Ngữ văn';
+    } else if (n.includes('anh') || n.includes('ngoại ngữ')) targetName = 'Tiếng Anh';
+    else if (n.includes('gdcd') || n.includes('công dân')) targetName = 'Giáo dục công dân';
+    else if (n.includes('thể dục') || n.includes('thể chất')) targetName = 'Giáo dục thể chất';
+    else if (n.includes('nghệ thuật')) targetName = 'Nghệ thuật';
+    else if (n.includes('trải nghiệm')) {
+      targetName = oldSubj.grade <= 5 ? 'Hoạt động trải nghiệm' : 'Hoạt động trải nghiệm, hướng nghiệp';
+    } else if (oldSubj.grade >= 6 && oldSubj.grade <= 9 && (n.includes('vật') || n.includes('hóa') || n.includes('sinh'))) {
+      targetName = 'Khoa học tự nhiên';
+    } else if (oldSubj.grade >= 6 && oldSubj.grade <= 9 && (n.includes('sử') || n.includes('địa'))) {
+      targetName = 'Lịch sử và Địa lí';
+    } else if (n.includes('vật lý')) targetName = 'Vật lí';
+    else if (n.includes('địa lý')) targetName = 'Địa lí';
+
+    const targetId = subjectMap.get(`${targetName}_${oldSubj.grade}`);
+    if (targetId && targetId !== oldSubj.id) {
+      await prisma.course.updateMany({ where: { subjectId: oldSubj.id }, data: { subjectId: targetId } });
+      await prisma.quiz.updateMany({ where: { subjectId: oldSubj.id }, data: { subjectId: targetId } });
+      await prisma.chatSession.updateMany({ where: { subjectId: oldSubj.id }, data: { subjectId: targetId } });
+      await prisma.classSubjectTeacher.deleteMany({ where: { subjectId: oldSubj.id } });
+    }
+    try {
+      await prisma.subject.delete({ where: { id: oldSubj.id } });
+    } catch {
+      // Ignore if still referenced
+    }
+  }
+  console.log(`[3/8] Synchronized ${subjectMap.size} standard GDPT 2018 subjects (Grades 1-12).`);
+
+  // -------------------------------------------------------------------------
+  // 4. Academic Year 2025-2026
+  // -------------------------------------------------------------------------
   const academicYear = await prisma.academicYear.upsert({
     where: {
       schoolId_name: {
@@ -157,237 +203,180 @@ async function main() {
     },
   });
 
-  // 6. Seed Teachers (GVCN & GVBM)
-  const teacherMai = await prisma.user.upsert({
-    where: { email: 'mai.nguyen@nguyentrai.edu.vn' },
-    update: {
-      schoolId: school.id,
-      studentCode: 'GV01',
-      phone: '0912345001',
-      fullName: 'Nguyễn Thị Mai',
-      role: Role.TEACHER,
-      passwordHash: teacherPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-    create: {
-      schoolId: school.id,
-      studentCode: 'GV01',
-      email: 'mai.nguyen@nguyentrai.edu.vn',
-      phone: '0912345001',
-      fullName: 'Nguyễn Thị Mai',
-      role: Role.TEACHER,
-      passwordHash: teacherPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-  });
+  // -------------------------------------------------------------------------
+  // 5. Seed Teachers for GDPT 2018 Subjects (Grades 6, 7, 8, 9)
+  // -------------------------------------------------------------------------
+  const teacherSeeds = [
+    { code: 'GV01', fullName: 'Nguyễn Thị Mai', email: 'mai.nguyen@nguyentrai.edu.vn', phone: '0912345001', subject: 'Toán' },
+    { code: 'GV02', fullName: 'Trần Văn Hùng', email: 'hung.tran@nguyentrai.edu.vn', phone: '0912345002', subject: 'Ngữ văn' },
+    { code: 'GV03', fullName: 'Lê Thị Hương', email: 'huong.le@nguyentrai.edu.vn', phone: '0912345003', subject: 'Tiếng Anh' },
+    { code: 'GV04', fullName: 'Phạm Minh Tuấn', email: 'tuan.pham@nguyentrai.edu.vn', phone: '0912345004', subject: 'Khoa học tự nhiên' },
+    { code: 'GV05', fullName: 'Vũ Thị Thanh', email: 'thanh.vu@nguyentrai.edu.vn', phone: '0912345005', subject: 'Lịch sử và Địa lí' },
+    { code: 'GV06', fullName: 'Ngô Thị Hạnh', email: 'hanh.ngo@nguyentrai.edu.vn', phone: '0912345006', subject: 'Giáo dục công dân' },
+    { code: 'GV07', fullName: 'Đinh Văn Phong', email: 'phong.dinh@nguyentrai.edu.vn', phone: '0912345007', subject: 'Tin học' },
+    { code: 'GV08', fullName: 'Trịnh Thị Ngọc', email: 'ngoc.trinh@nguyentrai.edu.vn', phone: '0912345008', subject: 'Công nghệ' },
+    { code: 'GV09', fullName: 'Lý Minh Đức', email: 'duc.ly@nguyentrai.edu.vn', phone: '0912345009', subject: 'Giáo dục thể chất' },
+    { code: 'GV10', fullName: 'Hoàng Thị Lan', email: 'lan.hoang@nguyentrai.edu.vn', phone: '0912345010', subject: 'Nghệ thuật' },
+    { code: 'GV11', fullName: 'Đỗ Quang Minh', email: 'minh.do@nguyentrai.edu.vn', phone: '0912345011', subject: 'Hoạt động trải nghiệm, hướng nghiệp' },
+  ];
 
-  const teacherHung = await prisma.user.upsert({
-    where: { email: 'hung.tran@nguyentrai.edu.vn' },
-    update: {
-      schoolId: school.id,
-      studentCode: 'GV02',
-      phone: '0912345002',
-      fullName: 'Trần Văn Hùng',
-      role: Role.TEACHER,
-      passwordHash: teacherPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-    create: {
-      schoolId: school.id,
-      studentCode: 'GV02',
-      email: 'hung.tran@nguyentrai.edu.vn',
-      phone: '0912345002',
-      fullName: 'Trần Văn Hùng',
-      role: Role.TEACHER,
-      passwordHash: teacherPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-  });
-
-  // 7. Seed Classes 6A & 6B
-  const class6A = await prisma.class.upsert({
-    where: {
-      schoolId_academicYearId_name: {
+  const teacherByCode = new Map<string, { id: string; fullName: string; subject: string }>();
+  for (const t of teacherSeeds) {
+    const user = await prisma.user.upsert({
+      where: { email: t.email },
+      update: {
         schoolId: school.id,
-        academicYearId: academicYear.id,
-        name: 'Lớp 6A',
+        studentCode: t.code,
+        phone: t.phone,
+        fullName: t.fullName,
+        role: Role.TEACHER,
+        passwordHash: teacherPasswordHash,
+        mustChangePassword: false,
+        isActive: true,
       },
-    },
-    update: {
-      grade: 6,
-      homeroomTeacherId: teacherMai.id,
-    },
-    create: {
-      schoolId: school.id,
-      academicYearId: academicYear.id,
-      name: 'Lớp 6A',
-      grade: 6,
-      homeroomTeacherId: teacherMai.id,
-      inviteCode: 'NT-6A-2026',
-      status: 'ACTIVE',
-    },
-  });
-
-  const class6B = await prisma.class.upsert({
-    where: {
-      schoolId_academicYearId_name: {
+      create: {
         schoolId: school.id,
-        academicYearId: academicYear.id,
-        name: 'Lớp 6B',
-      },
-    },
-    update: {
-      grade: 6,
-      homeroomTeacherId: teacherHung.id,
-    },
-    create: {
-      schoolId: school.id,
-      academicYearId: academicYear.id,
-      name: 'Lớp 6B',
-      grade: 6,
-      homeroomTeacherId: teacherHung.id,
-      inviteCode: 'NT-6B-2026',
-      status: 'ACTIVE',
-    },
-  });
-
-  // Assign GVBM to 6A & 6B
-  const math6Id = subjectMap.get('Toán học_6')!;
-  const lit6Id = subjectMap.get('Ngữ văn_6')!;
-
-  await prisma.classSubjectTeacher.upsert({
-    where: { classId_subjectId: { classId: class6A.id, subjectId: math6Id } },
-    update: { teacherId: teacherMai.id },
-    create: { classId: class6A.id, subjectId: math6Id, teacherId: teacherMai.id },
-  });
-  await prisma.classSubjectTeacher.upsert({
-    where: { classId_subjectId: { classId: class6A.id, subjectId: lit6Id } },
-    update: { teacherId: teacherHung.id },
-    create: { classId: class6A.id, subjectId: lit6Id, teacherId: teacherHung.id },
-  });
-  await prisma.classSubjectTeacher.upsert({
-    where: { classId_subjectId: { classId: class6B.id, subjectId: math6Id } },
-    update: { teacherId: teacherMai.id },
-    create: { classId: class6B.id, subjectId: math6Id, teacherId: teacherMai.id },
-  });
-  await prisma.classSubjectTeacher.upsert({
-    where: { classId_subjectId: { classId: class6B.id, subjectId: lit6Id } },
-    update: { teacherId: teacherHung.id },
-    create: { classId: class6B.id, subjectId: lit6Id, teacherId: teacherHung.id },
-  });
-
-  // Create corresponding Courses for 6A
-  let courseMath6A = await prisma.course.findFirst({
-    where: { schoolId: school.id, title: 'Toán học - Lớp 6A' },
-  });
-  if (!courseMath6A) {
-    courseMath6A = await prisma.course.create({
-      data: {
-        schoolId: school.id,
-        title: 'Toán học - Lớp 6A',
-        description: 'Môn Toán học Lớp 6A - GV Nguyễn Thị Mai',
-        grade: 6,
-        subjectId: math6Id,
-        teacherId: teacherMai.id,
+        studentCode: t.code,
+        email: t.email,
+        phone: t.phone,
+        fullName: t.fullName,
+        role: Role.TEACHER,
+        passwordHash: teacherPasswordHash,
+        mustChangePassword: false,
+        isActive: true,
       },
     });
+    teacherByCode.set(t.code, { id: user.id, fullName: t.fullName, subject: t.subject });
   }
+  console.log(`[4/8] Seeded ${teacherByCode.size} Teachers across all GDPT 2018 Middle School subjects.`);
 
-  let courseLit6A = await prisma.course.findFirst({
-    where: { schoolId: school.id, title: 'Ngữ văn - Lớp 6A' },
-  });
-  if (!courseLit6A) {
-    courseLit6A = await prisma.course.create({
-      data: {
+  // -------------------------------------------------------------------------
+  // 6. Seed Classes for Grades 6, 7, 8, 9 & Assign Subject Teachers
+  // -------------------------------------------------------------------------
+  const classConfigs = [
+    { name: 'Lớp 6A', grade: 6, inviteCode: 'NT-6A-2026', homeroomCode: 'GV01' },
+    { name: 'Lớp 6B', grade: 6, inviteCode: 'NT-6B-2026', homeroomCode: 'GV02' },
+    { name: 'Lớp 7A', grade: 7, inviteCode: 'NT-7A-2026', homeroomCode: 'GV03' },
+    { name: 'Lớp 8A', grade: 8, inviteCode: 'NT-8A-2026', homeroomCode: 'GV04' },
+    { name: 'Lớp 9A', grade: 9, inviteCode: 'NT-9A-2026', homeroomCode: 'GV05' },
+  ];
+
+  const classByName = new Map<string, { id: string; grade: number }>();
+
+  for (const cfg of classConfigs) {
+    const homeroom = teacherByCode.get(cfg.homeroomCode)!;
+    const cls = await prisma.class.upsert({
+      where: {
+        schoolId_academicYearId_name: {
+          schoolId: school.id,
+          academicYearId: academicYear.id,
+          name: cfg.name,
+        },
+      },
+      update: {
+        grade: cfg.grade,
+        homeroomTeacherId: homeroom.id,
+        status: 'ACTIVE',
+      },
+      create: {
         schoolId: school.id,
-        title: 'Ngữ văn - Lớp 6A',
-        description: 'Môn Ngữ văn Lớp 6A - GV Trần Văn Hùng',
-        grade: 6,
-        subjectId: lit6Id,
-        teacherId: teacherHung.id,
+        academicYearId: academicYear.id,
+        name: cfg.name,
+        grade: cfg.grade,
+        homeroomTeacherId: homeroom.id,
+        inviteCode: cfg.inviteCode,
+        status: 'ACTIVE',
       },
     });
+    classByName.set(cfg.name, { id: cls.id, grade: cfg.grade });
+
+    // Assign all 11 GDPT 2018 subject teachers to this class
+    for (const t of teacherSeeds) {
+      const subjId = subjectMap.get(`${t.subject}_${cfg.grade}`);
+      const teacher = teacherByCode.get(t.code);
+      if (subjId && teacher) {
+        await prisma.classSubjectTeacher.upsert({
+          where: { classId_subjectId: { classId: cls.id, subjectId: subjId } },
+          update: { teacherId: teacher.id, status: 'ACTIVE' },
+          create: {
+            classId: cls.id,
+            subjectId: subjId,
+            teacherId: teacher.id,
+            status: 'ACTIVE',
+          },
+        });
+      }
+    }
   }
+  console.log(`[5/8] Seeded ${classByName.size} Classes (Grades 6, 7, 8, 9) and assigned GDPT 2018 subject teachers.`);
 
-  // 8. Seed Students & Parents (with Multi-child Link)
-  const student1 = await prisma.user.upsert({
-    where: { schoolId_studentCode: { schoolId: school.id, studentCode: 'HS0001' } },
-    update: {
-      fullName: 'Nguyễn Gia Bảo',
-      grade: 6,
-      passwordHash: studentPasswordHash,
-      mustChangePassword: false,
-    },
-    create: {
-      schoolId: school.id,
-      studentCode: 'HS0001',
-      email: 'hs0001@nguyentrai.edu.vn',
-      fullName: 'Nguyễn Gia Bảo',
-      role: Role.STUDENT,
-      grade: 6,
-      passwordHash: studentPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-  });
+  // -------------------------------------------------------------------------
+  // 7. Seed Students (Grades 6, 7, 8, 9) & Parent Links
+  // -------------------------------------------------------------------------
+  const studentSeeds = [
+    { code: 'HS0001', fullName: 'Nguyễn Gia Bảo', email: 'hs0001@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6A', mustChangePassword: false, xp: 650, level: 4 },
+    { code: 'HS0006', fullName: 'Nguyễn Gia Huy', email: 'hs0006@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6B', mustChangePassword: true, xp: 450, level: 3 },
+    { code: 'HS0011', fullName: 'Trần Minh Quân', email: 'hs0011@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7A', mustChangePassword: false, xp: 820, level: 5 },
+    { code: 'HS0021', fullName: 'Lê Khánh Huyền', email: 'hs0021@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8A', mustChangePassword: false, xp: 940, level: 6 },
+    { code: 'HS0031', fullName: 'Phạm Hoàng Long', email: 'hs0031@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9A', mustChangePassword: false, xp: 1250, level: 7 },
+  ];
 
-  const student2 = await prisma.user.upsert({
-    where: { schoolId_studentCode: { schoolId: school.id, studentCode: 'HS0006' } },
-    update: {
-      fullName: 'Nguyễn Gia Huy',
-      grade: 6,
-      passwordHash: studentPasswordHash,
-      mustChangePassword: false,
-    },
-    create: {
-      schoolId: school.id,
-      studentCode: 'HS0006',
-      email: 'hs0006@nguyentrai.edu.vn',
-      fullName: 'Nguyễn Gia Huy',
-      role: Role.STUDENT,
-      grade: 6,
-      passwordHash: studentPasswordHash,
-      mustChangePassword: true, // Để test luồng bắt buộc đổi mật khẩu lần đầu
-      isActive: true,
-    },
-  });
+  const studentsByGrade = new Map<number, string[]>(); // grade -> studentIds[]
+  const linkedStudentIds: string[] = [];
 
-  // Class Enrollments & Course Enrollments & Gamification Profiles
-  for (const [stu, cls] of [
-    [student1, class6A],
-    [student2, class6B],
-  ] as const) {
+  for (const s of studentSeeds) {
+    const stu = await prisma.user.upsert({
+      where: { schoolId_studentCode: { schoolId: school.id, studentCode: s.code } },
+      update: {
+        fullName: s.fullName,
+        email: s.email,
+        grade: s.grade,
+        passwordHash: studentPasswordHash,
+        mustChangePassword: s.mustChangePassword,
+        isActive: true,
+      },
+      create: {
+        schoolId: school.id,
+        studentCode: s.code,
+        email: s.email,
+        fullName: s.fullName,
+        role: Role.STUDENT,
+        grade: s.grade,
+        passwordHash: studentPasswordHash,
+        mustChangePassword: s.mustChangePassword,
+        isActive: true,
+      },
+    });
+
+    const cls = classByName.get(s.className)!;
     await prisma.classEnrollment.upsert({
       where: { classId_studentId: { classId: cls.id, studentId: stu.id } },
       update: { status: 'ACTIVE' },
       create: { classId: cls.id, studentId: stu.id, status: 'ACTIVE' },
     });
 
-    await prisma.enrollment.upsert({
-      where: { userId_courseId: { userId: stu.id, courseId: courseMath6A.id } },
-      update: {},
-      create: { userId: stu.id, courseId: courseMath6A.id },
-    });
-
     await prisma.gamificationProfile.upsert({
       where: { userId: stu.id },
-      update: {},
+      update: { lifetimeXp: s.xp, spendableXp: s.xp, level: s.level },
       create: {
         userId: stu.id,
-        lifetimeXp: 450,
-        spendableXp: 450,
-        level: 3,
-        currentStreak: 4,
-        longestStreak: 7,
+        lifetimeXp: s.xp,
+        spendableXp: s.xp,
+        level: s.level,
+        currentStreak: 5,
+        longestStreak: 10,
       },
     });
+
+    const list = studentsByGrade.get(s.grade) || [];
+    list.push(stu.id);
+    studentsByGrade.set(s.grade, list);
+
+    if (s.code === 'HS0001' || s.code === 'HS0006') {
+      linkedStudentIds.push(stu.id);
+    }
   }
 
-  // Parent with 2 children (HS0001 in 6A & HS0006 in 6B)
   let parent1 = await prisma.user.findFirst({
     where: { schoolId: school.id, phone: '0901000001', role: Role.PARENT },
   });
@@ -406,59 +395,252 @@ async function main() {
     });
   }
 
-  for (const stu of [student1, student2]) {
+  for (const stuId of linkedStudentIds) {
     await prisma.parentStudentLink.upsert({
-      where: { parentId_studentId: { parentId: parent1.id, studentId: stu.id } },
+      where: { parentId_studentId: { parentId: parent1.id, studentId: stuId } },
       update: { relationship: 'Bố' },
       create: {
         parentId: parent1.id,
-        studentId: stu.id,
+        studentId: stuId,
         relationship: 'Bố',
       },
     });
   }
+  console.log(`[6/8] Seeded Students across Grades 6, 7, 8, 9 & linked Parent account.`);
 
-  // 9. Seed Sample Quiz for Grade 6 Math
-  const existingQuiz = await prisma.quiz.findFirst({
-    where: { schoolId: school.id, subjectId: math6Id },
+  // -------------------------------------------------------------------------
+  // 8. Seed All 3 Linked Parts for Grades 6, 7, 8, 9 (Kết nối tri thức với cuộc sống):
+  //    Part A: Courses & Lessons
+  //    Part B: Documents (Prisma metadata) + Vector Store Chunks
+  //    Part C: Quizzes & QuizQuestions
+  // -------------------------------------------------------------------------
+  const allCurriculum: CurriculumCourseSeed[] = [
+    ...CURRICULUM_KNTT_6_7,
+    ...CURRICULUM_KNTT_8_9,
+  ];
+
+  // Clean up legacy empty courses from previous seeds (e.g., "Toán học - Lớp 6A", "Ngữ văn - Lớp 6A")
+  const validCourseTitles = new Set(allCurriculum.map((c) => c.title));
+  await prisma.course.deleteMany({
+    where: {
+      schoolId: school.id,
+      title: { notIn: Array.from(validCourseTitles) },
+    },
   });
-  if (!existingQuiz) {
+
+  const vectorDocsToEmbed: {
+    pageContent: string;
+    metadata: Record<string, any>;
+  }[] = [];
+
+  let totalCourses = 0;
+  let totalLessons = 0;
+  let totalDocuments = 0;
+  let totalQuizzes = 0;
+  let totalQuestions = 0;
+
+  for (const item of allCurriculum) {
+    const subjectId = subjectMap.get(`${item.subjectName}_${item.grade}`);
+    const teacher = teacherByCode.get(item.teacherCode);
+    if (!subjectId || !teacher) {
+      console.warn(`Skipping ${item.title}: missing subject or teacher`);
+      continue;
+    }
+
+    // --- PART A: Course & Lessons ---
+    let course = await prisma.course.findFirst({
+      where: {
+        schoolId: school.id,
+        title: item.title,
+      },
+    });
+
+    if (course) {
+      course = await prisma.course.update({
+        where: { id: course.id },
+        data: {
+          description: item.description,
+          grade: item.grade,
+          subjectId,
+          teacherId: teacher.id,
+        },
+      });
+    } else {
+      course = await prisma.course.create({
+        data: {
+          schoolId: school.id,
+          title: item.title,
+          description: item.description,
+          grade: item.grade,
+          subjectId,
+          teacherId: teacher.id,
+        },
+      });
+    }
+    totalCourses++;
+
+    // Enroll all students of this grade into the course
+    const gradeStudentIds = studentsByGrade.get(item.grade) || [];
+    for (const stuId of gradeStudentIds) {
+      await prisma.enrollment.upsert({
+        where: { userId_courseId: { userId: stuId, courseId: course.id } },
+        update: {},
+        create: { userId: stuId, courseId: course.id },
+      });
+    }
+
+    // Replace lessons for this course to ensure clean, deterministic ordering
+    await prisma.lesson.deleteMany({ where: { courseId: course.id } });
+    for (const lesson of item.lessons) {
+      await prisma.lesson.create({
+        data: {
+          courseId: course.id,
+          title: lesson.title,
+          order: lesson.order,
+          content: lesson.content,
+        },
+      });
+      totalLessons++;
+    }
+
+    // --- PART B: Documents & RAG Chunks ---
+    await prisma.document.deleteMany({ where: { courseId: course.id } });
+    for (const docSeed of item.documents) {
+      const createdDoc = await prisma.document.create({
+        data: {
+          schoolId: school.id,
+          courseId: course.id,
+          fileName: docSeed.fileName,
+          type: 'application/pdf',
+          size: docSeed.size,
+          status: 'Embedded',
+        },
+      });
+      totalDocuments++;
+
+      for (const chunk of docSeed.chunks) {
+        vectorDocsToEmbed.push({
+          pageContent: chunk.content,
+          metadata: {
+            courseId: course.id,
+            documentId: createdDoc.id,
+            schoolId: school.id,
+            subjectId,
+            subjectName: item.subjectName,
+            grade: item.grade,
+            fileName: docSeed.fileName,
+            loc: { pageNumber: chunk.page },
+          },
+        });
+      }
+    }
+
+    // --- PART C: Quiz & QuizQuestions ---
+    // Remove previous quizzes of this subject & grade in this school to avoid duplicates
+    await prisma.quiz.deleteMany({
+      where: {
+        schoolId: school.id,
+        subjectId,
+        grade: item.grade,
+      },
+    });
+
     await prisma.quiz.create({
       data: {
         schoolId: school.id,
-        title: 'Kiểm tra 15 phút: Tập hợp các số tự nhiên (Toán 6)',
-        description: 'Bài kiểm tra kiến thức Chương 1 Toán lớp 6.',
-        grade: 6,
-        subjectId: math6Id,
-        duration: 15,
+        subjectId,
+        grade: item.grade,
+        title: item.quiz.title,
+        description: item.quiz.description,
+        duration: item.quiz.duration,
         status: 'PUBLISHED',
         questions: {
-          create: [
-            {
-              content: 'Tập hợp các số tự nhiên khác 0 được ký hiệu là gì?',
-              options: JSON.stringify(['N*', 'N', 'Z', 'Q']),
-              correctOption: 'N*',
-              explanation: 'N* là tập hợp các số tự nhiên khác 0: {1; 2; 3; ...}.',
-            },
-            {
-              content: 'Kết quả của phép tính 2^3 . 2^2 dưới dạng một lũy thừa là:',
-              options: JSON.stringify(['2^5', '2^6', '4^5', '4^6']),
-              correctOption: '2^5',
-              explanation: 'Khi nhân hai lũy thừa cùng cơ số, ta giữ nguyên cơ số và cộng các số mũ: 2^(3+2) = 2^5.',
-            },
-            {
-              content: 'Số nào sau đây chia hết cho cả 2, 3, 5 và 9?',
-              options: JSON.stringify(['90', '60', '45', '120']),
-              correctOption: '90',
-              explanation: 'Số chia hết cho 2 và 5 tận cùng là 0. Tổng các chữ số của 90 là 9 chia hết cho cả 3 và 9.',
-            },
-          ],
+          create: item.quiz.questions.map((q) => ({
+            content: q.content,
+            options: q.options,
+            correctOption: q.correctOption,
+            explanation: q.explanation,
+          })),
         },
       },
     });
+    totalQuizzes++;
+    totalQuestions += item.quiz.questions.length;
   }
 
-  console.log('Comprehensive B2B School Seed completed successfully.');
+  console.log(
+    `[7/8] Seeded Prisma DB: ${totalCourses} Courses, ${totalLessons} Lessons, ${totalDocuments} Documents, ${totalQuizzes} Quizzes (${totalQuestions} Questions).`,
+  );
+
+  // -------------------------------------------------------------------------
+  // 9. Embed RAG Documents into Supabase pgvector (`public.documents`)
+  // -------------------------------------------------------------------------
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_PRIVATE_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+
+  if (
+    supabaseUrl &&
+    supabaseKey &&
+    geminiKey &&
+    !supabaseUrl.includes('placeholder') &&
+    !geminiKey.includes('placeholder')
+  ) {
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS public.documents (
+          id bigserial PRIMARY KEY,
+          content text,
+          metadata jsonb,
+          embedding vector(3072)
+        );
+      `);
+
+      // Remove existing vector chunks for this school before inserting fresh chunks
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM public.documents WHERE metadata->>'schoolId' = $1`,
+        school.id,
+      );
+
+      const client = createClient(supabaseUrl, supabaseKey);
+      const embeddings = new GoogleGenerativeAIEmbeddings({
+        apiKey: geminiKey,
+        model: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
+      });
+
+      const vectorStore = new SupabaseVectorStore(embeddings, {
+        client,
+        tableName: 'documents',
+        queryName: 'match_documents',
+      });
+
+      console.log(
+        `[8/8] Generating embeddings and uploading ${vectorDocsToEmbed.length} curriculum chunks to Supabase Vector Store...`,
+      );
+
+      // Batch in groups of 15 to avoid rate limits
+      const batchSize = 15;
+      for (let i = 0; i < vectorDocsToEmbed.length; i += batchSize) {
+        const batch = vectorDocsToEmbed.slice(i, i + batchSize);
+        await vectorStore.addDocuments(batch);
+        console.log(
+          `   -> Embedded ${Math.min(i + batchSize, vectorDocsToEmbed.length)}/${vectorDocsToEmbed.length} chunks`,
+        );
+      }
+
+      console.log('[8/8] Successfully populated Supabase Vector Store (public.documents)!');
+    } catch (vecErr) {
+      console.error('Warning: Could not populate vector embeddings:', vecErr);
+    }
+  } else {
+    console.log(
+      '[8/8] Skipping vector embedding upload (SUPABASE_URL / GEMINI_API_KEY not configured).',
+    );
+  }
+
+  console.log('============================================================');
+  console.log('GDPT 2018 (Kết nối tri thức - Khối 6, 7, 8, 9) Seed Complete!');
+  console.log('============================================================');
 }
 
 main()

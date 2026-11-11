@@ -11,20 +11,19 @@ import * as path from 'path';
 
 const SCHOOL_NAME = 'THCS Nguyễn Trãi';
 
-// --- Danh sách Giáo viên (12 giáo viên phụ trách các bộ môn) ---
+// --- Danh sách Giáo viên (11 giáo viên phụ trách các bộ môn chuẩn GDPT 2018) ---
 const teachers = [
-  { code: 'GV01', name: 'Nguyễn Thị Mai',     email: 'mai.nguyen@nguyentrai.edu.vn',  phone: '0912345001', subject: 'Toán học' },
+  { code: 'GV01', name: 'Nguyễn Thị Mai',     email: 'mai.nguyen@nguyentrai.edu.vn',  phone: '0912345001', subject: 'Toán' },
   { code: 'GV02', name: 'Trần Văn Hùng',      email: 'hung.tran@nguyentrai.edu.vn',   phone: '0912345002', subject: 'Ngữ văn' },
   { code: 'GV03', name: 'Lê Thị Hương',       email: 'huong.le@nguyentrai.edu.vn',    phone: '0912345003', subject: 'Tiếng Anh' },
-  { code: 'GV04', name: 'Phạm Minh Tuấn',     email: 'tuan.pham@nguyentrai.edu.vn',   phone: '0912345004', subject: 'Vật lý' },
-  { code: 'GV05', name: 'Hoàng Thị Lan',      email: 'lan.hoang@nguyentrai.edu.vn',   phone: '0912345005', subject: 'Hóa học' },
-  { code: 'GV06', name: 'Đỗ Quang Minh',      email: 'minh.do@nguyentrai.edu.vn',     phone: '0912345006', subject: 'Sinh học' },
-  { code: 'GV07', name: 'Vũ Thị Thanh',       email: 'thanh.vu@nguyentrai.edu.vn',    phone: '0912345007', subject: 'Lịch sử' },
-  { code: 'GV08', name: 'Bùi Đức Thắng',      email: 'thang.bui@nguyentrai.edu.vn',   phone: '0912345008', subject: 'Địa lý' },
-  { code: 'GV09', name: 'Ngô Thị Hạnh',       email: 'hanh.ngo@nguyentrai.edu.vn',    phone: '0912345009', subject: 'GDCD' },
-  { code: 'GV10', name: 'Đinh Văn Phong',      email: 'phong.dinh@nguyentrai.edu.vn',  phone: '0912345010', subject: 'Tin học' },
-  { code: 'GV11', name: 'Trịnh Thị Ngọc',     email: 'ngoc.trinh@nguyentrai.edu.vn',  phone: '0912345011', subject: 'Công nghệ' },
-  { code: 'GV12', name: 'Lý Minh Đức',        email: 'duc.ly@nguyentrai.edu.vn',      phone: '0912345012', subject: 'Thể dục' },
+  { code: 'GV04', name: 'Phạm Minh Tuấn',     email: 'tuan.pham@nguyentrai.edu.vn',   phone: '0912345004', subject: 'Khoa học tự nhiên' },
+  { code: 'GV05', name: 'Vũ Thị Thanh',       email: 'thanh.vu@nguyentrai.edu.vn',    phone: '0912345005', subject: 'Lịch sử và Địa lí' },
+  { code: 'GV06', name: 'Ngô Thị Hạnh',       email: 'hanh.ngo@nguyentrai.edu.vn',    phone: '0912345006', subject: 'Giáo dục công dân' },
+  { code: 'GV07', name: 'Đinh Văn Phong',      email: 'phong.dinh@nguyentrai.edu.vn',  phone: '0912345007', subject: 'Tin học' },
+  { code: 'GV08', name: 'Trịnh Thị Ngọc',     email: 'ngoc.trinh@nguyentrai.edu.vn',  phone: '0912345008', subject: 'Công nghệ' },
+  { code: 'GV09', name: 'Lý Minh Đức',        email: 'duc.ly@nguyentrai.edu.vn',      phone: '0912345009', subject: 'Giáo dục thể chất' },
+  { code: 'GV10', name: 'Hoàng Thị Lan',      email: 'lan.hoang@nguyentrai.edu.vn',   phone: '0912345010', subject: 'Nghệ thuật' },
+  { code: 'GV11', name: 'Đỗ Quang Minh',      email: 'minh.do@nguyentrai.edu.vn',     phone: '0912345011', subject: 'Hoạt động trải nghiệm, hướng nghiệp' },
 ];
 
 // --- Cấu hình lớp học (8 lớp: 6A, 6B, 7A, 7B, 8A, 8B, 9A, 9B) ---
@@ -37,14 +36,14 @@ interface ClassConfig {
 }
 
 const classes: ClassConfig[] = [
-  { code: '6A', name: 'Lớp 6A', grade: 6, homeroomTeacherCode: 'GV01', subjectTeacherCodes: ['GV02', 'GV03', 'GV09', 'GV10'] },
-  { code: '6B', name: 'Lớp 6B', grade: 6, homeroomTeacherCode: 'GV02', subjectTeacherCodes: ['GV01', 'GV03', 'GV09', 'GV10'] },
-  { code: '7A', name: 'Lớp 7A', grade: 7, homeroomTeacherCode: 'GV03', subjectTeacherCodes: ['GV01', 'GV02', 'GV04', 'GV11'] },
-  { code: '7B', name: 'Lớp 7B', grade: 7, homeroomTeacherCode: 'GV04', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV11'] },
-  { code: '8A', name: 'Lớp 8A', grade: 8, homeroomTeacherCode: 'GV05', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV06', 'GV12'] },
-  { code: '8B', name: 'Lớp 8B', grade: 8, homeroomTeacherCode: 'GV06', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV05', 'GV12'] },
-  { code: '9A', name: 'Lớp 9A', grade: 9, homeroomTeacherCode: 'GV07', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV04', 'GV05', 'GV08'] },
-  { code: '9B', name: 'Lớp 9B', grade: 9, homeroomTeacherCode: 'GV08', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV04', 'GV05', 'GV07'] },
+  { code: '6A', name: 'Lớp 6A', grade: 6, homeroomTeacherCode: 'GV01', subjectTeacherCodes: ['GV02', 'GV03', 'GV04', 'GV05', 'GV06', 'GV07', 'GV08'] },
+  { code: '6B', name: 'Lớp 6B', grade: 6, homeroomTeacherCode: 'GV02', subjectTeacherCodes: ['GV01', 'GV03', 'GV04', 'GV05', 'GV06', 'GV07', 'GV08'] },
+  { code: '7A', name: 'Lớp 7A', grade: 7, homeroomTeacherCode: 'GV03', subjectTeacherCodes: ['GV01', 'GV02', 'GV04', 'GV05', 'GV06', 'GV07', 'GV08'] },
+  { code: '7B', name: 'Lớp 7B', grade: 7, homeroomTeacherCode: 'GV04', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV05', 'GV06', 'GV07', 'GV08'] },
+  { code: '8A', name: 'Lớp 8A', grade: 8, homeroomTeacherCode: 'GV05', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV04', 'GV06', 'GV07', 'GV08'] },
+  { code: '8B', name: 'Lớp 8B', grade: 8, homeroomTeacherCode: 'GV06', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV04', 'GV05', 'GV07', 'GV08'] },
+  { code: '9A', name: 'Lớp 9A', grade: 9, homeroomTeacherCode: 'GV07', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV04', 'GV05', 'GV06', 'GV08'] },
+  { code: '9B', name: 'Lớp 9B', grade: 9, homeroomTeacherCode: 'GV08', subjectTeacherCodes: ['GV01', 'GV02', 'GV03', 'GV04', 'GV05', 'GV06', 'GV07'] },
 ];
 
 // --- Danh sách học sinh cố định (đảm bảo tính tất định khi chạy lại) ---

@@ -58,7 +58,7 @@ export class SchoolsImportService {
         'Nguyễn Thị Mai',
         'mai.nguyen@nguyentrai.edu.vn',
         '0912345001',
-        'Toán học',
+        'Toán',
       ],
       [
         '6A',
@@ -91,7 +91,7 @@ export class SchoolsImportService {
         'Nguyễn Thị Mai',
         'mai.nguyen@nguyentrai.edu.vn',
         '0912345001',
-        'Toán học',
+        'Toán',
       ],
     ];
     const wsClasses = XLSX.utils.aoa_to_sheet(classesData);
