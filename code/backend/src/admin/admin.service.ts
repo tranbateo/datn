@@ -271,31 +271,64 @@ export class AdminService {
   }
 
   async getTeachers(schoolId?: string | null) {
-    return this.prisma.user.findMany({
-      where: { ...this.buildSchoolFilter(schoolId), role: Role.TEACHER },
-      select: {
-        id: true,
-        studentCode: true,
-        fullName: true,
-        email: true,
-        phone: true,
-        isActive: true,
-        mustChangePassword: true,
-        createdAt: true,
-        courses: {
-          select: { id: true, title: true },
-        },
-        homeroomClasses: {
-          select: { id: true, name: true, grade: true },
-        },
-        subjectClasses: {
-          include: {
-            class: { select: { id: true, name: true } },
-            subject: { select: { id: true, name: true } },
+    const schoolFilter = this.buildSchoolFilter(schoolId);
+    const [teachers, schoolCourses] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { ...schoolFilter, role: Role.TEACHER },
+        select: {
+          id: true,
+          studentCode: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          isActive: true,
+          mustChangePassword: true,
+          createdAt: true,
+          courses: {
+            select: { id: true, title: true, grade: true, subjectId: true },
+          },
+          homeroomClasses: {
+            select: { id: true, name: true, grade: true },
+            orderBy: [{ grade: 'asc' }, { name: 'asc' }],
+          },
+          subjectClasses: {
+            include: {
+              class: { select: { id: true, name: true, grade: true } },
+              subject: { select: { id: true, name: true, grade: true } },
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
+        orderBy: [{ studentCode: 'asc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.course.findMany({
+        where: schoolFilter,
+        select: { id: true, title: true, grade: true, subjectId: true },
+        orderBy: [{ grade: 'asc' }, { title: 'asc' }],
+      }),
+    ]);
+
+    return teachers.map((t) => {
+      const sortedSubjectClasses = [...t.subjectClasses].sort((a, b) => {
+        const gradeDiff = (a.class?.grade || 0) - (b.class?.grade || 0);
+        if (gradeDiff !== 0) return gradeDiff;
+        return (a.class?.name || '').localeCompare(b.class?.name || '');
+      });
+
+      const taughtSubjectIds = new Set(
+        sortedSubjectClasses.map((sc) => sc.subject?.id).filter(Boolean),
+      );
+      const matchedCourses =
+        taughtSubjectIds.size > 0
+          ? schoolCourses.filter(
+              (c) => c.subjectId && taughtSubjectIds.has(c.subjectId),
+            )
+          : t.courses;
+
+      return {
+        ...t,
+        subjectClasses: sortedSubjectClasses,
+        courses: matchedCourses.map((c) => ({ id: c.id, title: c.title })),
+      };
     });
   }
 

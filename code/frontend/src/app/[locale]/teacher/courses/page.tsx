@@ -27,6 +27,8 @@ export default function TeacherCourseManagement() {
           title: c.title,
           instructor: c.instructor || "Giáo viên",
           category: c.subject || "Chưa phân loại",
+          grade: c.grade || "",
+          assignedClasses: Array.isArray(c.assignedClasses) ? c.assignedClasses : [],
           enrollment: c.students || 0,
           enrollmentTrend: c.enrollmentTrend || "+0%",
           lessons: c.lessons || 0,
@@ -236,7 +238,15 @@ function CourseRow({ course, onUploaded }: { course: any; onUploaded: () => void
           </div>
           <div>
             <div className="font-bold text-gray-900 dark:text-white text-base">{course.title}</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">{course.instructor}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 flex flex-wrap items-center gap-1.5 mt-0.5">
+              <span>{course.instructor}</span>
+              {course.grade && <span>• {course.grade}</span>}
+              {course.assignedClasses?.length > 0 && (
+                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                  • Phụ trách: {course.assignedClasses.join(", ")}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </td>

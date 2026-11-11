@@ -24,6 +24,7 @@ export class TeacherService {
           include: {
             enrollments: { where: { status: 'ACTIVE' } },
           },
+          orderBy: [{ grade: 'asc' }, { name: 'asc' }],
         },
         subjectClasses: {
           include: {
@@ -43,18 +44,43 @@ export class TeacherService {
       throw new NotFoundException('Không tìm thấy giáo viên.');
     }
 
-    const courseIds = teacher.courses.map((c) => c.id);
-    const subjectIds = Array.from(
-      new Set([
-        ...teacher.courses.map((c) => c.subjectId).filter(Boolean),
-        ...teacher.subjectClasses.map((sc) => sc.subjectId).filter(Boolean),
-      ]),
+    const sortedSubjectClasses = [...teacher.subjectClasses].sort((a, b) => {
+      const gradeDiff = (a.class?.grade || 0) - (b.class?.grade || 0);
+      if (gradeDiff !== 0) return gradeDiff;
+      return (a.class?.name || '').localeCompare(b.class?.name || '');
+    });
+
+    const assignedSubjectIds = Array.from(
+      new Set(sortedSubjectClasses.map((sc) => sc.subjectId).filter(Boolean)),
     ) as string[];
+
+    const subjectIds =
+      assignedSubjectIds.length > 0
+        ? assignedSubjectIds
+        : (Array.from(
+            new Set(teacher.courses.map((c) => c.subjectId).filter(Boolean)),
+          ) as string[]);
+
+    const scopedCourses =
+      subjectIds.length > 0
+        ? await this.prisma.course.findMany({
+            where: {
+              ...(teacher.schoolId ? { schoolId: teacher.schoolId } : {}),
+              OR: [
+                { subjectId: { in: subjectIds } },
+                { teacherId: teacher.id, subjectId: null },
+              ],
+            },
+            select: { id: true, subjectId: true, grade: true },
+          })
+        : teacher.courses;
+
+    const courseIds = scopedCourses.map((c) => c.id);
 
     const classIds = Array.from(
       new Set([
         ...teacher.homeroomClasses.map((c) => c.id),
-        ...teacher.subjectClasses.map((sc) => sc.classId),
+        ...sortedSubjectClasses.map((sc) => sc.classId),
       ]),
     );
 
@@ -65,7 +91,7 @@ export class TeacherService {
       subjectIds,
       classIds,
       homeroomClasses: teacher.homeroomClasses,
-      subjectClasses: teacher.subjectClasses,
+      subjectClasses: sortedSubjectClasses,
     };
   }
 
@@ -81,14 +107,18 @@ export class TeacherService {
 
     const [courseEnrollments, classEnrollments, totalQuizzes] =
       await Promise.all([
-        this.prisma.enrollment.findMany({
-          where: { courseId: { in: scope.courseIds } },
-          select: { userId: true },
-        }),
-        this.prisma.classEnrollment.findMany({
-          where: { classId: { in: scope.classIds }, status: 'ACTIVE' },
-          select: { studentId: true },
-        }),
+        scope.classIds.length === 0 && scope.courseIds.length > 0
+          ? this.prisma.enrollment.findMany({
+              where: { courseId: { in: scope.courseIds } },
+              select: { userId: true },
+            })
+          : Promise.resolve([]),
+        scope.classIds.length > 0
+          ? this.prisma.classEnrollment.findMany({
+              where: { classId: { in: scope.classIds }, status: 'ACTIVE' },
+              select: { studentId: true },
+            })
+          : Promise.resolve([]),
         scope.subjectIds.length > 0
           ? this.prisma.quiz.count({ where: quizWhere })
           : Promise.resolve(0),
@@ -96,8 +126,8 @@ export class TeacherService {
 
     const allStudentIds = Array.from(
       new Set([
-        ...courseEnrollments.map((e) => e.userId),
         ...classEnrollments.map((ce) => ce.studentId),
+        ...courseEnrollments.map((e) => e.userId),
       ]),
     );
     const totalStudents = allStudentIds.length;
@@ -176,7 +206,17 @@ export class TeacherService {
       .sort((a, b) => a.average - b.average)
       .slice(0, 3);
 
+    const primarySubjects = Array.from(
+      new Set(scope.subjectClasses.map((sc) => sc.subject.name).filter(Boolean)),
+    );
+
     return {
+      teacherProfile: {
+        fullName: scope.teacher.fullName || 'Giáo viên',
+        studentCode: scope.teacher.studentCode || '',
+        email: scope.teacher.email || '',
+        primarySubjects,
+      },
       totalStudents,
       totalCourses,
       totalQuizzes,
@@ -230,68 +270,90 @@ export class TeacherService {
     const scope = await this.getTeacherScope(teacherId);
 
     const homeroomClassIds = new Set(scope.homeroomClasses.map((c) => c.id));
+    const subjectsByClassId = new Map<string, string[]>();
+    for (const sc of scope.subjectClasses) {
+      const list = subjectsByClassId.get(sc.classId) || [];
+      if (sc.subject?.name && !list.includes(sc.subject.name)) {
+        list.push(sc.subject.name);
+      }
+      subjectsByClassId.set(sc.classId, list);
+    }
 
     // Fetch from ClassEnrollment (for both GVCN and GVBM)
-    const classEnrollments = await this.prisma.classEnrollment.findMany({
-      where: {
-        classId: { in: scope.classIds },
-        status: 'ACTIVE',
-      },
-      include: {
-        class: true,
-        student: {
-          select: {
-            id: true,
-            studentCode: true,
-            email: true,
-            phone: true,
-            fullName: true,
-            grade: true,
-            gamificationProfile: {
-              select: {
-                level: true,
-                currentStreak: true,
-                lifetimeXp: true,
+    const classEnrollments =
+      scope.classIds.length > 0
+        ? await this.prisma.classEnrollment.findMany({
+            where: {
+              classId: { in: scope.classIds },
+              status: 'ACTIVE',
+            },
+            include: {
+              class: true,
+              student: {
+                select: {
+                  id: true,
+                  studentCode: true,
+                  email: true,
+                  phone: true,
+                  fullName: true,
+                  grade: true,
+                  gamificationProfile: {
+                    select: {
+                      level: true,
+                      currentStreak: true,
+                      lifetimeXp: true,
+                    },
+                  },
+                },
               },
             },
-          },
-        },
-      },
-    });
+            orderBy: [
+              { class: { grade: 'asc' } },
+              { class: { name: 'asc' } },
+              { student: { studentCode: 'asc' } },
+            ],
+          })
+        : [];
 
-    // Also fetch from Course Enrollment for backward compatibility
-    const courseEnrollments = await this.prisma.enrollment.findMany({
-      where: { courseId: { in: scope.courseIds } },
-      include: {
-        course: true,
-        user: {
-          select: {
-            id: true,
-            studentCode: true,
-            email: true,
-            phone: true,
-            fullName: true,
-            grade: true,
-            gamificationProfile: {
-              select: {
-                level: true,
-                currentStreak: true,
-                lifetimeXp: true,
+    // Fallback to Course Enrollment only if the teacher has no class assignments
+    const courseEnrollments =
+      scope.classIds.length === 0 && scope.courseIds.length > 0
+        ? await this.prisma.enrollment.findMany({
+            where: { courseId: { in: scope.courseIds } },
+            include: {
+              course: true,
+              user: {
+                select: {
+                  id: true,
+                  studentCode: true,
+                  email: true,
+                  phone: true,
+                  fullName: true,
+                  grade: true,
+                  gamificationProfile: {
+                    select: {
+                      level: true,
+                      currentStreak: true,
+                      lifetimeXp: true,
+                    },
+                  },
+                },
               },
             },
-          },
-        },
-      },
-    });
+          })
+        : [];
 
     const studentsMap = new Map<string, any>();
     for (const ce of classEnrollments) {
       const u = ce.student;
       const isGvcn = homeroomClassIds.has(ce.classId);
+      const classSubjects = subjectsByClassId.get(ce.classId) || [];
       studentsMap.set(u.id, {
         user: u,
         className: ce.class.name,
         classId: ce.classId,
+        isHomeroomTeacher: isGvcn,
+        subjects: classSubjects,
         teacherRole: isGvcn ? 'GVCN' : 'GVBM',
         enrolledAt: ce.enrolledAt,
       });
@@ -304,6 +366,8 @@ export class TeacherService {
           user: u,
           className: enr.course.title,
           classId: null,
+          isHomeroomTeacher: false,
+          subjects: [],
           teacherRole: 'GVBM',
           enrolledAt: enr.createdAt,
         });
@@ -359,6 +423,8 @@ export class TeacherService {
         email: u.email || u.studentCode || '',
         className: info.className,
         classId: info.classId,
+        isHomeroomTeacher: info.isHomeroomTeacher,
+        subjects: info.subjects,
         teacherRole: info.teacherRole,
         grade: u.grade ? `Khối ${u.grade}` : 'Chưa cập nhật',
         level: u.gamificationProfile?.level || 1,
@@ -370,6 +436,8 @@ export class TeacherService {
         lastActivity,
         enrolledAt: info.enrolledAt,
         latestAttemptId: relevantAttempts[0]?.id || null,
+        latestQuizTitle: relevantAttempts[0]?.quiz?.title || null,
+        latestScore: relevantAttempts[0]?.score ?? null,
         initials: (u.fullName || 'HS')
           .split(' ')
           .map((n: string) => n[0])
@@ -383,78 +451,58 @@ export class TeacherService {
   }
 
   async getCourses(teacherId: string) {
-    let courses = await this.prisma.course.findMany({
-      where: { teacherId },
-      include: {
-        subject: true,
-        _count: {
-          select: {
-            enrollments: true,
-            lessons: true,
-            documents: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const scope = await this.getTeacherScope(teacherId);
 
-    if (courses.length === 0) {
-      const scope = await this.getTeacherScope(teacherId);
-      for (const sc of scope.subjectClasses) {
-        const exists = await this.prisma.course.findFirst({
-          where: {
-            teacherId,
-            subjectId: sc.subjectId,
-            grade: sc.class.grade,
-          },
-        });
-        if (!exists) {
-          await this.prisma.course.create({
-            data: {
-              schoolId: scope.schoolId,
-              teacherId,
-              subjectId: sc.subjectId,
-              grade: sc.class.grade,
-              title: `${sc.subject.name} - Khối ${sc.class.grade} (${sc.class.name})`,
-              description: `Học phần chính khóa môn ${sc.subject.name} lớp ${sc.class.name}`,
-            },
-          });
-        }
-      }
-      if (scope.subjectClasses.length > 0) {
-        courses = await this.prisma.course.findMany({
-          where: { teacherId },
-          include: {
-            subject: true,
-            _count: {
-              select: {
-                enrollments: true,
-                lessons: true,
-                documents: true,
+    const courses =
+      scope.courseIds.length > 0
+        ? await this.prisma.course.findMany({
+            where: { id: { in: scope.courseIds } },
+            include: {
+              subject: true,
+              _count: {
+                select: {
+                  enrollments: true,
+                  lessons: true,
+                  documents: true,
+                },
               },
             },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-      }
-    }
+            orderBy: [{ grade: 'asc' }, { createdAt: 'desc' }],
+          })
+        : [];
 
-    return courses.map((course) => ({
-      id: course.id,
-      title: course.title,
-      subject: course.subject?.name || 'Chưa phân loại',
-      subjectId: course.subjectId,
-      grade: course.grade ? `Khối ${course.grade}` : 'Mọi cấp độ',
-      gradeNum: course.grade,
-      students: course._count.enrollments,
-      lessons: course._count.lessons,
-      documentsCount: course._count.documents,
-      status: 'published',
-      image:
-        'https://images.unsplash.com/photo-1509062522246-3755977927d7?q=80&w=2000&auto=format&fit=crop',
-      rating: 5.0,
-      createdAt: course.createdAt.toISOString(),
-    }));
+    return courses.map((course) => {
+      const matchingClasses = scope.subjectClasses.filter(
+        (sc) => sc.subjectId === course.subjectId,
+      );
+      const assignedClasses = matchingClasses.map((sc) => sc.class.name);
+      const assignedStudentsCount = matchingClasses.reduce(
+        (sum, sc) => sum + (sc.class.enrollments?.length || 0),
+        0,
+      );
+
+      return {
+        id: course.id,
+        title: course.title,
+        instructor: scope.teacher.fullName || 'Giáo viên',
+        subject: course.subject?.name || 'Chưa phân loại',
+        subjectId: course.subjectId,
+        grade: course.grade ? `Khối ${course.grade}` : 'Mọi cấp độ',
+        gradeNum: course.grade,
+        assignedClasses,
+        students:
+          matchingClasses.length > 0
+            ? assignedStudentsCount
+            : course._count.enrollments,
+        lessons: course._count.lessons,
+        documentsCount: course._count.documents,
+        status: 'published',
+        image:
+          'https://images.unsplash.com/photo-1509062522246-3755977927d7?q=80&w=2000&auto=format&fit=crop',
+        rating: 5.0,
+        createdAt: course.createdAt.toISOString(),
+      };
+    });
   }
 
   async getQuestions(teacherId: string) {

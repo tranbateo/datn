@@ -9,6 +9,15 @@ import { CURRICULUM_KNTT_8_9 } from './curriculum-kntt-89.data';
 
 const prisma = new PrismaClient();
 
+interface TeacherSeedItem {
+  code: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  subject: string;
+  assignedClasses: string[]; // Danh sách các lớp GVBM dạy (VD: ['Lớp 6A', 'Lớp 6C', 'Lớp 7B', 'Lớp 9C'])
+}
+
 async function main() {
   console.log('============================================================');
   console.log('Starting GDPT 2018 (Kết nối tri thức với cuộc sống) Seed...');
@@ -144,7 +153,7 @@ async function main() {
     }
   }
 
-  // Migrate legacy/non-GDPT-2018 subjects (e.g. "Toán học" -> "Toán", "GDCD" -> "Giáo dục công dân", etc.)
+  // Migrate legacy/non-GDPT-2018 subjects
   const allSubjects = await prisma.subject.findMany();
   for (const oldSubj of allSubjects) {
     const key = `${oldSubj.name}_${oldSubj.grade}`;
@@ -204,62 +213,359 @@ async function main() {
   });
 
   // -------------------------------------------------------------------------
-  // 5. Seed Teachers for GDPT 2018 Subjects (Grades 6, 7, 8, 9)
+  // 5. Seed Full Roster of 28 Teachers across all 11 GDPT 2018 Subjects
+  //    Classified clearly by Subject, Grade, and Class (16 classes: 6A..9D)
   // -------------------------------------------------------------------------
-  const teacherSeeds = [
-    { code: 'GV01', fullName: 'Nguyễn Thị Mai', email: 'mai.nguyen@nguyentrai.edu.vn', phone: '0912345001', subject: 'Toán' },
-    { code: 'GV02', fullName: 'Trần Văn Hùng', email: 'hung.tran@nguyentrai.edu.vn', phone: '0912345002', subject: 'Ngữ văn' },
-    { code: 'GV03', fullName: 'Lê Thị Hương', email: 'huong.le@nguyentrai.edu.vn', phone: '0912345003', subject: 'Tiếng Anh' },
-    { code: 'GV04', fullName: 'Phạm Minh Tuấn', email: 'tuan.pham@nguyentrai.edu.vn', phone: '0912345004', subject: 'Khoa học tự nhiên' },
-    { code: 'GV05', fullName: 'Vũ Thị Thanh', email: 'thanh.vu@nguyentrai.edu.vn', phone: '0912345005', subject: 'Lịch sử và Địa lí' },
-    { code: 'GV06', fullName: 'Ngô Thị Hạnh', email: 'hanh.ngo@nguyentrai.edu.vn', phone: '0912345006', subject: 'Giáo dục công dân' },
-    { code: 'GV07', fullName: 'Đinh Văn Phong', email: 'phong.dinh@nguyentrai.edu.vn', phone: '0912345007', subject: 'Tin học' },
-    { code: 'GV08', fullName: 'Trịnh Thị Ngọc', email: 'ngoc.trinh@nguyentrai.edu.vn', phone: '0912345008', subject: 'Công nghệ' },
-    { code: 'GV09', fullName: 'Lý Minh Đức', email: 'duc.ly@nguyentrai.edu.vn', phone: '0912345009', subject: 'Giáo dục thể chất' },
-    { code: 'GV10', fullName: 'Hoàng Thị Lan', email: 'lan.hoang@nguyentrai.edu.vn', phone: '0912345010', subject: 'Nghệ thuật' },
-    { code: 'GV11', fullName: 'Đỗ Quang Minh', email: 'minh.do@nguyentrai.edu.vn', phone: '0912345011', subject: 'Hoạt động trải nghiệm, hướng nghiệp' },
+  const teacherSeeds: TeacherSeedItem[] = [
+    // --- TỔ TOÁN (4 giáo viên phụ trách 16 lớp 6A..9D, mỗi GV dạy 4 lớp) ---
+    {
+      code: 'GV01',
+      fullName: 'Nguyễn Thị Mai',
+      email: 'mai.nguyen@nguyentrai.edu.vn',
+      phone: '0912345001',
+      subject: 'Toán',
+      assignedClasses: ['Lớp 6A', 'Lớp 6C', 'Lớp 7B', 'Lớp 9C'],
+    },
+    {
+      code: 'GV12',
+      fullName: 'Bùi Trọng Nghĩa',
+      email: 'nghia.bui@nguyentrai.edu.vn',
+      phone: '0912345012',
+      subject: 'Toán',
+      assignedClasses: ['Lớp 6B', 'Lớp 6D', 'Lớp 7A', 'Lớp 8B'],
+    },
+    {
+      code: 'GV13',
+      fullName: 'Phan Thị Thu Thủy',
+      email: 'thuy.phan@nguyentrai.edu.vn',
+      phone: '0912345013',
+      subject: 'Toán',
+      assignedClasses: ['Lớp 7C', 'Lớp 7D', 'Lớp 8A', 'Lớp 9A'],
+    },
+    {
+      code: 'GV14',
+      fullName: 'Đặng Quốc Việt',
+      email: 'viet.dang@nguyentrai.edu.vn',
+      phone: '0912345014',
+      subject: 'Toán',
+      assignedClasses: ['Lớp 8C', 'Lớp 8D', 'Lớp 9B', 'Lớp 9D'],
+    },
+
+    // --- TỔ NGỮ VĂN (3 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV02',
+      fullName: 'Trần Văn Hùng',
+      email: 'hung.tran@nguyentrai.edu.vn',
+      phone: '0912345002',
+      subject: 'Ngữ văn',
+      assignedClasses: ['Lớp 6A', 'Lớp 6B', 'Lớp 7A', 'Lớp 8C', 'Lớp 9A'],
+    },
+    {
+      code: 'GV15',
+      fullName: 'Nguyễn Thị Bích Ngọc',
+      email: 'bichngoc.nguyen@nguyentrai.edu.vn',
+      phone: '0912345015',
+      subject: 'Ngữ văn',
+      assignedClasses: ['Lớp 6C', 'Lớp 7B', 'Lớp 7C', 'Lớp 8A', 'Lớp 9B'],
+    },
+    {
+      code: 'GV16',
+      fullName: 'Lương Thế Vinh',
+      email: 'vinh.luong@nguyentrai.edu.vn',
+      phone: '0912345016',
+      subject: 'Ngữ văn',
+      assignedClasses: ['Lớp 6D', 'Lớp 7D', 'Lớp 8B', 'Lớp 8D', 'Lớp 9C', 'Lớp 9D'],
+    },
+
+    // --- TỔ TIẾNG ANH (3 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV03',
+      fullName: 'Lê Thị Hương',
+      email: 'huong.le@nguyentrai.edu.vn',
+      phone: '0912345003',
+      subject: 'Tiếng Anh',
+      assignedClasses: ['Lớp 6A', 'Lớp 6D', 'Lớp 7A', 'Lớp 8B', 'Lớp 9D'],
+    },
+    {
+      code: 'GV17',
+      fullName: 'Phạm Thanh Thảo',
+      email: 'thao.pham@nguyentrai.edu.vn',
+      phone: '0912345017',
+      subject: 'Tiếng Anh',
+      assignedClasses: ['Lớp 6B', 'Lớp 6C', 'Lớp 7C', 'Lớp 8A', 'Lớp 9B'],
+    },
+    {
+      code: 'GV18',
+      fullName: 'Trương Minh Khôi',
+      email: 'khoi.truong@nguyentrai.edu.vn',
+      phone: '0912345018',
+      subject: 'Tiếng Anh',
+      assignedClasses: ['Lớp 7B', 'Lớp 7D', 'Lớp 8C', 'Lớp 8D', 'Lớp 9A', 'Lớp 9C'],
+    },
+
+    // --- TỔ KHOA HỌC TỰ NHIÊN (3 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV04',
+      fullName: 'Phạm Minh Tuấn',
+      email: 'tuan.pham@nguyentrai.edu.vn',
+      phone: '0912345004',
+      subject: 'Khoa học tự nhiên',
+      assignedClasses: ['Lớp 6A', 'Lớp 7A', 'Lớp 8A', 'Lớp 8C', 'Lớp 9B'],
+    },
+    {
+      code: 'GV19',
+      fullName: 'Đào Thị Kim Anh',
+      email: 'kimanh.dao@nguyentrai.edu.vn',
+      phone: '0912345019',
+      subject: 'Khoa học tự nhiên',
+      assignedClasses: ['Lớp 6B', 'Lớp 6C', 'Lớp 7B', 'Lớp 7D', 'Lớp 9A'],
+    },
+    {
+      code: 'GV20',
+      fullName: 'Nguyễn Hoàng Nam',
+      email: 'nam.nguyen@nguyentrai.edu.vn',
+      phone: '0912345020',
+      subject: 'Khoa học tự nhiên',
+      assignedClasses: ['Lớp 6D', 'Lớp 7C', 'Lớp 8B', 'Lớp 8D', 'Lớp 9C', 'Lớp 9D'],
+    },
+
+    // --- TỔ LỊCH SỬ VÀ ĐỊA LÍ (3 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV05',
+      fullName: 'Vũ Thị Thanh',
+      email: 'thanh.vu@nguyentrai.edu.vn',
+      phone: '0912345005',
+      subject: 'Lịch sử và Địa lí',
+      assignedClasses: ['Lớp 6A', 'Lớp 6B', 'Lớp 7C', 'Lớp 8A', 'Lớp 9A'],
+    },
+    {
+      code: 'GV21',
+      fullName: 'Hà Văn Kiên',
+      email: 'kien.ha@nguyentrai.edu.vn',
+      phone: '0912345021',
+      subject: 'Lịch sử và Địa lí',
+      assignedClasses: ['Lớp 6C', 'Lớp 7A', 'Lớp 8B', 'Lớp 8C', 'Lớp 9C'],
+    },
+    {
+      code: 'GV22',
+      fullName: 'Chu Thị Mai Phương',
+      email: 'phuong.chu@nguyentrai.edu.vn',
+      phone: '0912345022',
+      subject: 'Lịch sử và Địa lí',
+      assignedClasses: ['Lớp 6D', 'Lớp 7B', 'Lớp 7D', 'Lớp 8D', 'Lớp 9B', 'Lớp 9D'],
+    },
+
+    // --- TỔ GIÁO DỤC CÔNG DÂN (2 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV06',
+      fullName: 'Ngô Thị Hạnh',
+      email: 'hanh.ngo@nguyentrai.edu.vn',
+      phone: '0912345006',
+      subject: 'Giáo dục công dân',
+      assignedClasses: ['Lớp 6A', 'Lớp 6B', 'Lớp 7A', 'Lớp 7C', 'Lớp 8A', 'Lớp 8B', 'Lớp 9A', 'Lớp 9C'],
+    },
+    {
+      code: 'GV23',
+      fullName: 'Tạ Quang Huy',
+      email: 'huy.ta@nguyentrai.edu.vn',
+      phone: '0912345023',
+      subject: 'Giáo dục công dân',
+      assignedClasses: ['Lớp 6C', 'Lớp 6D', 'Lớp 7B', 'Lớp 7D', 'Lớp 8C', 'Lớp 8D', 'Lớp 9B', 'Lớp 9D'],
+    },
+
+    // --- TỔ TIN HỌC (2 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV07',
+      fullName: 'Đinh Văn Phong',
+      email: 'phong.dinh@nguyentrai.edu.vn',
+      phone: '0912345007',
+      subject: 'Tin học',
+      assignedClasses: ['Lớp 6A', 'Lớp 6C', 'Lớp 7A', 'Lớp 7B', 'Lớp 8A', 'Lớp 8C', 'Lớp 9A', 'Lớp 9B'],
+    },
+    {
+      code: 'GV24',
+      fullName: 'Lê Hoàng Yến',
+      email: 'yen.le@nguyentrai.edu.vn',
+      phone: '0912345024',
+      subject: 'Tin học',
+      assignedClasses: ['Lớp 6B', 'Lớp 6D', 'Lớp 7C', 'Lớp 7D', 'Lớp 8B', 'Lớp 8D', 'Lớp 9C', 'Lớp 9D'],
+    },
+
+    // --- TỔ CÔNG NGHỆ (2 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV08',
+      fullName: 'Trịnh Thị Ngọc',
+      email: 'ngoc.trinh@nguyentrai.edu.vn',
+      phone: '0912345008',
+      subject: 'Công nghệ',
+      assignedClasses: ['Lớp 6A', 'Lớp 6D', 'Lớp 7B', 'Lớp 7C', 'Lớp 8A', 'Lớp 8D', 'Lớp 9A', 'Lớp 9C'],
+    },
+    {
+      code: 'GV25',
+      fullName: 'Nguyễn Đức Thắng',
+      email: 'thang.nguyen@nguyentrai.edu.vn',
+      phone: '0912345025',
+      subject: 'Công nghệ',
+      assignedClasses: ['Lớp 6B', 'Lớp 6C', 'Lớp 7A', 'Lớp 7D', 'Lớp 8B', 'Lớp 8C', 'Lớp 9B', 'Lớp 9D'],
+    },
+
+    // --- TỔ GIÁO DỤC THỂ CHẤT (2 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV09',
+      fullName: 'Lý Minh Đức',
+      email: 'duc.ly@nguyentrai.edu.vn',
+      phone: '0912345009',
+      subject: 'Giáo dục thể chất',
+      assignedClasses: ['Lớp 6A', 'Lớp 6B', 'Lớp 7B', 'Lớp 7D', 'Lớp 8A', 'Lớp 8C', 'Lớp 9B', 'Lớp 9D'],
+    },
+    {
+      code: 'GV26',
+      fullName: 'Võ Thành Long',
+      email: 'long.vo@nguyentrai.edu.vn',
+      phone: '0912345026',
+      subject: 'Giáo dục thể chất',
+      assignedClasses: ['Lớp 6C', 'Lớp 6D', 'Lớp 7A', 'Lớp 7C', 'Lớp 8B', 'Lớp 8D', 'Lớp 9A', 'Lớp 9C'],
+    },
+
+    // --- TỔ NGHỆ THUẬT (2 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV10',
+      fullName: 'Hoàng Thị Lan',
+      email: 'lan.hoang@nguyentrai.edu.vn',
+      phone: '0912345010',
+      subject: 'Nghệ thuật',
+      assignedClasses: ['Lớp 6A', 'Lớp 6C', 'Lớp 7C', 'Lớp 7D', 'Lớp 8B', 'Lớp 8C', 'Lớp 9A', 'Lớp 9D'],
+    },
+    {
+      code: 'GV27',
+      fullName: 'Mai Xuân Trường',
+      email: 'truong.mai@nguyentrai.edu.vn',
+      phone: '0912345027',
+      subject: 'Nghệ thuật',
+      assignedClasses: ['Lớp 6B', 'Lớp 6D', 'Lớp 7A', 'Lớp 7B', 'Lớp 8A', 'Lớp 8D', 'Lớp 9B', 'Lớp 9C'],
+    },
+
+    // --- TỔ HOẠT ĐỘNG TRẢI NGHIỆM, HƯỚNG NGHIỆP (2 giáo viên phụ trách 16 lớp 6A..9D) ---
+    {
+      code: 'GV11',
+      fullName: 'Đỗ Quang Minh',
+      email: 'minh.do@nguyentrai.edu.vn',
+      phone: '0912345011',
+      subject: 'Hoạt động trải nghiệm, hướng nghiệp',
+      assignedClasses: ['Lớp 6A', 'Lớp 6B', 'Lớp 7A', 'Lớp 7B', 'Lớp 8C', 'Lớp 8D', 'Lớp 9A', 'Lớp 9B'],
+    },
+    {
+      code: 'GV28',
+      fullName: 'Đoàn Thị Thu Hà',
+      email: 'ha.doan@nguyentrai.edu.vn',
+      phone: '0912345028',
+      subject: 'Hoạt động trải nghiệm, hướng nghiệp',
+      assignedClasses: ['Lớp 6C', 'Lớp 6D', 'Lớp 7C', 'Lớp 7D', 'Lớp 8A', 'Lớp 8B', 'Lớp 9C', 'Lớp 9D'],
+    },
   ];
 
-  const teacherByCode = new Map<string, { id: string; fullName: string; subject: string }>();
+  const teacherByCode = new Map<
+    string,
+    { id: string; fullName: string; subject: string; assignedClasses: string[] }
+  >();
+
   for (const t of teacherSeeds) {
-    const user = await prisma.user.upsert({
-      where: { email: t.email },
-      update: {
-        schoolId: school.id,
-        studentCode: t.code,
-        phone: t.phone,
-        fullName: t.fullName,
-        role: Role.TEACHER,
-        passwordHash: teacherPasswordHash,
-        mustChangePassword: false,
-        isActive: true,
-      },
-      create: {
-        schoolId: school.id,
-        studentCode: t.code,
-        email: t.email,
-        phone: t.phone,
-        fullName: t.fullName,
-        role: Role.TEACHER,
-        passwordHash: teacherPasswordHash,
-        mustChangePassword: false,
-        isActive: true,
-      },
+    // Check if another user holds this studentCode or email to avoid unique conflicts
+    const existingByCode = await prisma.user.findUnique({
+      where: { schoolId_studentCode: { schoolId: school.id, studentCode: t.code } },
     });
-    teacherByCode.set(t.code, { id: user.id, fullName: t.fullName, subject: t.subject });
+    const existingByEmail = await prisma.user.findUnique({
+      where: { email: t.email },
+    });
+
+    let user;
+    if (existingByCode && existingByEmail && existingByCode.id !== existingByEmail.id) {
+      // Free the studentCode on the old record first
+      await prisma.user.update({
+        where: { id: existingByCode.id },
+        data: { studentCode: null },
+      });
+    }
+
+    const targetExisting = existingByEmail || existingByCode;
+    if (targetExisting) {
+      user = await prisma.user.update({
+        where: { id: targetExisting.id },
+        data: {
+          schoolId: school.id,
+          studentCode: t.code,
+          email: t.email,
+          phone: t.phone,
+          fullName: t.fullName,
+          role: Role.TEACHER,
+          passwordHash: teacherPasswordHash,
+          mustChangePassword: false,
+          isActive: true,
+        },
+      });
+    } else {
+      user = await prisma.user.create({
+        data: {
+          schoolId: school.id,
+          studentCode: t.code,
+          email: t.email,
+          phone: t.phone,
+          fullName: t.fullName,
+          role: Role.TEACHER,
+          passwordHash: teacherPasswordHash,
+          mustChangePassword: false,
+          isActive: true,
+        },
+      });
+    }
+
+    teacherByCode.set(t.code, {
+      id: user.id,
+      fullName: t.fullName,
+      subject: t.subject,
+      assignedClasses: t.assignedClasses,
+    });
   }
-  console.log(`[4/8] Seeded ${teacherByCode.size} Teachers across all GDPT 2018 Middle School subjects.`);
+  console.log(`[4/8] Seeded ${teacherByCode.size} Teachers across all 11 GDPT 2018 Middle School subjects.`);
 
   // -------------------------------------------------------------------------
-  // 6. Seed Classes for Grades 6, 7, 8, 9 & Assign Subject Teachers
+  // 6. Seed 16 Classes (4 classes per grade: A, B, C, D for Grades 6, 7, 8, 9)
+  //    & Assign Homeroom Teachers (GVCN) + Subject Teachers (GVBM)
   // -------------------------------------------------------------------------
   const classConfigs = [
+    // Khối 6 (4 lớp: 6A, 6B, 6C, 6D)
     { name: 'Lớp 6A', grade: 6, inviteCode: 'NT-6A-2026', homeroomCode: 'GV01' },
     { name: 'Lớp 6B', grade: 6, inviteCode: 'NT-6B-2026', homeroomCode: 'GV02' },
+    { name: 'Lớp 6C', grade: 6, inviteCode: 'NT-6C-2026', homeroomCode: 'GV15' },
+    { name: 'Lớp 6D', grade: 6, inviteCode: 'NT-6D-2026', homeroomCode: 'GV12' },
+
+    // Khối 7 (4 lớp: 7A, 7B, 7C, 7D)
     { name: 'Lớp 7A', grade: 7, inviteCode: 'NT-7A-2026', homeroomCode: 'GV03' },
+    { name: 'Lớp 7B', grade: 7, inviteCode: 'NT-7B-2026', homeroomCode: 'GV19' },
+    { name: 'Lớp 7C', grade: 7, inviteCode: 'NT-7C-2026', homeroomCode: 'GV17' },
+    { name: 'Lớp 7D', grade: 7, inviteCode: 'NT-7D-2026', homeroomCode: 'GV13' },
+
+    // Khối 8 (4 lớp: 8A, 8B, 8C, 8D)
     { name: 'Lớp 8A', grade: 8, inviteCode: 'NT-8A-2026', homeroomCode: 'GV04' },
+    { name: 'Lớp 8B', grade: 8, inviteCode: 'NT-8B-2026', homeroomCode: 'GV16' },
+    { name: 'Lớp 8C', grade: 8, inviteCode: 'NT-8C-2026', homeroomCode: 'GV21' },
+    { name: 'Lớp 8D', grade: 8, inviteCode: 'NT-8D-2026', homeroomCode: 'GV22' },
+
+    // Khối 9 (4 lớp: 9A, 9B, 9C, 9D)
     { name: 'Lớp 9A', grade: 9, inviteCode: 'NT-9A-2026', homeroomCode: 'GV05' },
+    { name: 'Lớp 9B', grade: 9, inviteCode: 'NT-9B-2026', homeroomCode: 'GV14' },
+    { name: 'Lớp 9C', grade: 9, inviteCode: 'NT-9C-2026', homeroomCode: 'GV18' },
+    { name: 'Lớp 9D', grade: 9, inviteCode: 'NT-9D-2026', homeroomCode: 'GV20' },
   ];
+
+  // Clean up any non-standard classes in this school
+  const validClassNames = classConfigs.map((c) => c.name);
+  await prisma.class.deleteMany({
+    where: {
+      schoolId: school.id,
+      name: { notIn: validClassNames },
+    },
+  });
 
   const classByName = new Map<string, { id: string; grade: number }>();
 
@@ -276,6 +582,7 @@ async function main() {
       update: {
         grade: cfg.grade,
         homeroomTeacherId: homeroom.id,
+        inviteCode: cfg.inviteCode,
         status: 'ACTIVE',
       },
       create: {
@@ -289,66 +596,148 @@ async function main() {
       },
     });
     classByName.set(cfg.name, { id: cls.id, grade: cfg.grade });
+  }
 
-    // Assign all 11 GDPT 2018 subject teachers to this class
-    for (const t of teacherSeeds) {
-      const subjId = subjectMap.get(`${t.subject}_${cfg.grade}`);
-      const teacher = teacherByCode.get(t.code);
-      if (subjId && teacher) {
-        await prisma.classSubjectTeacher.upsert({
-          where: { classId_subjectId: { classId: cls.id, subjectId: subjId } },
-          update: { teacherId: teacher.id, status: 'ACTIVE' },
-          create: {
-            classId: cls.id,
-            subjectId: subjId,
-            teacherId: teacher.id,
-            status: 'ACTIVE',
-          },
-        });
-      }
+  // Clear old ClassSubjectTeacher records for this school's classes and assign according to teacherSeeds matrix
+  const allClassIds = Array.from(classByName.values()).map((c) => c.id);
+  await prisma.classSubjectTeacher.deleteMany({
+    where: { classId: { in: allClassIds } },
+  });
+
+  let totalSubjectAssignments = 0;
+  for (const t of teacherSeeds) {
+    const teacher = teacherByCode.get(t.code);
+    if (!teacher) continue;
+
+    for (const className of t.assignedClasses) {
+      const cls = classByName.get(className);
+      if (!cls) continue;
+      const subjId = subjectMap.get(`${t.subject}_${cls.grade}`);
+      if (!subjId) continue;
+
+      await prisma.classSubjectTeacher.upsert({
+        where: { classId_subjectId: { classId: cls.id, subjectId: subjId } },
+        update: { teacherId: teacher.id, status: 'ACTIVE' },
+        create: {
+          classId: cls.id,
+          subjectId: subjId,
+          teacherId: teacher.id,
+          status: 'ACTIVE',
+        },
+      });
+      totalSubjectAssignments++;
     }
   }
-  console.log(`[5/8] Seeded ${classByName.size} Classes (Grades 6, 7, 8, 9) and assigned GDPT 2018 subject teachers.`);
+  console.log(
+    `[5/8] Seeded ${classByName.size} Classes (6A..6D, 7A..7D, 8A..8D, 9A..9D) and ${totalSubjectAssignments} GVBM subject-class assignments.`,
+  );
 
   // -------------------------------------------------------------------------
-  // 7. Seed Students (Grades 6, 7, 8, 9) & Parent Links
+  // 7. Seed Students across all 16 Classes (6A..9D) & Parent Links
   // -------------------------------------------------------------------------
   const studentSeeds = [
+    // Khối 6: 6A, 6B, 6C, 6D
     { code: 'HS0001', fullName: 'Nguyễn Gia Bảo', email: 'hs0001@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6A', mustChangePassword: false, xp: 650, level: 4 },
+    { code: 'HS0002', fullName: 'Trần Ngọc Ánh', email: 'hs0002@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6A', mustChangePassword: false, xp: 520, level: 3 },
+    { code: 'HS0003', fullName: 'Lê Hoàng Khang', email: 'hs0003@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6A', mustChangePassword: false, xp: 480, level: 3 },
+    { code: 'HS0004', fullName: 'Phạm Phương Thảo', email: 'hs0004@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6B', mustChangePassword: false, xp: 510, level: 3 },
+    { code: 'HS0005', fullName: 'Hoàng Minh Đức', email: 'hs0005@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6B', mustChangePassword: false, xp: 430, level: 3 },
     { code: 'HS0006', fullName: 'Nguyễn Gia Huy', email: 'hs0006@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6B', mustChangePassword: true, xp: 450, level: 3 },
+    { code: 'HS0007', fullName: 'Vũ Hà My', email: 'hs0007@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6C', mustChangePassword: false, xp: 610, level: 4 },
+    { code: 'HS0008', fullName: 'Đặng Tuấn Kiệt', email: 'hs0008@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6C', mustChangePassword: false, xp: 540, level: 3 },
+    { code: 'HS0009', fullName: 'Bùi Thanh Trúc', email: 'hs0009@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6D', mustChangePassword: false, xp: 490, level: 3 },
+    { code: 'HS0010', fullName: 'Đỗ Quốc Anh', email: 'hs0010@nguyentrai.edu.vn', grade: 6, className: 'Lớp 6D', mustChangePassword: false, xp: 560, level: 3 },
+
+    // Khối 7: 7A, 7B, 7C, 7D
     { code: 'HS0011', fullName: 'Trần Minh Quân', email: 'hs0011@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7A', mustChangePassword: false, xp: 820, level: 5 },
+    { code: 'HS0012', fullName: 'Nguyễn Bảo Ngọc', email: 'hs0012@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7A', mustChangePassword: false, xp: 750, level: 4 },
+    { code: 'HS0013', fullName: 'Lê Tuấn Anh', email: 'hs0013@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7B', mustChangePassword: false, xp: 790, level: 4 },
+    { code: 'HS0014', fullName: 'Phạm Khánh Linh', email: 'hs0014@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7B', mustChangePassword: false, xp: 680, level: 4 },
+    { code: 'HS0015', fullName: 'Hoàng Gia Hân', email: 'hs0015@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7B', mustChangePassword: false, xp: 720, level: 4 },
+    { code: 'HS0016', fullName: 'Vũ Minh Triết', email: 'hs0016@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7C', mustChangePassword: false, xp: 640, level: 4 },
+    { code: 'HS0017', fullName: 'Đặng Ngọc Diệp', email: 'hs0017@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7C', mustChangePassword: false, xp: 710, level: 4 },
+    { code: 'HS0018', fullName: 'Bùi Hải Đăng', email: 'hs0018@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7D', mustChangePassword: false, xp: 690, level: 4 },
+    { code: 'HS0019', fullName: 'Đỗ Thu Trang', email: 'hs0019@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7D', mustChangePassword: false, xp: 740, level: 4 },
+    { code: 'HS0020', fullName: 'Ngô Quang Vinh', email: 'hs0020@nguyentrai.edu.vn', grade: 7, className: 'Lớp 7D', mustChangePassword: false, xp: 660, level: 4 },
+
+    // Khối 8: 8A, 8B, 8C, 8D
     { code: 'HS0021', fullName: 'Lê Khánh Huyền', email: 'hs0021@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8A', mustChangePassword: false, xp: 940, level: 6 },
+    { code: 'HS0022', fullName: 'Nguyễn Minh Khôi', email: 'hs0022@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8A', mustChangePassword: false, xp: 880, level: 5 },
+    { code: 'HS0023', fullName: 'Trần Thảo Tiên', email: 'hs0023@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8B', mustChangePassword: false, xp: 850, level: 5 },
+    { code: 'HS0024', fullName: 'Phạm Đức Duy', email: 'hs0024@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8B', mustChangePassword: false, xp: 910, level: 5 },
+    { code: 'HS0025', fullName: 'Hoàng Thanh Mai', email: 'hs0025@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8C', mustChangePassword: false, xp: 870, level: 5 },
+    { code: 'HS0026', fullName: 'Vũ Quốc Bảo', email: 'hs0026@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8C', mustChangePassword: false, xp: 830, level: 5 },
+    { code: 'HS0027', fullName: 'Đặng Minh Châu', email: 'hs0027@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8C', mustChangePassword: false, xp: 890, level: 5 },
+    { code: 'HS0028', fullName: 'Bùi Trọng Nhân', email: 'hs0028@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8D', mustChangePassword: false, xp: 810, level: 5 },
+    { code: 'HS0029', fullName: 'Đỗ Lan Hương', email: 'hs0029@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8D', mustChangePassword: false, xp: 860, level: 5 },
+    { code: 'HS0030', fullName: 'Dương Tuấn Dũng', email: 'hs0030@nguyentrai.edu.vn', grade: 8, className: 'Lớp 8D', mustChangePassword: false, xp: 840, level: 5 },
+
+    // Khối 9: 9A, 9B, 9C, 9D
     { code: 'HS0031', fullName: 'Phạm Hoàng Long', email: 'hs0031@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9A', mustChangePassword: false, xp: 1250, level: 7 },
+    { code: 'HS0032', fullName: 'Nguyễn Ngọc Trâm', email: 'hs0032@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9A', mustChangePassword: false, xp: 1120, level: 6 },
+    { code: 'HS0033', fullName: 'Trần Đăng Khoa', email: 'hs0033@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9B', mustChangePassword: false, xp: 1080, level: 6 },
+    { code: 'HS0034', fullName: 'Lê Minh Thư', email: 'hs0034@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9B', mustChangePassword: false, xp: 1150, level: 6 },
+    { code: 'HS0035', fullName: 'Hoàng Việt Hoàng', email: 'hs0035@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9C', mustChangePassword: false, xp: 1190, level: 6 },
+    { code: 'HS0036', fullName: 'Vũ Quỳnh Anh', email: 'hs0036@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9C', mustChangePassword: false, xp: 1210, level: 7 },
+    { code: 'HS0037', fullName: 'Đặng Thiên Phúc', email: 'hs0037@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9C', mustChangePassword: false, xp: 1050, level: 6 },
+    { code: 'HS0038', fullName: 'Bùi Phương Uyên', email: 'hs0038@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9D', mustChangePassword: false, xp: 1090, level: 6 },
+    { code: 'HS0039', fullName: 'Đỗ Thành Đạt', email: 'hs0039@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9D', mustChangePassword: false, xp: 1140, level: 6 },
+    { code: 'HS0040', fullName: 'Lý Hoài An', email: 'hs0040@nguyentrai.edu.vn', grade: 9, className: 'Lớp 9D', mustChangePassword: false, xp: 1170, level: 6 },
   ];
 
   const studentsByGrade = new Map<number, string[]>(); // grade -> studentIds[]
   const linkedStudentIds: string[] = [];
 
   for (const s of studentSeeds) {
-    const stu = await prisma.user.upsert({
+    const existingByCode = await prisma.user.findUnique({
       where: { schoolId_studentCode: { schoolId: school.id, studentCode: s.code } },
-      update: {
-        fullName: s.fullName,
-        email: s.email,
-        grade: s.grade,
-        passwordHash: studentPasswordHash,
-        mustChangePassword: s.mustChangePassword,
-        isActive: true,
-      },
-      create: {
-        schoolId: school.id,
-        studentCode: s.code,
-        email: s.email,
-        fullName: s.fullName,
-        role: Role.STUDENT,
-        grade: s.grade,
-        passwordHash: studentPasswordHash,
-        mustChangePassword: s.mustChangePassword,
-        isActive: true,
-      },
+    });
+    const existingByEmail = await prisma.user.findUnique({
+      where: { email: s.email },
     });
 
+    if (existingByCode && existingByEmail && existingByCode.id !== existingByEmail.id) {
+      await prisma.user.update({
+        where: { id: existingByCode.id },
+        data: { studentCode: null },
+      });
+    }
+
+    const targetStu = existingByCode || existingByEmail;
+    const stu = targetStu
+      ? await prisma.user.update({
+          where: { id: targetStu.id },
+          data: {
+            schoolId: school.id,
+            studentCode: s.code,
+            fullName: s.fullName,
+            email: s.email,
+            grade: s.grade,
+            role: Role.STUDENT,
+            passwordHash: studentPasswordHash,
+            mustChangePassword: s.mustChangePassword,
+            isActive: true,
+          },
+        })
+      : await prisma.user.create({
+          data: {
+            schoolId: school.id,
+            studentCode: s.code,
+            email: s.email,
+            fullName: s.fullName,
+            role: Role.STUDENT,
+            grade: s.grade,
+            passwordHash: studentPasswordHash,
+            mustChangePassword: s.mustChangePassword,
+            isActive: true,
+          },
+        });
+
     const cls = classByName.get(s.className)!;
+    // Ensure student is enrolled in exactly their assigned official class
+    await prisma.classEnrollment.deleteMany({
+      where: { studentId: stu.id, classId: { not: cls.id } },
+    });
     await prisma.classEnrollment.upsert({
       where: { classId_studentId: { classId: cls.id, studentId: stu.id } },
       update: { status: 'ACTIVE' },
@@ -406,7 +795,7 @@ async function main() {
       },
     });
   }
-  console.log(`[6/8] Seeded Students across Grades 6, 7, 8, 9 & linked Parent account.`);
+  console.log(`[6/8] Seeded ${studentSeeds.length} Students across all 16 classes (6A..9D) & linked Parent account.`);
 
   // -------------------------------------------------------------------------
   // 8. Seed All 3 Linked Parts for Grades 6, 7, 8, 9 (Kết nối tri thức với cuộc sống):
@@ -419,7 +808,7 @@ async function main() {
     ...CURRICULUM_KNTT_8_9,
   ];
 
-  // Clean up legacy empty courses from previous seeds (e.g., "Toán học - Lớp 6A", "Ngữ văn - Lớp 6A")
+  // Clean up legacy empty courses from previous seeds
   const validCourseTitles = new Set(allCurriculum.map((c) => c.title));
   await prisma.course.deleteMany({
     where: {
@@ -441,7 +830,22 @@ async function main() {
 
   for (const item of allCurriculum) {
     const subjectId = subjectMap.get(`${item.subjectName}_${item.grade}`);
-    const teacher = teacherByCode.get(item.teacherCode);
+    // Pick a teacher who teaches this subject in this grade (preferring item.teacherCode if they teach this grade)
+    const defaultTeacher = teacherByCode.get(item.teacherCode);
+    const defaultTeachesGrade = defaultTeacher?.assignedClasses.some(
+      (cName) => classByName.get(cName)?.grade === item.grade,
+    );
+    const matchingTeacherSeed = teacherSeeds.find(
+      (t) =>
+        t.subject === item.subjectName &&
+        t.assignedClasses.some((cName) => classByName.get(cName)?.grade === item.grade),
+    );
+    const teacher = defaultTeachesGrade
+      ? defaultTeacher
+      : matchingTeacherSeed
+        ? teacherByCode.get(matchingTeacherSeed.code)
+        : defaultTeacher;
+
     if (!subjectId || !teacher) {
       console.warn(`Skipping ${item.title}: missing subject or teacher`);
       continue;
@@ -504,18 +908,30 @@ async function main() {
     }
 
     // --- PART B: Documents & RAG Chunks ---
-    await prisma.document.deleteMany({ where: { courseId: course.id } });
     for (const docSeed of item.documents) {
-      const createdDoc = await prisma.document.create({
-        data: {
-          schoolId: school.id,
-          courseId: course.id,
-          fileName: docSeed.fileName,
-          type: 'application/pdf',
-          size: docSeed.size,
-          status: 'Embedded',
-        },
+      const existingDoc = await prisma.document.findFirst({
+        where: { courseId: course.id, fileName: docSeed.fileName },
       });
+      const createdDoc = existingDoc
+        ? await prisma.document.update({
+            where: { id: existingDoc.id },
+            data: {
+              schoolId: school.id,
+              type: 'application/pdf',
+              size: docSeed.size,
+              status: 'Embedded',
+            },
+          })
+        : await prisma.document.create({
+            data: {
+              schoolId: school.id,
+              courseId: course.id,
+              fileName: docSeed.fileName,
+              type: 'application/pdf',
+              size: docSeed.size,
+              status: 'Embedded',
+            },
+          });
       totalDocuments++;
 
       for (const chunk of docSeed.chunks) {
@@ -536,7 +952,6 @@ async function main() {
     }
 
     // --- PART C: Quiz & QuizQuestions ---
-    // Remove previous quizzes of this subject & grade in this school to avoid duplicates
     await prisma.quiz.deleteMany({
       where: {
         schoolId: school.id,
@@ -568,6 +983,16 @@ async function main() {
     totalQuestions += item.quiz.questions.length;
   }
 
+  // Remove any stale teacher accounts in this school not in GV01..GV28 (now safe since Courses are reassigned)
+  const validTeacherIds = Array.from(teacherByCode.values()).map((t) => t.id);
+  await prisma.user.deleteMany({
+    where: {
+      schoolId: school.id,
+      role: Role.TEACHER,
+      id: { notIn: validTeacherIds },
+    },
+  });
+
   console.log(
     `[7/8] Seeded Prisma DB: ${totalCourses} Courses, ${totalLessons} Lessons, ${totalDocuments} Documents, ${totalQuizzes} Quizzes (${totalQuestions} Questions).`,
   );
@@ -596,39 +1021,49 @@ async function main() {
         );
       `);
 
-      // Remove existing vector chunks for this school before inserting fresh chunks
-      await prisma.$executeRawUnsafe(
-        `DELETE FROM public.documents WHERE metadata->>'schoolId' = $1`,
+      const existingVecCountRes = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT COUNT(*)::bigint as count FROM public.documents WHERE metadata->>'schoolId' = $1`,
         school.id,
       );
+      const existingVecCount = Number(existingVecCountRes?.[0]?.count || 0);
 
-      const client = createClient(supabaseUrl, supabaseKey);
-      const embeddings = new GoogleGenerativeAIEmbeddings({
-        apiKey: geminiKey,
-        model: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
-      });
-
-      const vectorStore = new SupabaseVectorStore(embeddings, {
-        client,
-        tableName: 'documents',
-        queryName: 'match_documents',
-      });
-
-      console.log(
-        `[8/8] Generating embeddings and uploading ${vectorDocsToEmbed.length} curriculum chunks to Supabase Vector Store...`,
-      );
-
-      // Batch in groups of 15 to avoid rate limits
-      const batchSize = 15;
-      for (let i = 0; i < vectorDocsToEmbed.length; i += batchSize) {
-        const batch = vectorDocsToEmbed.slice(i, i + batchSize);
-        await vectorStore.addDocuments(batch);
+      if (existingVecCount >= vectorDocsToEmbed.length && process.env.FORCE_REEMBED !== 'true') {
         console.log(
-          `   -> Embedded ${Math.min(i + batchSize, vectorDocsToEmbed.length)}/${vectorDocsToEmbed.length} chunks`,
+          `[8/8] Supabase Vector Store already contains ${existingVecCount} embedded curriculum chunks (skipping re-embed; set FORCE_REEMBED=true to regenerate).`,
         );
-      }
+      } else {
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM public.documents WHERE metadata->>'schoolId' = $1`,
+          school.id,
+        );
 
-      console.log('[8/8] Successfully populated Supabase Vector Store (public.documents)!');
+        const client = createClient(supabaseUrl, supabaseKey);
+        const embeddings = new GoogleGenerativeAIEmbeddings({
+          apiKey: geminiKey,
+          model: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
+        });
+
+        const vectorStore = new SupabaseVectorStore(embeddings, {
+          client,
+          tableName: 'documents',
+          queryName: 'match_documents',
+        });
+
+        console.log(
+          `[8/8] Generating embeddings and uploading ${vectorDocsToEmbed.length} curriculum chunks to Supabase Vector Store...`,
+        );
+
+        const batchSize = 15;
+        for (let i = 0; i < vectorDocsToEmbed.length; i += batchSize) {
+          const batch = vectorDocsToEmbed.slice(i, i + batchSize);
+          await vectorStore.addDocuments(batch);
+          console.log(
+            `   -> Embedded ${Math.min(i + batchSize, vectorDocsToEmbed.length)}/${vectorDocsToEmbed.length} chunks`,
+          );
+        }
+
+        console.log('[8/8] Successfully populated Supabase Vector Store (public.documents)!');
+      }
     } catch (vecErr) {
       console.error('Warning: Could not populate vector embeddings:', vecErr);
     }

@@ -32,10 +32,10 @@ export interface Student extends User {
 
 export interface Teacher extends User {
   courses?: Course[];
-  homeroomClasses?: Array<{ id: string; name: string }>;
+  homeroomClasses?: Array<{ id: string; name: string; grade?: number }>;
   subjectClasses?: Array<{
-    class?: { id: string; name: string };
-    subject?: { id: string; name: string };
+    class?: { id: string; name: string; grade?: number };
+    subject?: { id: string; name: string; grade?: number };
   }>;
 }
 
