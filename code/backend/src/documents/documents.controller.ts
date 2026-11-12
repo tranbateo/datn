@@ -73,7 +73,9 @@ export class DocumentsController {
     // BR-DOC-001: Check MIME type and file size (max 20 MB)
     const maxBytes = 20 * 1024 * 1024;
     if (file.size > maxBytes) {
-      throw new BadRequestException('Kích thước tài liệu không được vượt quá 20MB.');
+      throw new BadRequestException(
+        'Kích thước tài liệu không được vượt quá 20MB.',
+      );
     }
 
     const isPdf =

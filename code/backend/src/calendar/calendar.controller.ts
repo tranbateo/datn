@@ -65,9 +65,7 @@ export class CalendarController {
     }
     const maxBytes = 10 * 1024 * 1024;
     if (file.size > maxBytes) {
-      throw new BadRequestException(
-        'Kích thước ảnh không được vượt quá 10MB.',
-      );
+      throw new BadRequestException('Kích thước ảnh không được vượt quá 10MB.');
     }
     if (!isValidImageBuffer(file.buffer)) {
       throw new BadRequestException(

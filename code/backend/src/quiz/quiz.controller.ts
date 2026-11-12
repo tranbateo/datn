@@ -19,7 +19,13 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { SubmitQuizDto } from './dto/submit-quiz.dto';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
-import { Allow, IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  Allow,
+  IsBoolean,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateQuizInputDto {
   @IsString()
@@ -91,7 +97,7 @@ export class QuizController {
     @Param('id') id: string,
     @Body() updateQuizDto: Partial<CreateQuizInputDto>,
   ) {
-    return this.quizService.update(id, updateQuizDto as any, req.user);
+    return this.quizService.update(id, updateQuizDto, req.user);
   }
 
   @Delete(':id')

@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Post,
-  Body,
-  UseGuards,
-  Req,
-} from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
   RegisterDto,
@@ -27,7 +21,9 @@ export class AuthController {
     return this.authService.sendEmailOtp(dto);
   }
 
-  @ApiOperation({ summary: 'Verify OTP and create user (Closed in School B2B)' })
+  @ApiOperation({
+    summary: 'Verify OTP and create user (Closed in School B2B)',
+  })
   @Post('verify-otp')
   async verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyEmailOtp(dto);

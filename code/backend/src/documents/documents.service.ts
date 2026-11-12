@@ -5,10 +5,10 @@ import {
 } from '@nestjs/common';
 import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { PrismaService } from '../prisma/prisma.service';
+import { createEmbeddingsAdapter } from '../common/ai-provider.adapter';
 
 @Injectable()
 export class DocumentsService {
@@ -20,10 +20,7 @@ export class DocumentsService {
       process.env.SUPABASE_PRIVATE_KEY || 'placeholder-key',
     );
 
-    const embeddings = new GoogleGenerativeAIEmbeddings({
-      apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
-      model: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
-    });
+    const embeddings = createEmbeddingsAdapter();
 
     this.vectorStore = new SupabaseVectorStore(embeddings, {
       client,
@@ -85,12 +82,7 @@ export class DocumentsService {
       where: { id: courseId },
       select: { id: true, schoolId: true },
     });
-    if (
-      course &&
-      schoolId &&
-      course.schoolId &&
-      course.schoolId !== schoolId
-    ) {
+    if (course && schoolId && course.schoolId && course.schoolId !== schoolId) {
       throw new ForbiddenException(
         'Không có quyền tải tài liệu vào khóa học của trường khác.',
       );
@@ -120,12 +112,7 @@ export class DocumentsService {
       where: { id: courseId },
       select: { id: true, schoolId: true },
     });
-    if (
-      course &&
-      schoolId &&
-      course.schoolId &&
-      course.schoolId !== schoolId
-    ) {
+    if (course && schoolId && course.schoolId && course.schoolId !== schoolId) {
       throw new ForbiddenException(
         'Không có quyền xem tài liệu của trường khác.',
       );

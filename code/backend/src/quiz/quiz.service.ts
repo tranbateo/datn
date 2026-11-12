@@ -11,12 +11,14 @@ import { Prisma, Role } from '@prisma/client';
 import { GamificationService } from '../gamification/gamification.service';
 import { SubmitQuizDto } from './dto/submit-quiz.dto';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
-import {
-  ChatGoogleGenerativeAI,
-  GoogleGenerativeAIEmbeddings,
-} from '@langchain/google-genai';
 import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase';
 import { createClient } from '@supabase/supabase-js';
+import {
+  AiChatModelAdapter,
+  createChatModelAdapter,
+  createEmbeddingsAdapter,
+  stripReasoningBlocks,
+} from '../common/ai-provider.adapter';
 
 interface UserContext {
   id: string;
@@ -27,7 +29,7 @@ interface UserContext {
 @Injectable()
 export class QuizService {
   private vectorStore: SupabaseVectorStore;
-  private llm: ChatGoogleGenerativeAI;
+  private llm: AiChatModelAdapter;
 
   constructor(
     private prisma: PrismaService,
@@ -38,10 +40,7 @@ export class QuizService {
       process.env.SUPABASE_PRIVATE_KEY || 'placeholder-key',
     );
 
-    const embeddings = new GoogleGenerativeAIEmbeddings({
-      apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
-      model: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
-    });
+    const embeddings = createEmbeddingsAdapter();
 
     this.vectorStore = new SupabaseVectorStore(embeddings, {
       client,
@@ -49,10 +48,9 @@ export class QuizService {
       queryName: 'match_documents',
     });
 
-    this.llm = new ChatGoogleGenerativeAI({
-      apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
-      model: process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview',
+    this.llm = createChatModelAdapter({
       temperature: 0.2,
+      maxOutputTokens: 2048,
     });
   }
 
@@ -154,7 +152,9 @@ export class QuizService {
         );
       }
       if (user.schoolId && quiz.schoolId && quiz.schoolId !== user.schoolId) {
-        throw new ForbiddenException('Không có quyền truy cập bài kiểm tra của trường khác.');
+        throw new ForbiddenException(
+          'Không có quyền truy cập bài kiểm tra của trường khác.',
+        );
       }
     }
 
@@ -382,7 +382,11 @@ Yêu cầu định dạng đầu ra phải là JSON thuần túy (không bọc t
     let rawContent = '';
     try {
       const response = await this.llm.invoke(promptText);
-      rawContent = response.content.toString().trim();
+      const contentStr =
+        typeof response.content === 'string'
+          ? response.content
+          : JSON.stringify(response.content);
+      rawContent = stripReasoningBlocks(contentStr).trim();
     } catch {
       // Fallback draft questions tailored to the requested topic so Teacher can review & edit
       const cleanTopic = topic || 'Kiến thức trọng tâm môn học';
@@ -409,6 +413,12 @@ Yêu cầu định dạng đầu ra phải là JSON thuần túy (không bọc t
     }
     if (rawContent.endsWith('```')) {
       rawContent = rawContent.substring(0, rawContent.length - 3);
+    }
+
+    const firstBracket = rawContent.indexOf('[');
+    const lastBracket = rawContent.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      rawContent = rawContent.substring(firstBracket, lastBracket + 1);
     }
 
     try {

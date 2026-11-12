@@ -14,7 +14,10 @@ import {
 export class SchoolsService {
   constructor(private prisma: PrismaService) {}
 
-  async resolveSchoolId(userSchoolId: string | null, querySchoolId?: string): Promise<string> {
+  async resolveSchoolId(
+    userSchoolId: string | null,
+    querySchoolId?: string,
+  ): Promise<string> {
     if (userSchoolId) return userSchoolId;
     if (querySchoolId) return querySchoolId;
     const firstSchool = await this.prisma.school.findFirst({
@@ -130,7 +133,8 @@ export class SchoolsService {
         },
       },
     });
-    if (!school) throw new NotFoundException('Không tìm thấy thông tin trường.');
+    if (!school)
+      throw new NotFoundException('Không tìm thấy thông tin trường.');
 
     const isExpired = school.licenseExpiresAt
       ? new Date() > school.licenseExpiresAt
@@ -139,7 +143,10 @@ export class SchoolsService {
     const { customApiKey, ...rest } = school;
     const quotaPercentage =
       school.aiTokenQuota > 0
-        ? Math.min(100, Math.round((school.aiTokensUsed / school.aiTokenQuota) * 100))
+        ? Math.min(
+            100,
+            Math.round((school.aiTokensUsed / school.aiTokenQuota) * 100),
+          )
         : 0;
 
     return {

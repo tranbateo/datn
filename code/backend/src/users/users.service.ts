@@ -30,7 +30,11 @@ export class UsersService {
     let mappedCategory: FeedbackCategory = FeedbackCategory.AI_ERROR;
     if (category === 'content' || category === 'CONTENT_ERROR') {
       mappedCategory = FeedbackCategory.CONTENT_ERROR;
-    } else if (category === 'system' || category === 'other' || category === 'SYSTEM_BUG') {
+    } else if (
+      category === 'system' ||
+      category === 'other' ||
+      category === 'SYSTEM_BUG'
+    ) {
       mappedCategory = FeedbackCategory.SYSTEM_BUG;
     }
 
@@ -95,7 +99,10 @@ export class UsersService {
     });
   }
 
-  async findOne(id: string, requester?: { id: string; role: Role; schoolId: string | null }) {
+  async findOne(
+    id: string,
+    requester?: { id: string; role: Role; schoolId: string | null },
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { id },
       include: {
@@ -111,7 +118,12 @@ export class UsersService {
                 name: true,
                 grade: true,
                 homeroomTeacher: {
-                  select: { id: true, fullName: true, email: true, phone: true },
+                  select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    phone: true,
+                  },
                 },
               },
             },
@@ -144,7 +156,9 @@ export class UsersService {
         requester.role === Role.PARENT ||
         (requester.schoolId && user.schoolId !== requester.schoolId)
       ) {
-        throw new ForbiddenException('Không có quyền truy cập hồ sơ người dùng khác.');
+        throw new ForbiddenException(
+          'Không có quyền truy cập hồ sơ người dùng khác.',
+        );
       }
     }
 

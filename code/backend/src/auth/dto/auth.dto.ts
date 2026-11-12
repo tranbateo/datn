@@ -31,7 +31,11 @@ export class RegisterDto {
   @IsOptional()
   role?: Role;
 
-  @ApiProperty({ example: 'SCHOOL-123', required: false, description: 'Mã trường học để liên kết' })
+  @ApiProperty({
+    example: 'SCHOOL-123',
+    required: false,
+    description: 'Mã trường học để liên kết',
+  })
   @IsString()
   @IsOptional()
   schoolCode?: string;
@@ -69,7 +73,11 @@ export class LoginDto {
   @IsNotEmpty()
   password: string;
 
-  @ApiProperty({ example: 'THPT01', required: false, description: 'Mã trường học nếu cần phân biệt' })
+  @ApiProperty({
+    example: 'THPT01',
+    required: false,
+    description: 'Mã trường học nếu cần phân biệt',
+  })
   @IsString()
   @IsOptional()
   schoolCode?: string;

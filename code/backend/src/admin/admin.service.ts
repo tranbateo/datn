@@ -177,23 +177,28 @@ export class AdminService {
 
   async getAnalyticsStats(schoolId?: string | null) {
     const schoolFilter = this.buildSchoolFilter(schoolId);
-    const [totalUsers, activeProfiles, totalQuizzes, totalAttempts, totalDocuments] =
-      await Promise.all([
-        this.prisma.user.count({ where: schoolFilter }),
-        this.prisma.gamificationProfile.count({
-          where: {
-            ...(schoolId ? { user: { schoolId } } : {}),
-            lifetimeXp: { gt: 0 },
-          },
-        }),
-        this.prisma.quiz.count({ where: schoolFilter }),
-        this.prisma.quizAttempt.count({
-          where: schoolId ? { user: { schoolId } } : {},
-        }),
-        this.prisma.document.count({
-          where: schoolFilter,
-        }),
-      ]);
+    const [
+      totalUsers,
+      activeProfiles,
+      totalQuizzes,
+      totalAttempts,
+      totalDocuments,
+    ] = await Promise.all([
+      this.prisma.user.count({ where: schoolFilter }),
+      this.prisma.gamificationProfile.count({
+        where: {
+          ...(schoolId ? { user: { schoolId } } : {}),
+          lifetimeXp: { gt: 0 },
+        },
+      }),
+      this.prisma.quiz.count({ where: schoolFilter }),
+      this.prisma.quizAttempt.count({
+        where: schoolId ? { user: { schoolId } } : {},
+      }),
+      this.prisma.document.count({
+        where: schoolFilter,
+      }),
+    ]);
 
     return {
       storageCapacity: {
@@ -266,7 +271,11 @@ export class AdminService {
           },
         },
       },
-      orderBy: [{ grade: 'asc' }, { studentCode: 'asc' }, { createdAt: 'desc' }],
+      orderBy: [
+        { grade: 'asc' },
+        { studentCode: 'asc' },
+        { createdAt: 'desc' },
+      ],
     });
   }
 
@@ -367,12 +376,25 @@ export class AdminService {
       include: {
         academicYear: true,
         homeroomTeacher: {
-          select: { id: true, fullName: true, email: true, phone: true, studentCode: true },
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+            studentCode: true,
+          },
         },
         subjectTeachers: {
           include: {
             subject: { select: { id: true, name: true, grade: true } },
-            teacher: { select: { id: true, fullName: true, email: true, studentCode: true } },
+            teacher: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                studentCode: true,
+              },
+            },
           },
         },
         _count: {
@@ -443,7 +465,9 @@ export class AdminService {
       throw new NotFoundException('Không tìm thấy lớp học.');
     }
     if (schoolId && existing.schoolId !== schoolId) {
-      throw new ForbiddenException('Không có quyền chỉnh sửa lớp của trường khác.');
+      throw new ForbiddenException(
+        'Không có quyền chỉnh sửa lớp của trường khác.',
+      );
     }
 
     const updated = await this.prisma.class.update({
@@ -494,11 +518,7 @@ export class AdminService {
     return updated;
   }
 
-  async deleteClass(
-    schoolId: string | null,
-    actorId: string,
-    classId: string,
-  ) {
+  async deleteClass(schoolId: string | null, actorId: string, classId: string) {
     const existing = await this.prisma.class.findUnique({
       where: { id: classId },
     });
@@ -526,7 +546,9 @@ export class AdminService {
     dto: { subjectId: string; teacherId: string },
   ) {
     if (!dto.subjectId || !dto.teacherId) {
-      throw new BadRequestException('Vui lòng chọn môn học và giáo viên bộ môn.');
+      throw new BadRequestException(
+        'Vui lòng chọn môn học và giáo viên bộ môn.',
+      );
     }
 
     const existingClass = await this.prisma.class.findUnique({
@@ -536,7 +558,9 @@ export class AdminService {
       throw new NotFoundException('Không tìm thấy lớp học.');
     }
     if (schoolId && existingClass.schoolId !== schoolId) {
-      throw new ForbiddenException('Không có quyền phân công cho lớp của trường khác.');
+      throw new ForbiddenException(
+        'Không có quyền phân công cho lớp của trường khác.',
+      );
     }
 
     const subject = await this.prisma.subject.findUnique({
@@ -646,7 +670,9 @@ export class AdminService {
       throw new NotFoundException('Không tìm thấy lớp học.');
     }
     if (schoolId && existingClass.schoolId !== schoolId) {
-      throw new ForbiddenException('Không có quyền thao tác lớp của trường khác.');
+      throw new ForbiddenException(
+        'Không có quyền thao tác lớp của trường khác.',
+      );
     }
 
     await this.prisma.classSubjectTeacher.deleteMany({
@@ -726,7 +752,9 @@ export class AdminService {
     },
   ) {
     if (!dto.name || !dto.name.trim()) {
-      throw new BadRequestException('Vui lòng nhập tên niên khóa (VD: 2025-2026).');
+      throw new BadRequestException(
+        'Vui lòng nhập tên niên khóa (VD: 2025-2026).',
+      );
     }
 
     let targetSchoolId = schoolId;
@@ -737,7 +765,9 @@ export class AdminService {
       targetSchoolId = firstSchool?.id || null;
     }
     if (!targetSchoolId) {
-      throw new BadRequestException('Không tìm thấy trường học để tạo niên khóa.');
+      throw new BadRequestException(
+        'Không tìm thấy trường học để tạo niên khóa.',
+      );
     }
 
     if (dto.isCurrent) {
@@ -797,7 +827,9 @@ export class AdminService {
       throw new NotFoundException('Không tìm thấy niên khóa.');
     }
     if (schoolId && existing.schoolId !== schoolId) {
-      throw new ForbiddenException('Không có quyền thao tác niên khóa trường khác.');
+      throw new ForbiddenException(
+        'Không có quyền thao tác niên khóa trường khác.',
+      );
     }
 
     await this.prisma.$transaction([
@@ -888,7 +920,8 @@ export class AdminService {
       create: {
         name: dto.name.trim(),
         grade: gradeNum,
-        description: dto.description || `Môn ${dto.name.trim()} Khối ${gradeNum}`,
+        description:
+          dto.description || `Môn ${dto.name.trim()} Khối ${gradeNum}`,
       },
     });
 
@@ -987,7 +1020,9 @@ export class AdminService {
         createdAt: true,
         teacher: { select: { id: true, fullName: true } },
         subject: { select: { id: true, name: true } },
-        _count: { select: { lessons: true, enrollments: true, documents: true } },
+        _count: {
+          select: { lessons: true, enrollments: true, documents: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1035,7 +1070,9 @@ export class AdminService {
     dto: { title: string; body: string; targetRole?: string },
   ) {
     if (!dto.title || !dto.body) {
-      throw new BadRequestException('Tiêu đề và nội dung thông báo không được để trống.');
+      throw new BadRequestException(
+        'Tiêu đề và nội dung thông báo không được để trống.',
+      );
     }
 
     const whereUser: any = {
@@ -1087,7 +1124,14 @@ export class AdminService {
     return this.prisma.feedback.findMany({
       where: schoolId ? { user: { schoolId } } : {},
       include: {
-        user: { select: { fullName: true, email: true, studentCode: true, role: true } },
+        user: {
+          select: {
+            fullName: true,
+            email: true,
+            studentCode: true,
+            role: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1107,7 +1151,9 @@ export class AdminService {
       throw new NotFoundException('Không tìm thấy phản hồi.');
     }
     if (schoolId && feedback.user?.schoolId !== schoolId) {
-      throw new ForbiddenException('Không có quyền xử lý phản hồi của trường khác.');
+      throw new ForbiddenException(
+        'Không có quyền xử lý phản hồi của trường khác.',
+      );
     }
 
     const updated = await this.prisma.feedback.update({

@@ -102,10 +102,7 @@ export class AdminController {
   }
 
   @Delete('classes/:id')
-  async deleteClass(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  async deleteClass(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.adminService.deleteClass(req.user.schoolId, req.user.id, id);
   }
 
@@ -303,10 +300,7 @@ export class AdminController {
   }
 
   @Delete('users/:id')
-  async deleteUser(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  async deleteUser(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.adminService.deleteUser(id, req.user.schoolId, req.user.id);
   }
 }

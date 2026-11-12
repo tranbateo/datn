@@ -77,7 +77,8 @@ export class UpdateSchoolDto {
 export class UpdateByokKeyDto {
   @ApiProperty({
     example: 'AIzaSy...',
-    description: 'API key Gemini / OpenAI do nhà trường cung cấp (Bring Your Own Key)',
+    description:
+      'API key Gemini / OpenAI do nhà trường cung cấp (Bring Your Own Key)',
   })
   @IsString()
   @IsNotEmpty()

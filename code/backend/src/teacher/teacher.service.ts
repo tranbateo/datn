@@ -52,7 +52,7 @@ export class TeacherService {
 
     const assignedSubjectIds = Array.from(
       new Set(sortedSubjectClasses.map((sc) => sc.subjectId).filter(Boolean)),
-    ) as string[];
+    );
 
     const subjectIds =
       assignedSubjectIds.length > 0
@@ -207,7 +207,9 @@ export class TeacherService {
       .slice(0, 3);
 
     const primarySubjects = Array.from(
-      new Set(scope.subjectClasses.map((sc) => sc.subject.name).filter(Boolean)),
+      new Set(
+        scope.subjectClasses.map((sc) => sc.subject.name).filter(Boolean),
+      ),
     );
 
     return {
@@ -622,7 +624,9 @@ export class TeacherService {
     const quiz = await this.prisma.quiz.findUnique({ where: { id: quizId } });
     if (!quiz) throw new NotFoundException('Không tìm thấy đề kiểm tra.');
     if (scope.schoolId && quiz.schoolId && quiz.schoolId !== scope.schoolId) {
-      throw new ForbiddenException('Không có quyền thao tác đề của trường khác.');
+      throw new ForbiddenException(
+        'Không có quyền thao tác đề của trường khác.',
+      );
     }
 
     const updated = await this.prisma.quiz.update({
@@ -799,7 +803,9 @@ export class TeacherService {
     });
     if (!doc) throw new NotFoundException('Không tìm thấy tài liệu.');
     if (doc.course.teacherId !== teacherId) {
-      throw new ForbiddenException('Không có quyền chỉnh sửa tài liệu của giáo viên khác.');
+      throw new ForbiddenException(
+        'Không có quyền chỉnh sửa tài liệu của giáo viên khác.',
+      );
     }
 
     const updated = await this.prisma.document.update({
@@ -827,7 +833,9 @@ export class TeacherService {
     });
     if (!doc) throw new NotFoundException('Không tìm thấy tài liệu.');
     if (doc.course.teacherId !== teacherId) {
-      throw new ForbiddenException('Không có quyền xóa tài liệu của giáo viên khác.');
+      throw new ForbiddenException(
+        'Không có quyền xóa tài liệu của giáo viên khác.',
+      );
     }
 
     await this.prisma.document.delete({ where: { id: documentId } });

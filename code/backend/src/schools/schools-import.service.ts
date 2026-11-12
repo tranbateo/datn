@@ -236,7 +236,9 @@ export class SchoolsImportService {
       ).trim();
 
       if (!classCode) {
-        errors.push(`Sheet [${sheetClassesName}], Dòng ${rowNum}: Thiếu Mã Lớp.`);
+        errors.push(
+          `Sheet [${sheetClassesName}], Dòng ${rowNum}: Thiếu Mã Lớp.`,
+        );
       } else {
         classCodesInFile.add(classCode);
       }

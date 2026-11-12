@@ -31,10 +31,7 @@ export class QuotaGuard implements CanActivate {
           );
         }
 
-        if (
-          school.licenseExpiresAt &&
-          new Date() > school.licenseExpiresAt
-        ) {
+        if (school.licenseExpiresAt && new Date() > school.licenseExpiresAt) {
           throw new ForbiddenException(
             'Bản quyền hệ thống của nhà trường đã hết hạn. Vui lòng liên hệ Ban giám hiệu để gia hạn.',
           );

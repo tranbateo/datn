@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-base-to-string */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
 import {
   Injectable,
   NotFoundException,
@@ -79,7 +77,9 @@ export class CoursesService {
     });
 
     if (!course) {
-      throw new NotFoundException('Không tìm thấy học phần hoặc không có quyền truy cập.');
+      throw new NotFoundException(
+        'Không tìm thấy học phần hoặc không có quyền truy cập.',
+      );
     }
     return course;
   }
@@ -87,7 +87,9 @@ export class CoursesService {
   async update(id: string, data: any, user: UserContext) {
     const course = await this.findOne(id, user);
     if (user.role === Role.TEACHER && course.teacherId !== user.id) {
-      throw new ForbiddenException('Bạn chỉ được chỉnh sửa học phần do mình phụ trách.');
+      throw new ForbiddenException(
+        'Bạn chỉ được chỉnh sửa học phần do mình phụ trách.',
+      );
     }
 
     const newSubjectId = data.subjectId || data.subject?.connect?.id;
@@ -107,7 +109,9 @@ export class CoursesService {
 
     const updateData: Prisma.CourseUpdateInput = {
       ...(data.title !== undefined ? { title: data.title } : {}),
-      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.description !== undefined
+        ? { description: data.description }
+        : {}),
       ...(data.grade !== undefined ? { grade: data.grade } : {}),
       ...(newSubjectId ? { subject: { connect: { id: newSubjectId } } } : {}),
     };
@@ -121,7 +125,9 @@ export class CoursesService {
   async remove(id: string, user: UserContext) {
     const course = await this.findOne(id, user);
     if (user.role === Role.TEACHER && course.teacherId !== user.id) {
-      throw new ForbiddenException('Bạn chỉ được xóa học phần do mình phụ trách.');
+      throw new ForbiddenException(
+        'Bạn chỉ được xóa học phần do mình phụ trách.',
+      );
     }
     return this.prisma.course.delete({
       where: { id },

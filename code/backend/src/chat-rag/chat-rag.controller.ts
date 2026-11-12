@@ -48,11 +48,7 @@ export class ChatRagController {
   @Post('session')
   createSession(@Req() req: any, @Body() data: CreateChatSessionDto) {
     const userId = req.user.id || req.user.userId;
-    return this.chatRagService.createSession(
-      userId,
-      data,
-      req.user.schoolId,
-    );
+    return this.chatRagService.createSession(userId, data, req.user.schoolId);
   }
 
   @Post('session/:id/message')
