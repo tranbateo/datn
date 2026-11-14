@@ -322,18 +322,25 @@ export class OllamaEmbeddingsAdapter extends Embeddings {
 export function isSelfHostedAiEnabled(
   schoolAiProvider?: string | null,
 ): boolean {
-  const provider = (schoolAiProvider || process.env.AI_PROVIDER || 'GEMINI')
+  const envProvider = (process.env.AI_PROVIDER || 'GEMINI')
     .trim()
     .toLowerCase();
+  const schoolProvider = (schoolAiProvider || '').trim().toLowerCase();
 
-  return (
-    provider === 'ollama' ||
-    provider === 'qwen' ||
-    provider === 'colab' ||
-    provider === 'local' ||
-    provider.startsWith('qwen') ||
-    provider.startsWith('hf.co/')
-  );
+  // Kiểm tra cả cấu hình toàn hệ thống (.env) lẫn cấu hình riêng của trường
+  for (const provider of [envProvider, schoolProvider]) {
+    if (
+      provider === 'ollama' ||
+      provider === 'qwen' ||
+      provider === 'colab' ||
+      provider === 'local' ||
+      provider.startsWith('qwen') ||
+      provider.startsWith('hf.co/')
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -363,9 +370,16 @@ export function createChatModelAdapter(options?: {
 
     const isCustomModelTag =
       schoolProvider &&
-      !['ollama', 'qwen', 'colab', 'local', 'system', 'byok'].includes(
-        schoolProvider.toLowerCase(),
-      );
+      ![
+        'ollama',
+        'qwen',
+        'colab',
+        'local',
+        'system',
+        'byok',
+        'gemini',
+      ].includes(schoolProvider.toLowerCase()) &&
+      !schoolProvider.toLowerCase().startsWith('gemini-');
 
     const resolvedModel = isCustomModelTag
       ? schoolProvider
