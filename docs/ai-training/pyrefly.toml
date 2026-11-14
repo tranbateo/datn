@@ -1,0 +1,32 @@
+ignore-missing-imports = [
+  "unsloth",
+  "unsloth.*",
+  "torch",
+  "torch.*",
+  "datasets",
+  "datasets.*",
+  "trl",
+  "trl.*",
+  "matplotlib",
+  "matplotlib.*",
+  "huggingface_hub",
+  "huggingface_hub.*",
+]
+
+replace-imports-with-any = [
+  "unsloth",
+  "unsloth.*",
+  "torch",
+  "torch.*",
+  "datasets",
+  "datasets.*",
+  "trl",
+  "trl.*",
+  "matplotlib",
+  "matplotlib.*",
+  "huggingface_hub",
+  "huggingface_hub.*",
+]
+
+[errors]
+missing-import = "ignore"

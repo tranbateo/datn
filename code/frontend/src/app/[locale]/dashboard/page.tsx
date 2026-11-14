@@ -52,6 +52,7 @@ export default function StudentDashboard() {
       if (raw) {
         const cached = JSON.parse(raw);
         if (cached?.profile) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setProfile(cached.profile);
           setGamification(cached.gamification || null);
           setSubjects(Array.isArray(cached.subjects) ? cached.subjects : []);

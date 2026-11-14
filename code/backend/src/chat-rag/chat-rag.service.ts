@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import {
@@ -458,17 +459,18 @@ export class ChatRagService {
     const selectedCourses = subjectId
       ? scoredCourses.map((sc) => sc.course)
       : scoredCourses[0]?.score > 0
-        ? scoredCourses.filter((sc) => sc.score > 0).slice(0, 1).map((sc) => sc.course)
+        ? scoredCourses
+            .filter((sc) => sc.score > 0)
+            .slice(0, 1)
+            .map((sc) => sc.course)
         : scoredCourses.slice(0, 2).map((sc) => sc.course);
 
     const contextBlocks: string[] = [];
     const approxPages = [6, 30, 61, 85, 110];
 
     for (const course of selectedCourses) {
-      const primaryDoc =
-        course.documents[0]?.fileName || `${course.title}.pdf`;
-      const secondaryDoc =
-        course.documents[1]?.fileName || primaryDoc;
+      const primaryDoc = course.documents[0]?.fileName || `${course.title}.pdf`;
+      const secondaryDoc = course.documents[1]?.fileName || primaryDoc;
 
       contextBlocks.push(
         `[Khóa học: ${course.title} | Môn: ${course.subject?.name || 'Tổng hợp'} - Khối ${course.grade || ''}]\nMô tả chương trình: ${course.description || ''}`,

@@ -32,13 +32,15 @@ export interface OllamaMessagePayload {
   images?: string[];
 }
 
-function resolveMessageRole(msg: any): 'system' | 'user' | 'assistant' {
+function resolveMessageRole(
+  msg: Record<string, unknown> | null | undefined,
+): 'system' | 'user' | 'assistant' {
   if (!msg || typeof msg !== 'object') return 'user';
   const rawRole =
     typeof msg.role === 'string'
       ? msg.role.toLowerCase()
       : typeof msg._getType === 'function'
-        ? String(msg._getType()).toLowerCase()
+        ? String((msg._getType as () => unknown)()).toLowerCase()
         : '';
 
   if (rawRole === 'system') return 'system';
