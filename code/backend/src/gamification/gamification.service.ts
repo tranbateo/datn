@@ -87,7 +87,17 @@ export class GamificationService {
         },
       })) + 1;
 
-    return { ...profile, rank };
+    const nextLevelXp = Math.pow(profile.level, 2) * 100;
+
+    return {
+      ...profile,
+      currentXp: profile.lifetimeXp,
+      xp: profile.lifetimeXp,
+      nextLevelXp,
+      streakDays: profile.currentStreak,
+      lastActive: profile.lastActiveAt,
+      rank,
+    };
   }
 
   async addXp(userId: string, amount: number) {

@@ -8,8 +8,12 @@ const privateAreas = ['admin', 'dashboard', 'teacher', 'parent', 'onboarding', '
 const nextConfig = {
   poweredByHeader: false,
   compress: true,
+  turbopack: {
+    root: import.meta.dirname,
+  },
   experimental: {
     optimizePackageImports: ['lucide-react', 'recharts'],
+    turbopackFileSystemCacheForDev: false,
   },
   images: {
     formats: ['image/avif', 'image/webp'],

@@ -21,12 +21,14 @@ export async function fetchApi<T = unknown>(endpoint: string, options: RequestIn
 
     if (!response.ok) {
       let errorMsg = `API request failed: ${response.status} ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMsg = errorData.message || errorMsg;
-      } catch {
-        const text = await response.text().catch(() => '');
-        if (text) errorMsg += ` - ${text.substring(0, 100)}`;
+      const rawText = await response.text().catch(() => '');
+      if (rawText) {
+        try {
+          const errorData = JSON.parse(rawText);
+          errorMsg = errorData.message || errorMsg;
+        } catch {
+          errorMsg += ` - ${rawText.substring(0, 100)}`;
+        }
       }
       throw new Error(errorMsg);
     }

@@ -10,10 +10,16 @@ import { ThemeToggle } from "../ThemeToggle";
 import { logout } from "@/app/[locale]/(auth)/actions";
 import { useTranslations } from "next-intl";
 import { fetchApi } from "@/lib/api-client";
-import { formatClassLabel, getFallbackAvatar } from "@/services/users.service";
+import {
+  formatClassLabel,
+  getFallbackAvatar,
+  usersService,
+  getCachedProfileSync,
+  clearProfileCache,
+} from "@/services/users.service";
 
 const PROFILE_CACHE_KEY = "eduai_student_profile_cache";
-const PROFILE_TTL_MS = 60_000;
+const PROFILE_TTL_MS = 120_000;
 
 export function StudentNavigation() {
   const pathname = usePathname();
@@ -28,7 +34,8 @@ export function StudentNavigation() {
   const tFeedback = useTranslations("Admin.FeedbackModal");
   const [hasUnread, setHasUnread] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [userProfile, setUserProfile] = useState<any | null>(null);
+  const [userProfile, setUserProfile] = useState<any | null>(() => getCachedProfileSync());
+  const [profileLoading, setProfileLoading] = useState<boolean>(() => !getCachedProfileSync());
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -36,22 +43,26 @@ export function StudentNavigation() {
         const cached = sessionStorage.getItem(PROFILE_CACHE_KEY);
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (Date.now() - parsed.ts < PROFILE_TTL_MS) {
+          if (parsed?.profile && Date.now() - (parsed.ts || 0) < PROFILE_TTL_MS) {
             setUserProfile(parsed.profile);
-            setHasUnread(Boolean(parsed.hasUnread));
-            setNotifications(Array.isArray(parsed.notifications) ? parsed.notifications : []);
-            return;
+            setProfileLoading(false);
+            if (Array.isArray(parsed.notifications)) {
+              setHasUnread(Boolean(parsed.hasUnread));
+              setNotifications(parsed.notifications);
+              return;
+            }
           }
         }
 
         const [profileData, notificationsData] = await Promise.all([
-          fetchApi('/users/profile').catch(() => null),
+          usersService.getProfile().catch(() => null),
           fetchApi('/notifications').catch(() => [])
         ]);
         
         if (profileData) {
           setUserProfile(profileData);
         }
+        setProfileLoading(false);
         
         let unread = false;
         const notifList = Array.isArray(notificationsData) ? notificationsData : [];
@@ -67,6 +78,7 @@ export function StudentNavigation() {
         }
       } catch (error) {
         console.error("Failed to fetch user data", error);
+        setProfileLoading(false);
       }
     };
     fetchUserData();
@@ -143,10 +155,19 @@ export function StudentNavigation() {
           </button>
 
           <div className="flex flex-col">
-            <span className="font-bold text-blue-600 dark:text-blue-500 text-sm truncate max-w-[120px]">{userProfile?.fullName || 'Học viên'}</span>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
-              {activeClassName || userProfile?.grade ? formatClassLabel(activeClassName, userProfile?.grade) : t("greetingMobile")}
-            </span>
+            {profileLoading && !userProfile ? (
+              <div className="space-y-1.5">
+                <div className="h-3.5 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                <div className="h-2.5 w-16 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+              </div>
+            ) : (
+              <>
+                <span className="font-bold text-blue-600 dark:text-blue-500 text-sm truncate max-w-[120px]">{userProfile?.fullName || 'Học sinh'}</span>
+                <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+                  {activeClassName || userProfile?.grade ? formatClassLabel(activeClassName, userProfile?.grade) : t("greetingMobile")}
+                </span>
+              </>
+            )}
           </div>
 
           {/* Profile Dropdown */}
@@ -163,7 +184,7 @@ export function StudentNavigation() {
               <form action={logout}>
                 <button
                   type="submit"
-                  onClick={() => sessionStorage.clear()}
+                  onClick={() => { clearProfileCache(); sessionStorage.clear(); }}
                   className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
                 >
                   <LogOut className="w-4 h-4" />
@@ -273,17 +294,26 @@ export function StudentNavigation() {
               />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{userProfile?.fullName || 'Học viên'}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                {userProfile?.studentCode ? `${userProfile.studentCode} • ` : ""}
-                {activeClassName || userProfile?.grade ? formatClassLabel(activeClassName, userProfile?.grade) : t("role")}
-              </p>
+              {profileLoading && !userProfile ? (
+                <div className="space-y-1.5">
+                  <div className="h-3.5 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  <div className="h-3 w-20 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{userProfile?.fullName || 'Học sinh'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {userProfile?.studentCode ? `${userProfile.studentCode} • ` : ""}
+                    {activeClassName || userProfile?.grade ? formatClassLabel(activeClassName, userProfile?.grade) : t("role")}
+                  </p>
+                </>
+              )}
             </div>
           </Link>
           <form action={logout} className="mt-2">
             <button
               type="submit"
-              onClick={() => sessionStorage.clear()}
+              onClick={() => { clearProfileCache(); sessionStorage.clear(); }}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 rounded-xl transition-colors"
             >
               <LogOut className="w-4 h-4" />

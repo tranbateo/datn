@@ -61,6 +61,32 @@ interface WindowWithSpeech extends Window {
   webkitSpeechRecognition?: new () => SpeechRecognition;
 }
 
+function formatMathContent(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, expr) => `\n**${expr.trim()}**\n`)
+    .replace(/\$([^$\n]+)\$/g, (_, expr) => `**${expr.trim()}**`)
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1)/($2)")
+    .replace(/\\sqrt\{([^{}]+)\}/g, "√($1)")
+    .replace(/\\text\{([^{}]+)\}/g, "$1")
+    .replace(/\\times/g, "×")
+    .replace(/\\div/g, "÷")
+    .replace(/\\cdot/g, "·")
+    .replace(/\\Delta/g, "Δ")
+    .replace(/\\alpha/g, "α")
+    .replace(/\\beta/g, "β")
+    .replace(/\\pi/g, "π")
+    .replace(/\\neq/g, "≠")
+    .replace(/\\leq/g, "≤")
+    .replace(/\\geq/g, "≥")
+    .replace(/\\Leftrightarrow/g, "⇔")
+    .replace(/\\Rightarrow/g, "⇒")
+    .replace(/\\approx/g, "≈")
+    .replace(/\\pm/g, "±")
+    .replace(/\^2\b/g, "²")
+    .replace(/\^3\b/g, "³");
+}
+
 export default function AITutorPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
@@ -421,7 +447,7 @@ export default function AITutorPage() {
                       }`}>
                         {msg.role === 'assistant' ? (
                           <div className="prose prose-sm dark:prose-invert max-w-none">
-                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                            <ReactMarkdown>{formatMathContent(msg.content)}</ReactMarkdown>
 
                             {/* Citations block (BR-RAG-001) */}
                             {msg.citations && msg.citations.length > 0 && (

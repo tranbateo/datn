@@ -26,26 +26,44 @@ export function stripReasoningBlocks(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 }
 
-interface ExtractedMessagePayload {
-  text: string;
-  images: string[];
+export interface OllamaMessagePayload {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  images?: string[];
 }
 
-function extractMessagePayload(input: unknown): ExtractedMessagePayload {
+function resolveMessageRole(msg: any): 'system' | 'user' | 'assistant' {
+  if (!msg || typeof msg !== 'object') return 'user';
+  const rawRole =
+    typeof msg.role === 'string'
+      ? msg.role.toLowerCase()
+      : typeof msg._getType === 'function'
+        ? String(msg._getType()).toLowerCase()
+        : '';
+
+  if (rawRole === 'system') return 'system';
+  if (rawRole === 'assistant' || rawRole === 'ai') return 'assistant';
+  return 'user';
+}
+
+function extractChatMessages(input: unknown): OllamaMessagePayload[] {
   if (typeof input === 'string') {
-    return { text: input, images: [] };
+    return [{ role: 'user', content: input }];
   }
 
-  const images: string[] = [];
-  const textParts: string[] = [];
-
   const messages = Array.isArray(input) ? input : [input];
+  const result: OllamaMessagePayload[] = [];
+
   for (const msg of messages) {
     if (!msg) continue;
     if (typeof msg === 'string') {
-      textParts.push(msg);
+      result.push({ role: 'user', content: msg });
       continue;
     }
+
+    const role = resolveMessageRole(msg);
+    const images: string[] = [];
+    const textParts: string[] = [];
 
     const content = msg.content;
     if (typeof content === 'string') {
@@ -64,12 +82,21 @@ function extractMessagePayload(input: unknown): ExtractedMessagePayload {
         }
       }
     }
+
+    const combinedText = textParts.join('\n\n').trim();
+    if (!combinedText && images.length === 0) continue;
+
+    const payload: OllamaMessagePayload = {
+      role,
+      content: combinedText,
+    };
+    if (images.length > 0) {
+      payload.images = images;
+    }
+    result.push(payload);
   }
 
-  return {
-    text: textParts.join('\n\n'),
-    images,
-  };
+  return result.length > 0 ? result : [{ role: 'user', content: '' }];
 }
 
 export interface OllamaChatModelOptions {
@@ -105,14 +132,7 @@ export class OllamaChatModel implements AiChatModelAdapter {
   }
 
   async invoke(input: unknown): Promise<AiChatResponse> {
-    const { text, images } = extractMessagePayload(input);
-    const messageObj: Record<string, unknown> = {
-      role: 'user',
-      content: text,
-    };
-    if (images.length > 0) {
-      messageObj.images = images;
-    }
+    const chatMessages = extractChatMessages(input);
 
     const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
@@ -122,11 +142,14 @@ export class OllamaChatModel implements AiChatModelAdapter {
       },
       body: JSON.stringify({
         model: this.model,
-        messages: [messageObj],
+        messages: chatMessages,
         stream: false,
+        think: false,
+        keep_alive: '24h',
         options: {
           temperature: this.temperature,
           num_predict: this.maxOutputTokens,
+          num_ctx: 4096,
         },
       }),
     });
@@ -150,20 +173,12 @@ export class OllamaChatModel implements AiChatModelAdapter {
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async stream(input: unknown): Promise<AsyncIterable<AiChatResponse>> {
-    const { text, images } = extractMessagePayload(input);
+    const chatMessages = extractChatMessages(input);
     const baseUrl = this.baseUrl;
     const model = this.model;
     const temperature = this.temperature;
     const maxOutputTokens = this.maxOutputTokens;
     const stripThink = this.stripThinkTags;
-
-    const messageObj: Record<string, unknown> = {
-      role: 'user',
-      content: text,
-    };
-    if (images.length > 0) {
-      messageObj.images = images;
-    }
 
     async function* generateStream(): AsyncIterable<AiChatResponse> {
       const response = await fetch(`${baseUrl}/api/chat`, {
@@ -174,11 +189,14 @@ export class OllamaChatModel implements AiChatModelAdapter {
         },
         body: JSON.stringify({
           model,
-          messages: [messageObj],
+          messages: chatMessages,
           stream: true,
+          think: false,
+          keep_alive: '24h',
           options: {
             temperature,
             num_predict: maxOutputTokens,
+            num_ctx: 4096,
           },
         }),
       });

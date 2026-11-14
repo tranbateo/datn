@@ -20,9 +20,12 @@ import {
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { gamificationService, GamificationProfile } from "@/services/gamification.service";
-import { usersService, UserProfile, formatClassLabel } from "@/services/users.service";
+import { usersService, UserProfile, formatClassLabel, getCachedProfileSync } from "@/services/users.service";
 import { curriculumService, Subject } from "@/services/curriculum.service";
 import { calendarService, CalendarEvent } from "@/services/calendar.service";
+
+const DASHBOARD_CACHE_KEY = "eduai_dashboard_snapshot_v1";
+const DASHBOARD_TTL_MS = 120_000;
 
 export default function StudentDashboard() {
   const t = useTranslations("User.Dashboard");
@@ -36,21 +39,53 @@ export default function StudentDashboard() {
         }>;
       })
     | null
-  >(null);
+  >(() => getCachedProfileSync() as any);
   const [gamification, setGamification] = useState<GamificationProfile | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let hasFreshCache = false;
+    try {
+      const raw = sessionStorage.getItem(DASHBOARD_CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (cached?.profile) {
+          setProfile(cached.profile);
+          setGamification(cached.gamification || null);
+          setSubjects(Array.isArray(cached.subjects) ? cached.subjects : []);
+          setUpcomingEvents(Array.isArray(cached.upcomingEvents) ? cached.upcomingEvents : []);
+          setLoading(false);
+          if (Date.now() - (cached.ts || 0) < DASHBOARD_TTL_MS) {
+            hasFreshCache = true;
+          }
+        }
+      }
+    } catch {
+      // ignore storage read error
+    }
+
+    if (hasFreshCache) {
+      return;
+    }
+
+    const userWithSubjectsPromise = usersService.getProfile().then(async (user) => {
+      const subs = user?.grade
+        ? await curriculumService.getSubjectsByGrade(user.grade).catch(() => [])
+        : [];
+      return { user, subs };
+    });
+
     Promise.all([
-      usersService.getProfile(),
-      gamificationService.getProfile(),
+      userWithSubjectsPromise,
+      gamificationService.getProfile().catch(() => null),
       calendarService.getEvents().catch(() => []),
     ])
-      .then(([user, gamif, eventsData]) => {
+      .then(([{ user, subs }, gamif, eventsData]) => {
         setProfile(user as any);
         setGamification(gamif);
+        setSubjects(subs);
 
         const now = new Date();
         const upcoming = eventsData
@@ -58,14 +93,22 @@ export default function StudentDashboard() {
           .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
           .slice(0, 3);
         setUpcomingEvents(upcoming);
-        if (user.grade) {
-          return curriculumService.getSubjectsByGrade(user.grade);
-        }
-        return [];
-      })
-      .then((subs) => {
-        setSubjects(subs);
         setLoading(false);
+
+        try {
+          sessionStorage.setItem(
+            DASHBOARD_CACHE_KEY,
+            JSON.stringify({
+              profile: user,
+              gamification: gamif,
+              subjects: subs,
+              upcomingEvents: upcoming,
+              ts: Date.now(),
+            }),
+          );
+        } catch {
+          // ignore storage write error
+        }
       })
       .catch((err) => {
         console.error(err);

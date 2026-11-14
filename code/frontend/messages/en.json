@@ -321,8 +321,8 @@
       "progress": "Progress",
       "editProfile": "Edit Profile",
       "logout": "Logout",
-      "greetingMobile": "Good morning, Khoi!",
-      "role": "10th Grade Student",
+      "greetingMobile": "Welcome!",
+      "role": "Student",
       "slogan": "Smart Learning"
     },
     "Dashboard": {

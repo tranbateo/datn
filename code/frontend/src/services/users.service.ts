@@ -65,15 +65,91 @@ export async function processAvatarFile(file: File): Promise<string> {
   });
 }
 
+const PROFILE_STORAGE_KEY = 'eduai_student_profile_cache';
+const PROFILE_TTL_MS = 120_000; // 2 minutes
+
+let memoryProfileCache: { profile: UserProfile; ts: number } | null = null;
+let inflightProfilePromise: Promise<UserProfile> | null = null;
+
+export function getCachedProfileSync(): UserProfile | null {
+  if (memoryProfileCache && Date.now() - memoryProfileCache.ts < PROFILE_TTL_MS) {
+    return memoryProfileCache.profile;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = sessionStorage.getItem(PROFILE_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.profile && Date.now() - (parsed.ts || 0) < PROFILE_TTL_MS) {
+          memoryProfileCache = { profile: parsed.profile, ts: parsed.ts };
+          return parsed.profile;
+        }
+      }
+    } catch {
+      // ignore storage parse error
+    }
+  }
+  return null;
+}
+
+export function clearProfileCache(): void {
+  memoryProfileCache = null;
+  inflightProfilePromise = null;
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.removeItem(PROFILE_STORAGE_KEY);
+      sessionStorage.removeItem('eduai_dashboard_snapshot_v1');
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export const usersService = {
-  getProfile: (): Promise<UserProfile> => {
-    return fetchApi(API_ENDPOINTS.USERS.PROFILE);
+  getProfile: (forceRefresh = false): Promise<UserProfile> => {
+    if (!forceRefresh) {
+      const cached = getCachedProfileSync();
+      if (cached) {
+        return Promise.resolve(cached);
+      }
+      if (inflightProfilePromise) {
+        return inflightProfilePromise;
+      }
+    }
+
+    inflightProfilePromise = fetchApi<UserProfile>(API_ENDPOINTS.USERS.PROFILE)
+      .then((profile) => {
+        const now = Date.now();
+        memoryProfileCache = { profile, ts: now };
+        if (typeof window !== 'undefined') {
+          try {
+            const existingRaw = sessionStorage.getItem(PROFILE_STORAGE_KEY);
+            const existing = existingRaw ? JSON.parse(existingRaw) : {};
+            sessionStorage.setItem(
+              PROFILE_STORAGE_KEY,
+              JSON.stringify({ ...existing, profile, ts: now }),
+            );
+          } catch {
+            // ignore
+          }
+        }
+        inflightProfilePromise = null;
+        return profile;
+      })
+      .catch((err) => {
+        inflightProfilePromise = null;
+        throw err;
+      });
+
+    return inflightProfilePromise;
   },
 
-  updateProfile: (data: Partial<UserProfile> & { password?: string }): Promise<UserProfile> => {
-    return fetchApi(API_ENDPOINTS.USERS.PROFILE, {
+  updateProfile: async (data: Partial<UserProfile> & { password?: string }): Promise<UserProfile> => {
+    const updated = await fetchApi<UserProfile>(API_ENDPOINTS.USERS.PROFILE, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
+    clearProfileCache();
+    return updated;
   },
 };
