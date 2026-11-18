@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-base-to-string */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   Injectable,
   NotFoundException,
@@ -19,11 +23,18 @@ import {
   createEmbeddingsAdapter,
   stripReasoningBlocks,
 } from '../common/ai-provider.adapter';
+import {
+  buildRandomizedFullExamQuestions,
+  calculateDurationFromQuestionCount,
+  evaluateAndCorrectQuestion,
+} from './quiz-random-generator.helper';
 
 interface UserContext {
-  id: string;
+  id?: string;
+  userId?: string;
   role: Role;
   schoolId?: string | null;
+  grade?: number | null;
 }
 
 @Injectable()
@@ -54,19 +65,75 @@ export class QuizService {
     });
   }
 
-  private sanitizeQuizForStudent(quiz: any, user?: UserContext) {
-    if (!user || user.role !== Role.STUDENT) {
-      return quiz;
+  private parseOptionsArray(rawOptions: unknown): string[] {
+    if (Array.isArray(rawOptions)) {
+      return rawOptions.map((o) => String(o));
     }
+    if (typeof rawOptions === 'string') {
+      try {
+        const parsed = JSON.parse(rawOptions);
+        return Array.isArray(parsed) ? parsed.map((o) => String(o)) : [];
+      } catch {
+        return rawOptions.trim() ? [rawOptions] : [];
+      }
+    }
+    return [];
+  }
+
+  private detectDifficultyFromContent(
+    content: string,
+  ): 'EASY' | 'MEDIUM' | 'HARD' | 'ADVANCED' {
+    if (content.includes('Mức 4') || content.includes('Vận dụng cao')) {
+      return 'ADVANCED';
+    }
+    if (
+      content.includes('Mức 3') ||
+      content.includes('Vận dụng') ||
+      content.includes('Nâng cao')
+    ) {
+      return 'HARD';
+    }
+    if (content.includes('Mức 2') || content.includes('Thông hiểu')) {
+      return 'MEDIUM';
+    }
+    return 'EASY';
+  }
+
+  private sanitizeQuizForStudent(quiz: any, user?: UserContext) {
+    const mapQuestionMeta = (q: any, hideAnswer: boolean) => {
+      const parsedOpts = this.parseOptionsArray(q.options);
+      const isEssay =
+        parsedOpts.length === 0 || String(q.content || '').includes('[Tự luận');
+      const difficulty = this.detectDifficultyFromContent(
+        String(q.content || ''),
+      );
+
+      if (hideAnswer) {
+        return {
+          id: q.id,
+          quizId: q.quizId,
+          content: q.content,
+          options: parsedOpts,
+          questionType: isEssay ? 'ESSAY' : 'MULTIPLE_CHOICE',
+          difficulty,
+        };
+      }
+
+      return {
+        ...q,
+        options: parsedOpts,
+        questionType: isEssay ? 'ESSAY' : 'MULTIPLE_CHOICE',
+        difficulty,
+      };
+    };
+
+    const isStudent = Boolean(user && user.role === Role.STUDENT);
     // BR-QUIZ-001: Student is not allowed to see correctOption or explanation before submitting
     return {
       ...quiz,
-      questions: (quiz.questions || []).map((q: any) => ({
-        id: q.id,
-        quizId: q.quizId,
-        content: q.content,
-        options: q.options,
-      })),
+      questions: (quiz.questions || []).map((q: any) =>
+        mapQuestionMeta(q, isStudent),
+      ),
     };
   }
 
@@ -133,6 +200,7 @@ export class QuizService {
       where,
       include: { questions: true, subject: true },
       orderBy: { createdAt: 'desc' },
+      take: 20,
     });
 
     return quizzes.map((q) => this.sanitizeQuizForStudent(q, user));
@@ -217,10 +285,224 @@ export class QuizService {
     });
   }
 
+  /**
+   * Gọi trực tiếp mô hình AI (Qwen3-8B trên Colab / Gemini) để sinh thêm bộ câu hỏi mới
+   * từ tài liệu bài giảng RAG (bao gồm cả Trắc nghiệm 4 lựa chọn và Tự luận, phân hóa Dễ -> Khó).
+   */
+  private async generateFreshQuestionsViaLlm(params: {
+    subjectName: string;
+    grade: number;
+    topic?: string;
+    lessons: { title: string; content: string | null }[];
+    batchSize?: number;
+  }): Promise<
+    {
+      content: string;
+      options: string[];
+      correctOption: string;
+      explanation: string;
+    }[]
+  > {
+    const { subjectName, grade, topic, lessons, batchSize = 6 } = params;
+    const contextSnippet = lessons
+      .slice(0, 4)
+      .map((l) => `${l.title}:\n${l.content || ''}`)
+      .join('\n\n')
+      .substring(0, 2500);
+
+    const prompt = [
+      `Bạn là giáo viên bộ môn ${subjectName} lớp ${grade} tại Việt Nam.`,
+      `Dựa vào tài liệu học tập dưới đây, hãy sáng tạo ${batchSize} câu hỏi MỚI hoàn toàn (gồm cả câu Trắc nghiệm 4 lựa chọn và câu Tự luận ngắn, có đủ mức độ từ Nhận biết - Dễ, Thông hiểu - Trung bình đến Vận dụng cao - Khó)${topic ? ` tập trung vào chủ đề "${topic}"` : ''}.`,
+      `Tài liệu tham khảo:\n"""\n${contextSnippet || `Chương trình ${subjectName} lớp ${grade} GDPT 2018`}\n"""`,
+      `Trả về duy nhất mảng JSON thuần túy theo đúng schema:`,
+      `[{"content": "[Mức 2: Thông hiểu - Trung bình] [Trắc nghiệm] Nội dung câu hỏi...", "options": ["A", "B", "C", "D"], "correctOption": "A", "explanation": "Giải thích chi tiết..."}, {"content": "[Mức 4: Vận dụng cao - Khó] [Tự luận] Câu hỏi tự luận...", "options": [], "correctOption": "Đáp án/Lời giải chuẩn", "explanation": "Hướng dẫn các bước giải..."}]`,
+    ].join('\n');
+
+    try {
+      const llmCall = this.llm.invoke(prompt);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('LLM timeout')), 12000),
+      );
+      const response = await Promise.race([llmCall, timeoutPromise]);
+      const contentStr =
+        typeof response.content === 'string'
+          ? response.content
+          : JSON.stringify(response.content);
+      let rawContent = stripReasoningBlocks(contentStr).trim();
+      const firstBracket = rawContent.indexOf('[');
+      const lastBracket = rawContent.lastIndexOf(']');
+      if (firstBracket !== -1 && lastBracket > firstBracket) {
+        rawContent = rawContent.substring(firstBracket, lastBracket + 1);
+      }
+      const parsed = JSON.parse(rawContent);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(
+          (item) =>
+            item && typeof item.content === 'string' && item.correctOption,
+        )
+        .map((item) => ({
+          content: String(item.content),
+          options: Array.isArray(item.options)
+            ? item.options.map((o: any) => String(o))
+            : [],
+          correctOption: String(item.correctOption),
+          explanation: String(
+            item.explanation || 'Giải thích theo tài liệu môn học.',
+          ),
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Tạo đề luyện tập ngẫu nhiên mới (30 - 50 câu, gồm cả Trắc nghiệm & Tự luận,
+   * phân hóa 4 mức độ từ Dễ -> Khó, thời gian tự động 30 - 60 phút theo số lượng câu).
+   * Mỗi lần bấm tạo là một đề mới khác nhau và được lưu lại trong DB để học sinh xem lại lịch sử.
+   */
+  async generateRandomPracticeExam(dto: GenerateQuizDto, user?: UserContext) {
+    let subjectId = dto.subjectId || null;
+    let subjectName = 'Tổng hợp';
+    let grade = user?.grade || 8;
+    let schoolId = user?.schoolId || null;
+
+    if (dto.courseId) {
+      const course = await this.prisma.course.findUnique({
+        where: { id: dto.courseId },
+        include: { subject: true },
+      });
+      if (course) {
+        subjectId = course.subjectId || subjectId;
+        subjectName = course.subject?.name || course.title;
+        grade = course.grade || grade;
+        schoolId = course.schoolId || schoolId;
+      }
+    }
+
+    if (subjectId) {
+      const subj = await this.prisma.subject.findUnique({
+        where: { id: subjectId },
+      });
+      if (subj) {
+        subjectName = subj.name;
+        grade = subj.grade;
+      }
+    }
+
+    // Nếu không truyền numQuestions hoặc truyền < 30 khi tạo đề ngẫu nhiên, bốc ngẫu nhiên từ 30 đến 50 câu
+    const randomQuestionCounts = [30, 35, 40, 45, 50];
+    const resolvedNumQuestions =
+      dto.numQuestions && dto.numQuestions >= 30 && dto.numQuestions <= 50
+        ? dto.numQuestions
+        : randomQuestionCounts[
+            Math.floor(Math.random() * randomQuestionCounts.length)
+          ];
+
+    const duration = calculateDurationFromQuestionCount(resolvedNumQuestions);
+
+    // Lấy toàn bộ bài học (lessons) và câu hỏi sẵn có của môn học này
+    const courses = await this.prisma.course.findMany({
+      where: {
+        ...(subjectId ? { subjectId } : { grade }),
+        ...(schoolId ? { schoolId } : {}),
+      },
+      include: {
+        lessons: { orderBy: { order: 'asc' } },
+      },
+    });
+
+    const lessons = courses.flatMap((c) => c.lessons);
+
+    const existingQuestions = await this.prisma.quizQuestion.findMany({
+      where: {
+        quiz: {
+          ...(subjectId ? { subjectId } : { grade }),
+        },
+      },
+      take: 80,
+    });
+
+    const seedQuestions = existingQuestions
+      .map((q) => {
+        const opts = this.parseOptionsArray(q.options);
+        return {
+          content: q.content,
+          options: opts,
+          correctOption: q.correctOption,
+          explanation: q.explanation || '',
+        };
+      })
+      .filter((q) => q.options.length >= 2);
+
+    // Gọi trực tiếp mô hình AI (Qwen3-8B / Gemini) để sinh thêm câu hỏi mới từ tài liệu RAG
+    const liveAiQuestions = await this.generateFreshQuestionsViaLlm({
+      subjectName,
+      grade,
+      topic: dto.topic,
+      lessons,
+      batchSize: 6,
+    });
+
+    const generatedQuestions = buildRandomizedFullExamQuestions({
+      subjectName,
+      grade,
+      numQuestions: resolvedNumQuestions,
+      seedQuestions: [...liveAiQuestions, ...seedQuestions],
+      lessons,
+    });
+
+    const examCode = Math.floor(1000 + Math.random() * 9000);
+    const mcCount = generatedQuestions.filter(
+      (q) => q.questionType === 'MULTIPLE_CHOICE',
+    ).length;
+    const essayCount = generatedQuestions.filter(
+      (q) => q.questionType === 'ESSAY',
+    ).length;
+
+    const topicSuffix = dto.topic?.trim()
+      ? ` - Chủ đề: ${dto.topic.trim()}`
+      : '';
+    const quizTitle = `Đề ngẫu nhiên #${examCode} - ${subjectName} ${grade}${topicSuffix} (${resolvedNumQuestions} câu)`;
+    const quizDescription = `Đề tổng hợp ${resolvedNumQuestions} câu (${mcCount} câu Trắc nghiệm + ${essayCount} câu Tự luận) phân hóa 4 mức độ từ Dễ đến Khó (Nhận biết, Thông hiểu, Vận dụng, Vận dụng cao). Thời gian làm bài: ${duration} phút.`;
+
+    const createdQuiz = await this.prisma.quiz.create({
+      data: {
+        schoolId,
+        subjectId,
+        grade,
+        title: quizTitle,
+        description: quizDescription,
+        duration,
+        status: 'PUBLISHED',
+        questions: {
+          create: generatedQuestions.map((q) => ({
+            content: q.content,
+            options: q.options,
+            correctOption: q.correctOption,
+            explanation: q.explanation,
+          })),
+        },
+      },
+      include: {
+        questions: true,
+        subject: true,
+      },
+    });
+
+    return this.sanitizeQuizForStudent(createdQuiz, user);
+  }
+
+  /**
+   * Chấm điểm bài thi (cả Trắc nghiệm & Tự luận), lưu kết quả vào lịch sử đã làm,
+   * và tuân thủ quy tắc:
+   * - Câu nào ĐÚNG thì thôi (không hiện phần sửa lỗi rườm rà).
+   * - Câu nào SAI thì chỉ rõ lỗi sai của học sinh (errorAnalysis) và hướng dẫn sửa lại (correction).
+   */
   async submitQuiz(quizId: string, userId: string, dto: SubmitQuizDto) {
     const quiz = await this.prisma.quiz.findUnique({
       where: { id: quizId },
-      include: { questions: true },
+      include: { questions: true, subject: true },
     });
 
     if (!quiz) {
@@ -230,20 +512,42 @@ export class QuizService {
     let rawCorrectCount = 0;
     const totalQuestions = quiz.questions.length;
 
-    const questionResults = quiz.questions.map((question) => {
-      const userAnswer = dto.answers.find((a) => a.questionId === question.id);
-      const isCorrect =
-        Boolean(userAnswer) &&
-        question.correctOption === userAnswer?.selectedOption;
-      if (isCorrect) {
-        rawCorrectCount++;
-      }
-      return {
-        questionId: question.id,
-        selectedOption: userAnswer?.selectedOption || null,
+    const questionResults = quiz.questions.map((question, idx) => {
+      const userAnswerObj = (dto.answers || []).find(
+        (a) => a.questionId === question.id,
+      );
+      const rawUserAnswer =
+        userAnswerObj?.textAnswer?.trim() ||
+        userAnswerObj?.selectedOption?.trim() ||
+        null;
+
+      const parsedOptions = this.parseOptionsArray(question.options);
+      const evalResult = evaluateAndCorrectQuestion({
+        questionContent: question.content,
+        options: parsedOptions,
         correctOption: question.correctOption,
         explanation: question.explanation,
-        isCorrect,
+        userAnswer: rawUserAnswer,
+      });
+
+      if (evalResult.isCorrect) {
+        rawCorrectCount++;
+      }
+
+      return {
+        questionNumber: idx + 1,
+        questionId: question.id,
+        questionContent: question.content,
+        questionType: evalResult.questionType,
+        difficulty: this.detectDifficultyFromContent(question.content),
+        options: parsedOptions,
+        selectedOption: rawUserAnswer,
+        correctOption: question.correctOption,
+        isCorrect: evalResult.isCorrect,
+        // Câu nào đúng thì thôi (errorAnalysis & correction = null); câu nào sai thì chỉ rõ lỗi sai và sửa cho học sinh
+        errorAnalysis: evalResult.isCorrect ? null : evalResult.errorAnalysis,
+        correction: evalResult.isCorrect ? null : evalResult.correction,
+        explanation: evalResult.isCorrect ? null : question.explanation,
       };
     });
 
@@ -259,12 +563,15 @@ export class QuizService {
       if (existingAttempt) {
         return {
           attemptId: existingAttempt.id,
+          quizId: quiz.id,
+          quizTitle: quiz.title,
           score: rawCorrectCount,
           normalizedScore: existingAttempt.score,
           totalQuestions: existingAttempt.totalQuestions,
-          xpEarned: 0, // Do not award duplicate XP on retry
+          xpEarned: 0,
           isPassed: existingAttempt.score >= 50,
           isGraduation: quiz.isGraduation,
+          completedAt: existingAttempt.completedAt,
           questionResults,
         };
       }
@@ -277,7 +584,7 @@ export class QuizService {
         userId,
         score: normalizedScore,
         totalQuestions,
-        answers: JSON.stringify(dto.answers),
+        answers: questionResults,
         completedAt: new Date(),
       },
     });
@@ -329,102 +636,306 @@ export class QuizService {
 
     return {
       attemptId: attempt.id,
+      quizId: quiz.id,
+      quizTitle: quiz.title,
       score: rawCorrectCount,
       normalizedScore,
       totalQuestions,
       xpEarned,
       isPassed: percentage >= 0.5,
       isGraduation: quiz.isGraduation,
+      completedAt: attempt.completedAt,
       questionResults,
     };
   }
 
-  async generateAiQuiz(dto: GenerateQuizDto) {
-    const { courseId, topic, numQuestions = 5 } = dto;
+  /**
+   * Lấy danh sách lịch sử các đề đã làm của học sinh (lưu đầy đủ đề cũ và kết quả)
+   */
+  async getStudentAttemptHistory(userId: string, subjectId?: string) {
+    const attempts = await this.prisma.quizAttempt.findMany({
+      where: {
+        userId,
+        ...(subjectId ? { quiz: { subjectId } } : {}),
+      },
+      include: {
+        quiz: {
+          include: {
+            subject: true,
+          },
+        },
+      },
+      orderBy: { completedAt: 'desc' },
+      take: 50,
+    });
 
-    const query = topic
-      ? `Kiến thức về ${topic}`
-      : 'Tổng hợp kiến thức khóa học';
+    return attempts.map((a) => {
+      const correctCount = Math.round((a.score / 100) * a.totalQuestions);
+      const wrongCount = Math.max(0, a.totalQuestions - correctCount);
+      return {
+        attemptId: a.id,
+        quizId: a.quizId,
+        quizTitle: a.quiz?.title || 'Đề kiểm tra',
+        quizDescription: a.quiz?.description || '',
+        subjectId: a.quiz?.subjectId || null,
+        subjectName: a.quiz?.subject?.name || 'Tổng hợp',
+        grade: a.quiz?.grade || null,
+        duration: a.quiz?.duration || 30,
+        normalizedScore: a.score,
+        correctCount,
+        wrongCount,
+        totalQuestions: a.totalQuestions,
+        startedAt: a.startedAt,
+        completedAt: a.completedAt,
+      };
+    });
+  }
+
+  /**
+   * Xem lại chi tiết một đề cũ đã làm của học sinh (kèm câu trả lời, câu đúng và phần sửa lỗi cho câu sai)
+   */
+  async getAttemptDetail(attemptId: string, user?: UserContext) {
+    const attempt = await this.prisma.quizAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        quiz: {
+          include: {
+            questions: true,
+            subject: true,
+          },
+        },
+      },
+    });
+
+    if (!attempt) {
+      throw new NotFoundException('Không tìm thấy lịch sử bài làm.');
+    }
+
+    const requesterId = user?.id || user?.userId;
+    if (
+      user?.role === Role.STUDENT &&
+      requesterId &&
+      attempt.userId !== requesterId
+    ) {
+      throw new ForbiddenException(
+        'Không có quyền xem bài làm của học sinh khác.',
+      );
+    }
+
+    let rawStoredAnswers: any[] = [];
+    if (Array.isArray(attempt.answers)) {
+      rawStoredAnswers = attempt.answers;
+    } else if (typeof attempt.answers === 'string') {
+      try {
+        const parsed = JSON.parse(attempt.answers);
+        if (Array.isArray(parsed)) rawStoredAnswers = parsed;
+      } catch {
+        rawStoredAnswers = [];
+      }
+    }
+
+    // Reconstruct or enrich questionResults for every question in the quiz
+    let rawCorrectCount = 0;
+    const questionResults = (attempt.quiz?.questions || []).map((q, idx) => {
+      const stored = rawStoredAnswers.find((a) => a.questionId === q.id);
+      const userAnswer = stored?.selectedOption ?? stored?.textAnswer ?? null;
+      const parsedOptions = this.parseOptionsArray(q.options);
+
+      const evalResult = evaluateAndCorrectQuestion({
+        questionContent: q.content,
+        options: parsedOptions,
+        correctOption: q.correctOption,
+        explanation: q.explanation,
+        userAnswer,
+      });
+
+      const isCorrect =
+        typeof stored?.isCorrect === 'boolean'
+          ? stored.isCorrect
+          : evalResult.isCorrect;
+
+      if (isCorrect) rawCorrectCount++;
+
+      return {
+        questionNumber: idx + 1,
+        questionId: q.id,
+        questionContent: q.content,
+        questionType: evalResult.questionType,
+        difficulty: this.detectDifficultyFromContent(q.content),
+        options: parsedOptions,
+        selectedOption: userAnswer,
+        correctOption: q.correctOption,
+        isCorrect,
+        errorAnalysis: isCorrect
+          ? null
+          : stored?.errorAnalysis || evalResult.errorAnalysis,
+        correction: isCorrect
+          ? null
+          : stored?.correction || evalResult.correction,
+        explanation: isCorrect ? null : q.explanation,
+      };
+    });
+
+    return {
+      attemptId: attempt.id,
+      quizId: attempt.quizId,
+      quizTitle: attempt.quiz?.title || 'Đề kiểm tra',
+      quizDescription: attempt.quiz?.description || '',
+      subjectName: attempt.quiz?.subject?.name || 'Tổng hợp',
+      duration: attempt.quiz?.duration || 30,
+      score: rawCorrectCount,
+      normalizedScore: attempt.score,
+      totalQuestions: attempt.totalQuestions,
+      completedAt: attempt.completedAt,
+      quiz: this.sanitizeQuizForStudent(attempt.quiz, { role: Role.TEACHER }),
+      questionResults,
+    };
+  }
+
+  /**
+   * Tạo danh sách câu hỏi cho AI Quiz Builder của Giáo viên (hỗ trợ 30 - 50 câu, cả Trắc nghiệm & Tự luận, từ Dễ -> Khó)
+   */
+  async generateAiQuiz(dto: GenerateQuizDto) {
+    const { courseId, subjectId, topic, numQuestions = 35 } = dto;
+    const targetCount = Math.min(Math.max(Number(numQuestions) || 35, 1), 60);
+
+    let resolvedSubjectName = topic || 'Tổng hợp';
+    let resolvedGrade = 8;
+    let resolvedSubjectId = subjectId || null;
+
+    if (courseId) {
+      const course = await this.prisma.course.findUnique({
+        where: { id: courseId },
+        include: { subject: true },
+      });
+      if (course) {
+        resolvedSubjectName = course.subject?.name || course.title;
+        resolvedGrade = course.grade || 8;
+        resolvedSubjectId = course.subjectId || resolvedSubjectId;
+      }
+    } else if (subjectId) {
+      const subj = await this.prisma.subject.findUnique({
+        where: { id: subjectId },
+      });
+      if (subj) {
+        resolvedSubjectName = subj.name;
+        resolvedGrade = subj.grade;
+      }
+    }
+
+    // Nếu số lượng câu lớn (>= 10 câu, ví dụ 30 - 50 câu) hoặc bao gồm cả Trắc nghiệm & Tự luận,
+    // sử dụng bộ sinh đề ma trận 4 mức độ (Nhận biết -> Thông hiểu -> Vận dụng -> Vận dụng cao/Tự luận)
+    if (targetCount >= 10 || dto.includeEssay) {
+      const courses = await this.prisma.course.findMany({
+        where: {
+          ...(courseId
+            ? { id: courseId }
+            : resolvedSubjectId
+              ? { subjectId: resolvedSubjectId }
+              : { grade: resolvedGrade }),
+        },
+        include: {
+          lessons: { orderBy: { order: 'asc' } },
+        },
+      });
+
+      const lessons = courses.flatMap((c) => c.lessons);
+      const existingQuestions = await this.prisma.quizQuestion.findMany({
+        where: {
+          quiz: {
+            ...(resolvedSubjectId
+              ? { subjectId: resolvedSubjectId }
+              : { grade: resolvedGrade }),
+          },
+        },
+        take: 60,
+      });
+
+      const seedQuestions = existingQuestions
+        .map((q) => ({
+          content: q.content,
+          options: this.parseOptionsArray(q.options),
+          correctOption: q.correctOption,
+          explanation: q.explanation || '',
+        }))
+        .filter((q) => q.options.length >= 2);
+
+      const liveAiQuestions = await this.generateFreshQuestionsViaLlm({
+        subjectName: resolvedSubjectName,
+        grade: resolvedGrade,
+        topic,
+        lessons,
+        batchSize: 6,
+      });
+
+      return buildRandomizedFullExamQuestions({
+        subjectName: resolvedSubjectName,
+        grade: resolvedGrade,
+        numQuestions: targetCount,
+        seedQuestions: [...liveAiQuestions, ...seedQuestions],
+        lessons,
+      });
+    }
+
+    // Với đề ngắn (< 10 câu thuần trắc nghiệm), thử gọi LLM trước và fallback về bộ sinh chuẩn
     let context = '';
 
     try {
       if (courseId) {
-        const retriever = this.vectorStore.asRetriever({
-          k: 5,
-          filter: { courseId },
+        const courseWithLessons = await this.prisma.course.findUnique({
+          where: { id: courseId },
+          include: { lessons: { orderBy: { order: 'asc' } } },
         });
-        const retrievedDocs = await retriever.invoke(query);
-        context = retrievedDocs.map((doc) => doc.pageContent).join('\n\n');
+        if (courseWithLessons && courseWithLessons.lessons.length > 0) {
+          context = courseWithLessons.lessons
+            .map((l) => `${l.title}:\n${l.content || ''}`)
+            .join('\n\n');
+        }
       }
     } catch {
-      // Proceed with topic-based generation if vector store is unavailable
+      // Fallback below
     }
 
     const promptText = `
-Bạn là một giáo viên bộ môn giàu kinh nghiệm tại Việt Nam. Dựa vào nội dung tài liệu sau đây, hãy biên soạn ${numQuestions} câu hỏi trắc nghiệm khách quan (4 lựa chọn) về chủ đề: "${topic || 'Ôn tập kiến thức'}".
+Bạn là một giáo viên bộ môn giàu kinh nghiệm tại Việt Nam. Dựa vào nội dung tài liệu sau đây, hãy biên soạn ${targetCount} câu hỏi (bao gồm cả Trắc nghiệm 4 lựa chọn và Tự luận, phân hóa từ Dễ đến Khó) về chủ đề: "${topic || resolvedSubjectName}".
 
-Nội dung tài liệu tham khảo (nếu có):
+Nội dung tài liệu tham khảo:
 """
-${context || 'Sử dụng kiến thức chuẩn chương trình GDPT hiện hành.'}
+${context || 'Sử dụng kiến thức chuẩn chương trình GDPT 2018.'}
 """
 
-Yêu cầu định dạng đầu ra phải là JSON thuần túy (không bọc trong markdown block), với cấu trúc là một mảng các object như sau:
+Yêu cầu định dạng đầu ra phải là JSON thuần túy theo cấu trúc:
 [
   {
-    "content": "Nội dung câu hỏi",
+    "content": "[Mức độ] Nội dung câu hỏi",
     "options": ["Lựa chọn A", "Lựa chọn B", "Lựa chọn C", "Lựa chọn D"],
-    "correctOption": "Lựa chọn đúng (phải trùng khớp chính xác với 1 phần tử trong mảng options)",
-    "explanation": "Giải thích chi tiết vì sao đáp án đó đúng"
+    "correctOption": "Lựa chọn đúng hoặc lời giải chuẩn",
+    "explanation": "Giải thích chi tiết"
   }
 ]
 `;
 
-    let rawContent = '';
     try {
       const response = await this.llm.invoke(promptText);
       const contentStr =
         typeof response.content === 'string'
           ? response.content
           : JSON.stringify(response.content);
-      rawContent = stripReasoningBlocks(contentStr).trim();
-    } catch {
-      // Fallback draft questions tailored to the requested topic so Teacher can review & edit
-      const cleanTopic = topic || 'Kiến thức trọng tâm môn học';
-      return Array.from({ length: Math.min(numQuestions || 3, 10) }).map(
-        (_, idx) => ({
-          content: `[Câu ${idx + 1} - Nháp AI] Nhận định nào sau đây là đúng nhất khi tìm hiểu về chuyên đề "${cleanTopic}"?`,
-          options: [
-            `Nắm vững khái niệm cơ bản và vận dụng công thức/quy tắc của ${cleanTopic}`,
-            `Chỉ cần học thuộc lòng ví dụ mà không cần hiểu bản chất`,
-            `Bỏ qua các điều kiện xác định của bài toán`,
-            `Không cần đối chiếu kết quả sau khi giải`,
-          ],
-          correctOption: `Nắm vững khái niệm cơ bản và vận dụng công thức/quy tắc của ${cleanTopic}`,
-          explanation: `Để làm tốt chuyên đề "${cleanTopic}", học sinh cần nắm vững định nghĩa, điều kiện áp dụng và phương pháp giải từng dạng bài.`,
-        }),
-      );
-    }
-
-    if (rawContent.startsWith('```json')) {
-      rawContent = rawContent.substring(7);
-    }
-    if (rawContent.startsWith('```')) {
-      rawContent = rawContent.substring(3);
-    }
-    if (rawContent.endsWith('```')) {
-      rawContent = rawContent.substring(0, rawContent.length - 3);
-    }
-
-    const firstBracket = rawContent.indexOf('[');
-    const lastBracket = rawContent.lastIndexOf(']');
-    if (firstBracket !== -1 && lastBracket > firstBracket) {
-      rawContent = rawContent.substring(firstBracket, lastBracket + 1);
-    }
-
-    try {
+      let rawContent = stripReasoningBlocks(contentStr).trim();
+      const firstBracket = rawContent.indexOf('[');
+      const lastBracket = rawContent.lastIndexOf(']');
+      if (firstBracket !== -1 && lastBracket > firstBracket) {
+        rawContent = rawContent.substring(firstBracket, lastBracket + 1);
+      }
       return JSON.parse(rawContent.trim()) as Record<string, unknown>[];
     } catch {
-      throw new BadRequestException('AI trả về định dạng JSON không hợp lệ.');
+      return buildRandomizedFullExamQuestions({
+        subjectName: resolvedSubjectName,
+        grade: resolvedGrade,
+        numQuestions: targetCount,
+        seedQuestions: [],
+        lessons: [],
+      });
     }
   }
 }

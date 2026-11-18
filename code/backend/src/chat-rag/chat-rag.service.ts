@@ -281,7 +281,7 @@ export class ChatRagService {
   ): string {
     return [
       `Bạn là một gia sư AI thông minh và tận tâm tại Việt Nam (xưng là "Thầy/Cô AI" và gọi học sinh là "em", tuyệt đối không tự đặt tên riêng như "Cô/Chú Nguyễn").`,
-      `Học sinh đang học môn ${subjectName}, khối lớp ${userGrade} (Chương trình GDPT 2018 - Bộ sách Kết nối tri thức với cuộc sống).`,
+      `Học sinh đang học môn ${subjectName}, khối lớp ${userGrade} (Chương trình GDPT 2018 - Bộ sách Kết nối tri thức với cuộc sống & Tài liệu Chuyên đề Bồi dưỡng Nâng cao).`,
       `Tuân thủ nghiêm ngặt quy tắc 3 tầng (BR-RAG-001 & BR-RAG-002):`,
       `1. Tầng 1 (Bám sát tài liệu RAG): Trả lời lý thuyết, chương mục và công thức bám sát nội dung trong thẻ <context> và luôn trích dẫn rõ tên file tài liệu nguồn (ví dụ: [SGK_Toan_6_Tap_1_Ket_Noi_Tri_Thuc.pdf - Trang 6]).`,
       `2. Tầng 2 (Suy luận bài tập tương tự & Dẫn dắt chủ động):`,
@@ -469,8 +469,17 @@ export class ChatRagService {
     const approxPages = [6, 30, 61, 85, 110];
 
     for (const course of selectedCourses) {
-      const primaryDoc = course.documents[0]?.fileName || `${course.title}.pdf`;
-      const secondaryDoc = course.documents[1]?.fileName || primaryDoc;
+      const sgkDocs = course.documents.filter((d) =>
+        d.fileName.toUpperCase().startsWith('SGK_'),
+      );
+      const advDocs = course.documents.filter(
+        (d) => !d.fileName.toUpperCase().startsWith('SGK_'),
+      );
+      const primarySgkDoc =
+        sgkDocs[0]?.fileName ||
+        course.documents[0]?.fileName ||
+        `${course.title}.pdf`;
+      const secondarySgkDoc = sgkDocs[1]?.fileName || primarySgkDoc;
 
       contextBlocks.push(
         `[Khóa học: ${course.title} | Môn: ${course.subject?.name || 'Tổng hợp'} - Khối ${course.grade || ''}]\nMô tả chương trình: ${course.description || ''}`,
@@ -483,9 +492,33 @@ export class ChatRagService {
           let lScore = 0;
           for (const token of queryTokens) {
             if (text.includes(token)) lScore += 2;
+            if (lesson.title.toLowerCase().includes(token)) lScore += 3;
           }
-          const docFile = idx < 3 ? primaryDoc : secondaryDoc;
-          const pageNum = approxPages[idx % approxPages.length] || idx * 20 + 6;
+
+          const isAdvancedLesson =
+            lesson.title.includes('Nâng cao') ||
+            lesson.title.includes('Chuyên đề');
+          let docFile = idx < 3 ? primarySgkDoc : secondarySgkDoc;
+
+          if (isAdvancedLesson && advDocs.length > 0) {
+            if (lesson.title.includes('Vật lí')) {
+              docFile =
+                advDocs.find((d) => d.fileName.includes('Vat_Li'))?.fileName ||
+                advDocs[0].fileName;
+            } else if (lesson.title.includes('Hóa học')) {
+              docFile =
+                advDocs.find((d) => d.fileName.includes('Hoa_Hoc'))?.fileName ||
+                advDocs[0].fileName;
+            } else if (lesson.title.includes('Sinh học')) {
+              docFile =
+                advDocs.find((d) => d.fileName.includes('Sinh_Hoc'))
+                  ?.fileName || advDocs[0].fileName;
+            } else {
+              docFile = advDocs[0].fileName;
+            }
+          }
+
+          const pageNum = approxPages[idx % approxPages.length] || idx * 15 + 6;
           return { lesson, lScore, docFile, pageNum };
         })
         .sort((a, b) =>
@@ -494,7 +527,7 @@ export class ChatRagService {
             : a.lesson.order - b.lesson.order,
         );
 
-      for (const item of scoredLessons.slice(0, 5)) {
+      for (const item of scoredLessons.slice(0, 7)) {
         contextBlocks.push(
           `[File: ${item.docFile} - Trang ${item.pageNum} | ${item.lesson.title}]\n${item.lesson.content || ''}`,
         );

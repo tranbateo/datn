@@ -1,16 +1,20 @@
 import {
   IsString,
-  IsNotEmpty,
   IsOptional,
   IsInt,
   Min,
   Max,
+  IsBoolean,
 } from 'class-validator';
 
 export class GenerateQuizDto {
   @IsString()
-  @IsNotEmpty()
-  courseId: string;
+  @IsOptional()
+  courseId?: string;
+
+  @IsString()
+  @IsOptional()
+  subjectId?: string;
 
   @IsString()
   @IsOptional()
@@ -18,7 +22,11 @@ export class GenerateQuizDto {
 
   @IsInt()
   @Min(1)
-  @Max(20)
+  @Max(60)
   @IsOptional()
-  numQuestions?: number = 5;
+  numQuestions?: number = 35;
+
+  @IsBoolean()
+  @IsOptional()
+  includeEssay?: boolean = true;
 }

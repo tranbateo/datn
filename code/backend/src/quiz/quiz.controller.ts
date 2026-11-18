@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import {
   Controller,
   Get,
@@ -9,6 +10,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseGuards,
   Request,
 } from '@nestjs/common';
@@ -80,6 +82,20 @@ export class QuizController {
     return this.quizService.findAll(req.user);
   }
 
+  @Get('attempts/my-history')
+  getMyAttemptHistory(
+    @Request() req: any,
+    @Query('subjectId') subjectId?: string,
+  ) {
+    const userId = req.user.id || req.user.userId;
+    return this.quizService.getStudentAttemptHistory(userId, subjectId);
+  }
+
+  @Get('attempts/:attemptId')
+  getAttemptDetail(@Request() req: any, @Param('attemptId') attemptId: string) {
+    return this.quizService.getAttemptDetail(attemptId, req.user);
+  }
+
   @Get('subject/:subjectId')
   findBySubject(@Request() req: any, @Param('subjectId') subjectId: string) {
     return this.quizService.findBySubject(subjectId, req.user);
@@ -104,6 +120,18 @@ export class QuizController {
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
   remove(@Request() req: any, @Param('id') id: string) {
     return this.quizService.remove(id, req.user);
+  }
+
+  @Post('generate-random')
+  @Roles(Role.STUDENT, Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
+  async generateRandomPracticeQuiz(
+    @Request() req: any,
+    @Body() generateQuizDto: GenerateQuizDto,
+  ) {
+    return this.quizService.generateRandomPracticeExam(
+      generateQuizDto,
+      req.user,
+    );
   }
 
   @Post('generate-ai-quiz')

@@ -11,6 +11,13 @@ export const API_ENDPOINTS = {
     DETAIL: (quizId: string | number) => `/quiz/${quizId}`,
     SUBMIT: (quizId: string | number) => `/quiz/${quizId}/submit`,
     GENERATE: '/quiz/generate-ai-quiz',
+    GENERATE_RANDOM: '/quiz/generate-random',
+    MY_ATTEMPTS: (subjectId?: string | number) =>
+      subjectId
+        ? `/quiz/attempts/my-history?subjectId=${subjectId}`
+        : '/quiz/attempts/my-history',
+    ATTEMPT_DETAIL: (attemptId: string | number) =>
+      `/quiz/attempts/${attemptId}`,
   },
   GAMIFICATION: {
     PROFILE: '/gamification/profile',
@@ -43,5 +50,5 @@ export const API_ENDPOINTS = {
   DOCUMENTS: {
     LIST: '/documents',
     UPLOAD: (courseId: string | number) => `/documents/upload/${courseId}`,
-  }
+  },
 } as const;
