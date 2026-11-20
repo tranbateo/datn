@@ -1,136 +1,391 @@
-import { useState } from 'react';
-import { StyleSheet, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import {
+  formatClassLabel,
+  parentApi,
+  usersApi,
+} from '@/services/mobile.services';
+import { useAuthStore, type MobileUser } from '@/store/authStore';
+import {
+  Badge,
+  Card,
+  LoadingView,
+  PrimaryButton,
+  usePalette,
+} from '@/components/ui/mobile-ui';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing, MaxContentWidth } from '@/constants/theme';
+export default function StudentProfileScreen() {
+  const p = usePalette();
+  const router = useRouter();
+  const { user, updateUser, logout } = useAuthStore();
 
+  const [profile, setProfile] = useState<MobileUser | null>(user);
+  const [fullName, setFullName] = useState(user?.fullName || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [newPassword, setNewPassword] = useState('');
 
-
-// Simulate an API call to your backend
-const generateLinkCode = async (): Promise<string> => {
-  // In a real app, use fetch with Authorization header to call /parents/generate-link-code
-  // For demo:
-  try {
-    // const res = await fetch(`${BACKEND_URL}/parents/generate-link-code`, {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
-    // });
-    // const data = await res.json();
-    // return data.linkCode;
-    
-    // Fallback stub:
-    return new Promise(resolve => {
-      setTimeout(() => {
-        resolve(Math.floor(100000 + Math.random() * 900000).toString());
-      }, 1000);
-    });
-  } catch (error) {
-    throw error;
-  }
-};
-
-export default function ProfileScreen() {
   const [linkCode, setLinkCode] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [generatingCode, setGeneratingCode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(!user);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleGenerateCode = async () => {
-    setLoading(true);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [sendingFeedback, setSendingFeedback] = useState(false);
+
+  const loadProfile = useCallback(async () => {
     try {
-      const code = await generateLinkCode();
-      setLinkCode(code);
-    } catch {
-      Alert.alert('Lỗi', 'Không thể tạo mã liên kết. Vui lòng thử lại sau.');
+      const data = await usersApi.getProfile();
+      setProfile(data);
+      setFullName(data.fullName || '');
+      setPhone(data.phone || '');
+      void updateUser(data);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+    }
+  }, [updateUser]);
+
+  useEffect(() => {
+    const run = async () => {
+      await loadProfile();
+    };
+    void run();
+  }, [loadProfile]);
+
+  const handleGenerateCode = async () => {
+    setGeneratingCode(true);
+    try {
+      const res = await parentApi.generateLinkCode();
+      setLinkCode(res.linkCode);
+      Alert.alert(
+        'Đã tạo mã liên kết',
+        `Mã 6 số: ${res.linkCode}\nHãy gửi mã này cho Phụ huynh nhập trên Cổng Phụ huynh (hiệu lực 15 phút, dùng 1 lần).`,
+      );
+    } catch (err: unknown) {
+      Alert.alert(
+        'Lỗi',
+        err instanceof Error ? err.message : 'Không thể tạo mã liên kết.',
+      );
+    } finally {
+      setGeneratingCode(false);
     }
   };
 
+  const handleSaveProfile = async () => {
+    if (!fullName.trim()) {
+      Alert.alert('Lỗi', 'Họ tên không được để trống.');
+      return;
+    }
+    if (newPassword.trim() && newPassword.trim().length < 6) {
+      Alert.alert('Lỗi', 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await usersApi.updateProfile({
+        fullName: fullName.trim(),
+        phone: phone.trim() || undefined,
+        ...(newPassword.trim() ? { password: newPassword.trim() } : {}),
+      });
+      setProfile((prev) => (prev ? { ...prev, ...updated } : updated));
+      void updateUser(updated);
+      setNewPassword('');
+      Alert.alert('Thành công', 'Đã cập nhật hồ sơ cá nhân.');
+    } catch (err: unknown) {
+      Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể lưu hồ sơ.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSendFeedback = async () => {
+    if (!feedbackText.trim()) return;
+    setSendingFeedback(true);
+    try {
+      await usersApi.submitFeedback('system', feedbackText.trim());
+      setFeedbackText('');
+      Alert.alert('Cảm ơn em!', 'Góp ý của em đã được gửi tới Quản trị viên nhà trường.');
+    } catch (err: unknown) {
+      Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể gửi góp ý.');
+    } finally {
+      setSendingFeedback(false);
+    }
+  };
+
+  const handleConfirmLogout = () => {
+    Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?', [
+      { text: 'Hủy', style: 'cancel' },
+      { text: 'Đăng xuất', style: 'destructive', onPress: () => void logout() },
+    ]);
+  };
+
+  if (loading && !profile) return <LoadingView label="Đang tải hồ sơ..." />;
+
+  const activeClass = profile?.classEnrollments?.[0]?.class?.name;
+  const linkedParents = profile?.studentLinks || [];
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="title" style={styles.title}>Hồ sơ</ThemedText>
+    <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void loadProfile();
+            }}
+            tintColor={p.primary}
+          />
+        }
+      >
+        {/* Identity Card */}
+        <Card style={styles.identityCard}>
+          <View style={[styles.avatar, { backgroundColor: p.primary }]}>
+            <Text style={styles.avatarLetter}>
+              {(profile?.fullName || 'H').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: p.text }}>
+              {profile?.fullName || 'Học sinh'}
+            </Text>
+            <Text style={{ fontSize: 12, color: p.textMuted }}>
+              {profile?.school?.name || 'AI Tutor'}
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+              <Badge label={formatClassLabel(activeClass, profile?.grade)} tone="blue" />
+              {profile?.studentCode ? (
+                <Badge label={`Mã: ${profile.studentCode}`} tone="indigo" />
+              ) : null}
+            </View>
+          </View>
+        </Card>
 
-        <ThemedView style={styles.card}>
-          <ThemedText type="defaultSemiBold" style={{ marginBottom: Spacing.two }}>
-            Liên kết Phụ huynh
-          </ThemedText>
-          <ThemedText type="small" style={{ marginBottom: Spacing.four, opacity: 0.8 }}>
-            Tạo mã liên kết 6 số để phụ huynh có thể theo dõi quá trình học tập của bạn qua ứng dụng Web.
-          </ThemedText>
-          
+        {/* Quick Shortcuts */}
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => router.push('/(student)/(tabs)/progress')}
+            style={[styles.shortcutBtn, { backgroundColor: p.card, borderColor: p.border }]}
+          >
+            <Ionicons name="bar-chart-outline" size={20} color={p.emerald} />
+            <Text style={{ color: p.text, fontWeight: '700', fontSize: 13 }}>
+              Tiến độ học tập
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push('/(student)/courses')}
+            style={[styles.shortcutBtn, { backgroundColor: p.card, borderColor: p.border }]}
+          >
+            <Ionicons name="library-outline" size={20} color={p.indigo} />
+            <Text style={{ color: p.text, fontWeight: '700', fontSize: 13 }}>
+              Bài giảng & PDF
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Parent Link Code Card (BR-LINK-001) */}
+        <Card style={{ gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="link-outline" size={20} color={p.indigo} />
+            <Text style={[styles.sectionTitle, { color: p.text }]}>
+              Liên kết Phụ huynh (Mã 6 số)
+            </Text>
+          </View>
+          <Text style={{ fontSize: 13, color: p.textMuted, lineHeight: 18 }}>
+            Tạo mã ngẫu nhiên dùng một lần (hiệu lực 15 phút) để Phụ huynh liên kết và theo dõi tiến độ học tập.
+          </Text>
+
           {linkCode ? (
-            <ThemedView style={styles.codeContainer}>
-              <ThemedText type="title" style={styles.codeText}>{linkCode}</ThemedText>
-              <ThemedText type="small" style={{ marginTop: Spacing.two, opacity: 0.7, textAlign: 'center' }}>
-                Mã này có hiệu lực ngay lập tức. Hãy gửi cho phụ huynh.
-              </ThemedText>
-            </ThemedView>
-          ) : (
-            <TouchableOpacity 
-              style={styles.button} 
-              onPress={handleGenerateCode}
-              disabled={loading}
+            <View
+              style={[
+                styles.codeBox,
+                { backgroundColor: p.indigoSoft, borderColor: p.indigo },
+              ]}
             >
-              {loading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <ThemedText type="defaultSemiBold" style={styles.buttonText}>
-                  Tạo Mã Liên Kết
-                </ThemedText>
-              )}
-            </TouchableOpacity>
-          )}
-        </ThemedView>
+              <Text style={[styles.codeText, { color: p.indigo }]}>{linkCode}</Text>
+              <Text style={{ fontSize: 12, color: p.textMuted }}>
+                Hiệu lực 15 phút • Dùng một lần
+              </Text>
+            </View>
+          ) : null}
 
-      </SafeAreaView>
-    </ThemedView>
+          <PrimaryButton
+            title={linkCode ? 'Tạo mã liên kết mới' : 'Tạo mã liên kết 6 số'}
+            icon="key-outline"
+            color={p.indigo}
+            loading={generatingCode}
+            onPress={() => void handleGenerateCode()}
+          />
+
+          {linkedParents.length > 0 ? (
+            <View style={{ gap: 6, marginTop: 4 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: p.textMuted }}>
+                Phụ huynh đã liên kết ({linkedParents.length}):
+              </Text>
+              {linkedParents.map((lp) => (
+                <View
+                  key={lp.id}
+                  style={[styles.parentRow, { backgroundColor: p.cardMuted }]}
+                >
+                  <Ionicons name="person-circle-outline" size={20} color={p.indigo} />
+                  <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: p.text }}>
+                    {lp.parent?.fullName || 'Phụ huynh'}{' '}
+                    {lp.parent?.phone ? `(${lp.parent.phone})` : ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </Card>
+
+        {/* Edit Profile */}
+        <Card style={{ gap: 12 }}>
+          <Text style={[styles.sectionTitle, { color: p.text }]}>
+            Thông tin cá nhân & Đổi mật khẩu
+          </Text>
+          <View style={styles.field}>
+            <Text style={[styles.label, { color: p.textMuted }]}>Họ và tên</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
+              value={fullName}
+              onChangeText={setFullName}
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={[styles.label, { color: p.textMuted }]}>Số điện thoại</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              placeholder="Tùy chọn"
+              placeholderTextColor={p.textMuted}
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={[styles.label, { color: p.textMuted }]}>
+              Mật khẩu mới (để trống nếu không đổi)
+            </Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              placeholder="Ít nhất 6 ký tự"
+              placeholderTextColor={p.textMuted}
+            />
+          </View>
+          <PrimaryButton
+            title="Lưu thay đổi"
+            icon="save-outline"
+            loading={saving}
+            onPress={() => void handleSaveProfile()}
+          />
+        </Card>
+
+        {/* Feedback */}
+        <Card style={{ gap: 10 }}>
+          <Text style={[styles.sectionTitle, { color: p.text }]}>Góp ý / Báo lỗi</Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: p.bg,
+                borderColor: p.border,
+                color: p.text,
+                minHeight: 72,
+                textAlignVertical: 'top',
+                paddingTop: 10,
+              },
+            ]}
+            placeholder="Nhập góp ý gửi về nhà trường..."
+            placeholderTextColor={p.textMuted}
+            value={feedbackText}
+            onChangeText={setFeedbackText}
+            multiline
+          />
+          <PrimaryButton
+            title="Gửi góp ý"
+            icon="send-outline"
+            color={p.emerald}
+            loading={sendingFeedback}
+            disabled={!feedbackText.trim()}
+            onPress={() => void handleSendFeedback()}
+          />
+        </Card>
+
+        {/* Logout */}
+        <PrimaryButton
+          title="Đăng xuất"
+          icon="log-out-outline"
+          color={p.rose}
+          onPress={handleConfirmLogout}
+        />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
-    maxWidth: MaxContentWidth,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  title: {
-    marginBottom: Spacing.four,
-  },
-  card: {
-    padding: Spacing.four,
-    borderRadius: Spacing.four,
-    backgroundColor: 'rgba(150, 150, 150, 0.1)',
-  },
-  codeContainer: {
-    padding: Spacing.four,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)', // Blue tint
-    borderRadius: Spacing.three,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-  },
-  codeText: {
-    fontSize: 40,
-    letterSpacing: 8,
-    color: '#3b82f6',
-  },
-  button: {
-    backgroundColor: '#3b82f6',
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
+  safe: { flex: 1 },
+  scroll: { padding: 16, gap: 14, paddingBottom: 36 },
+  identityCard: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  avatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
   },
-  buttonText: {
-    color: 'white',
-  }
+  avatarLetter: { color: '#FFFFFF', fontSize: 24, fontWeight: '800' },
+  shortcutBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: '800' },
+  codeBox: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    gap: 4,
+  },
+  codeText: { fontSize: 34, fontWeight: '800', letterSpacing: 8 },
+  parentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+  },
+  field: { gap: 6 },
+  label: { fontSize: 12, fontWeight: '700' },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    minHeight: 46,
+    fontSize: 14,
+  },
 });

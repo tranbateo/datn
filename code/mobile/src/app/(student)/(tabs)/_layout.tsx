@@ -1,64 +1,83 @@
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { useColorScheme } from 'react-native';
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
+import { usePalette } from '@/components/ui/mobile-ui';
 
-import { Colors } from '@/constants/theme';
-
-export default function AppTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
+export default function StudentTabsLayout() {
+  const p = usePalette();
 
   return (
-    <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
-      <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="explore">
-        <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="practice">
-        <NativeTabs.Trigger.Label>Practice</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="schedule">
-        <NativeTabs.Trigger.Label>Schedule</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="progress">
-        <NativeTabs.Trigger.Label>Progress</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="profile">
-        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: p.primary,
+        tabBarInactiveTintColor: p.textMuted,
+        tabBarStyle: {
+          backgroundColor: p.card,
+          borderTopColor: p.border,
+          height: Platform.OS === 'ios' ? 84 : 64,
+          paddingTop: 6,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '700',
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Trang chủ',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: 'Gia sư AI',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="sparkles-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="practice"
+        options={{
+          title: 'Luyện tập',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="create-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="schedule"
+        options={{
+          title: 'Lịch học',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Hồ sơ',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      {/* Progress analytics screen accessible via Trang chủ / Hồ sơ */}
+      <Tabs.Screen
+        name="progress"
+        options={{
+          href: null,
+          title: 'Tiến độ',
+        }}
+      />
+    </Tabs>
   );
 }

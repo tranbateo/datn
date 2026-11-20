@@ -1,98 +1,540 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import {
+  calendarApi,
+  curriculumApi,
+  formatClassLabel,
+  gamificationApi,
+  notificationsApi,
+  usersApi,
+  type CalendarEvent,
+  type GamificationProfile,
+  type NotificationItem,
+  type Subject,
+} from '@/services/mobile.services';
+import { useAuthStore, type MobileUser } from '@/store/authStore';
+import {
+  Badge,
+  Card,
+  EmptyView,
+  ErrorView,
+  LoadingView,
+  NotificationSheet,
+  usePalette,
+} from '@/components/ui/mobile-ui';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+export default function StudentHomeScreen() {
+  const p = usePalette();
+  const router = useRouter();
+  const { user: storedUser, updateUser } = useAuthStore();
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
+  const [profile, setProfile] = useState<MobileUser | null>(storedUser);
+  const [gamification, setGamification] = useState<GamificationProfile | null>(null);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<CalendarEvent[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [showNotifs, setShowNotifs] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    try {
+      const [userRes, gamifRes, eventsRes, notifsRes] = await Promise.all([
+        usersApi.getProfile(),
+        gamificationApi.getProfile().catch(() => null),
+        calendarApi.list().catch(() => []),
+        notificationsApi.list().catch(() => []),
+      ]);
+
+      setProfile(userRes);
+      void updateUser(userRes);
+      setGamification(gamifRes);
+      setNotifications(Array.isArray(notifsRes) ? notifsRes : []);
+      setError(null);
+
+      const now = Date.now();
+      const upcoming = (Array.isArray(eventsRes) ? eventsRes : [])
+        .filter((e) => new Date(e.startTime).getTime() >= now - 3_600_000)
+        .sort(
+          (a, b) =>
+            new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+        )
+        .slice(0, 3);
+      setUpcomingEvents(upcoming);
+
+      if (userRes?.grade) {
+        const subs = await curriculumApi
+          .getSubjectsByGrade(userRes.grade)
+          .catch(() => []);
+        setSubjects(Array.isArray(subs) ? subs : []);
+      }
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : 'Không thể tải dữ liệu trang chủ.',
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [updateUser]);
+
+  useEffect(() => {
+    const run = async () => {
+      await loadData();
+    };
+    void run();
+  }, [loadData]);
+
+  const handleMarkRead = async (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
+    );
+    try {
+      await notificationsApi.markRead(id);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await notificationsApi.markAllRead();
+    } catch {
+      // ignore
+    }
+  };
+
+  if (loading && !profile) {
+    return <LoadingView label="Đang tải không gian học tập..." />;
   }
-  if (Device.isDevice) {
+
+  if (error && !profile) {
     return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
+      <ErrorView
+        message={error}
+        onRetry={() => {
+          setLoading(true);
+          void loadData();
+        }}
+      />
     );
   }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+
+  const activeClass = profile?.classEnrollments?.[0]?.class;
+  const currentXp = gamification?.currentXp ?? gamification?.xp ?? 0;
+  const nextLevelXp = gamification?.nextLevelXp || 1000;
+  const xpPercent = Math.min(100, Math.round((currentXp / nextLevelXp) * 100));
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
+    <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void loadData();
+            }}
+            tintColor={p.primary}
           />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+        }
+      >
+        {/* Top Bar */}
+        <View style={styles.topRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.schoolText, { color: p.textMuted }]} numberOfLines={1}>
+              {profile?.school?.name || 'AI Tutor Education'}
+            </Text>
+            <Text style={[styles.greeting, { color: p.text }]} numberOfLines={1}>
+              Chào, {profile?.fullName || 'Học sinh'}!
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setShowNotifs(true)}
+            style={[styles.bellBtn, { backgroundColor: p.card, borderColor: p.border }]}
+          >
+            <Ionicons name="notifications-outline" size={22} color={p.text} />
+            {unreadCount > 0 ? (
+              <View style={[styles.bellBadge, { backgroundColor: p.rose }]}>
+                <Text style={styles.bellBadgeText}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        </View>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+        {/* Hero Banner */}
+        <View style={[styles.hero, { backgroundColor: p.primary }]}>
+          <View style={styles.heroBadges}>
+            <View style={styles.heroChip}>
+              <Text style={styles.heroChipText}>
+                {formatClassLabel(activeClass?.name, profile?.grade)}
+              </Text>
+            </View>
+            {profile?.studentCode ? (
+              <View style={styles.heroChip}>
+                <Text style={styles.heroChipText}>Mã HS: {profile.studentCode}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <Text style={styles.heroSub}>
+            {activeClass?.homeroomTeacher?.fullName
+              ? `GVCN: ${activeClass.homeroomTeacher.fullName}`
+              : 'Hỏi đáp Gia sư AI trích dẫn tài liệu & luyện đề bám sát chương trình'}
+          </Text>
+
+          <View style={styles.heroActions}>
+            <TouchableOpacity
+              onPress={() => router.push('/(student)/(tabs)/explore')}
+              style={styles.heroPrimaryBtn}
+            >
+              <Ionicons name="sparkles" size={16} color={p.primary} />
+              <Text style={[styles.heroPrimaryBtnText, { color: p.primary }]}>
+                Hỏi Gia sư AI
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/(student)/(tabs)/practice')}
+              style={styles.heroSecondaryBtn}
+            >
+              <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.heroSecondaryBtnText}>Làm bài tập</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* KPI Grid */}
+        <View style={styles.kpiRow}>
+          <Card style={{ flex: 1, gap: 6 }}>
+            <View style={styles.kpiHead}>
+              <Text style={[styles.kpiLabel, { color: p.textMuted }]}>Cấp độ</Text>
+              <Ionicons name="trophy-outline" size={18} color={p.primary} />
+            </View>
+            <Text style={[styles.kpiValue, { color: p.text }]}>
+              Cấp {gamification?.level || 1}
+            </Text>
+            <View style={[styles.progressTrack, { backgroundColor: p.cardMuted }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { backgroundColor: p.primary, width: `${xpPercent}%` },
+                ]}
+              />
+            </View>
+            <Text style={{ fontSize: 11, color: p.textMuted, fontWeight: '600' }}>
+              {currentXp} / {nextLevelXp} XP
+            </Text>
+          </Card>
+
+          <Card style={{ flex: 1, gap: 6 }}>
+            <View style={styles.kpiHead}>
+              <Text style={[styles.kpiLabel, { color: p.textMuted }]}>Chuỗi học</Text>
+              <Ionicons name="flame-outline" size={18} color={p.amber} />
+            </View>
+            <Text style={[styles.kpiValue, { color: p.text }]}>
+              {gamification?.streakDays || 0} ngày
+            </Text>
+            <Text style={{ fontSize: 12, color: p.textMuted, lineHeight: 16 }}>
+              Duy trì ôn tập mỗi ngày để tăng hạng
+            </Text>
+          </Card>
+        </View>
+
+        {/* Quick Access: Bài giảng & Tiến độ */}
+        <View style={styles.quickRow}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => router.push('/(student)/courses')}
+            style={[styles.quickBtn, { backgroundColor: p.card, borderColor: p.border }]}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: p.indigoSoft }]}>
+              <Ionicons name="library-outline" size={20} color={p.indigo} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.quickTitle, { color: p.text }]}>Bài giảng & PDF</Text>
+              <Text style={{ fontSize: 11, color: p.textMuted }}>Tài liệu của lớp</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => router.push('/(student)/(tabs)/progress')}
+            style={[styles.quickBtn, { backgroundColor: p.card, borderColor: p.border }]}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: p.emeraldSoft }]}>
+              <Ionicons name="bar-chart-outline" size={20} color={p.emerald} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.quickTitle, { color: p.text }]}>Tiến độ học</Text>
+              <Text style={{ fontSize: 11, color: p.textMuted }}>Mạnh / yếu theo môn</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Subjects */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: p.text }]}>
+            Môn học Khối {profile?.grade || ''}
+          </Text>
+          <TouchableOpacity onPress={() => router.push('/(student)/(tabs)/practice')}>
+            <Text style={{ color: p.primary, fontSize: 13, fontWeight: '700' }}>
+              Tất cả đề →
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {subjects.length === 0 ? (
+          <EmptyView
+            icon="book-outline"
+            title="Chưa có môn học"
+            description="Nhà trường chưa cấu hình môn học cho khối lớp hiện tại."
+          />
+        ) : (
+          <View style={styles.subjectGrid}>
+            {subjects.map((sub) => (
+              <Card key={sub.id} style={styles.subjectCard}>
+                <View style={styles.subjectTop}>
+                  <View style={[styles.subjectAvatar, { backgroundColor: p.primarySoft }]}>
+                    <Text style={{ color: p.primary, fontWeight: '800', fontSize: 16 }}>
+                      {sub.name.charAt(0)}
+                    </Text>
+                  </View>
+                  <Badge label={`Khối ${sub.grade}`} tone="slate" />
+                </View>
+                <Text style={[styles.subjectName, { color: p.text }]} numberOfLines={1}>
+                  {sub.name}
+                </Text>
+                <View style={styles.subjectBtns}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(student)/(tabs)/practice',
+                        params: { subjectId: sub.id },
+                      })
+                    }
+                    style={[styles.subActionBtn, { backgroundColor: p.cardMuted }]}
+                  >
+                    <Text style={{ color: p.text, fontSize: 12, fontWeight: '700' }}>
+                      Luyện tập
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(student)/(tabs)/explore',
+                        params: { subjectId: sub.id, subjectName: sub.name },
+                      })
+                    }
+                    style={[styles.subActionBtn, { backgroundColor: p.primarySoft }]}
+                  >
+                    <Text style={{ color: p.primary, fontSize: 12, fontWeight: '700' }}>
+                      Hỏi AI
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Card>
+            ))}
+          </View>
+        )}
+
+        {/* Upcoming Schedule */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: p.text }]}>Lịch học sắp tới</Text>
+          <TouchableOpacity onPress={() => router.push('/(student)/(tabs)/schedule')}>
+            <Text style={{ color: p.primary, fontSize: 13, fontWeight: '700' }}>
+              Xem lịch →
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {upcomingEvents.length === 0 ? (
+          <EmptyView
+            icon="calendar-outline"
+            title="Chưa có lịch học sắp tới"
+            description="Bạn có thể thêm lịch tự học hoặc chụp ảnh thời khóa biểu để quét OCR."
+            actionLabel="Mở Thời khóa biểu"
+            onAction={() => router.push('/(student)/(tabs)/schedule')}
+          />
+        ) : (
+          <View style={{ gap: 10 }}>
+            {upcomingEvents.map((ev) => (
+              <Card key={ev.id} style={styles.eventCard}>
+                <View style={[styles.eventIcon, { backgroundColor: p.primarySoft }]}>
+                  <Ionicons name="time-outline" size={20} color={p.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.eventTitle, { color: p.text }]} numberOfLines={1}>
+                    {ev.title}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: p.textMuted, marginTop: 2 }}>
+                    {new Date(ev.startTime).toLocaleDateString('vi-VN')} •{' '}
+                    {new Date(ev.startTime).toLocaleTimeString('vi-VN', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </Text>
+                </View>
+                <Badge label={ev.type || 'CLASS'} tone="blue" />
+              </Card>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
+      <NotificationSheet
+        visible={showNotifs}
+        onClose={() => setShowNotifs(false)}
+        notifications={notifications}
+        onMarkRead={(id) => void handleMarkRead(id)}
+        onMarkAllRead={() => void handleMarkAllRead()}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  safe: { flex: 1 },
+  scroll: { padding: 16, gap: 16, paddingBottom: 32 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  schoolText: { fontSize: 12, fontWeight: '600' },
+  greeting: { fontSize: 22, fontWeight: '800', marginTop: 2 },
+  bellBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  bellBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  hero: {
+    borderRadius: 22,
+    padding: 18,
+    gap: 12,
+  },
+  heroBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  heroChip: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  heroChipText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  heroSub: { color: '#DBEAFE', fontSize: 13, lineHeight: 19 },
+  heroActions: { flexDirection: 'row', gap: 10, marginTop: 2 },
+  heroPrimaryBtn: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    minHeight: 42,
+    borderRadius: 12,
     flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+  },
+  heroPrimaryBtnText: { fontWeight: '800', fontSize: 13 },
+  heroSecondaryBtn: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    backgroundColor: 'rgba(15, 23, 42, 0.25)',
+    minHeight: 42,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
-  title: {
-    textAlign: 'center',
+  heroSecondaryBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+  kpiRow: { flexDirection: 'row', gap: 12 },
+  kpiHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  kpiLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  kpiValue: { fontSize: 20, fontWeight: '800' },
+  progressTrack: { height: 7, borderRadius: 99, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 99 },
+  quickRow: { flexDirection: 'row', gap: 12 },
+  quickBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
   },
-  code: {
-    textTransform: 'uppercase',
+  quickIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  quickTitle: { fontSize: 14, fontWeight: '700' },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
   },
+  sectionTitle: { fontSize: 17, fontWeight: '800' },
+  subjectGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  subjectCard: { width: '48%', gap: 10, padding: 14 },
+  subjectTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  subjectAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subjectName: { fontSize: 15, fontWeight: '700' },
+  subjectBtns: { flexDirection: 'row', gap: 6 },
+  subActionBtn: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  eventIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventTitle: { fontSize: 14, fontWeight: '700' },
 });

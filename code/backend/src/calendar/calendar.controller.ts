@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
+  Param,
   Body,
   UseGuards,
   Req,
@@ -55,6 +57,12 @@ export class CalendarController {
   async create(@Req() req: any, @Body() data: CreateCalendarEventDto) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
     return this.calendarService.create(req.user.id, data);
+  }
+
+  @Delete(':id')
+  async remove(@Req() req: any, @Param('id') id: string) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+    return this.calendarService.remove(req.user.id, id);
   }
 
   @Post('ocr')

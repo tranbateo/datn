@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCalendarEventDto } from './dto/create-calendar-event.dto';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
@@ -26,6 +26,18 @@ export class CalendarService {
         endTime: new Date(data.endTime),
       },
     });
+  }
+
+  async remove(userId: string, id: string) {
+    const existing = await this.prisma.calendarEvent.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy sự kiện lịch học.');
+    }
+    await this.prisma.calendarEvent.delete({ where: { id: existing.id } });
+    return { success: true, id: existing.id };
   }
 
   async ocrSchedule(file: Express.Multer.File) {

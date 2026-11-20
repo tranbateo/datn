@@ -1,59 +1,66 @@
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { useColorScheme, TouchableOpacity, View, StyleSheet } from 'react-native';
-import { Colors } from '@/constants/theme';
+import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore } from '@/store/authStore';
+import { Platform } from 'react-native';
+import { usePalette } from '@/components/ui/mobile-ui';
 
-export default function ParentTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
-  const logout = useAuthStore(state => state.logout);
-
-  const handleLogout = async () => {
-    await logout();
-  };
+export default function ParentTabsLayout() {
+  const p = usePalette();
 
   return (
-    <View style={{ flex: 1 }}>
-      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-          <Ionicons name="log-out-outline" size={24} color={colors.tint} />
-        </TouchableOpacity>
-      </View>
-      <NativeTabs
-        backgroundColor={colors.background}
-        indicatorColor={colors.backgroundElement}
-        labelStyle={{ selected: { color: colors.text } }}>
-        <NativeTabs.Trigger name="index">
-          <NativeTabs.Trigger.Label>Tổng quan</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon
-            src={require('@/assets/images/tabIcons/home.png')}
-            renderingMode="template"
-          />
-        </NativeTabs.Trigger>
-
-        <NativeTabs.Trigger name="link">
-          <NativeTabs.Trigger.Label>Liên kết</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon
-            src={require('@/assets/images/tabIcons/explore.png')}
-            renderingMode="template"
-          />
-        </NativeTabs.Trigger>
-      </NativeTabs>
-    </View>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: p.indigo,
+        tabBarInactiveTintColor: p.textMuted,
+        tabBarStyle: {
+          backgroundColor: p.card,
+          borderTopColor: p.border,
+          height: Platform.OS === 'ios' ? 84 : 64,
+          paddingTop: 6,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '700',
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Tổng quan',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="contact"
+        options={{
+          title: 'Liên lạc GV',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubbles-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="link"
+        options={{
+          title: 'Liên kết',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="link-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Cài đặt',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="settings-outline" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    paddingTop: 50,
-    paddingBottom: 10,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    borderBottomWidth: 1,
-  },
-  logoutBtn: {
-    padding: 8,
-  }
-});

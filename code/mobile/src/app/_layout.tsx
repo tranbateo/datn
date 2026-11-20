@@ -1,56 +1,50 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { Slot, useRouter, useSegments } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 SplashScreen.preventAutoHideAsync();
 
 function InitialLayout() {
-  const { token, role, setSession } = useAuthStore();
-  const [isInitialized, setIsInitialized] = useState(false);
-  const segments = useSegments();
+  const { token, role, mustChangePassword, isInitialized, hydrate } = useAuthStore();
+  const segments = useSegments() as string[];
   const router = useRouter();
 
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const storedToken = await SecureStore.getItemAsync('auth-token');
-        const storedUserData = await SecureStore.getItemAsync('user-data');
-        if (storedToken && storedUserData) {
-          const user = JSON.parse(storedUserData);
-          setSession(storedToken, user);
-        } else {
-          setSession(null, null);
-        }
-      } catch (e) {
-        setSession(null, null);
-      } finally {
-        setIsInitialized(true);
-      }
-    };
-    initAuth();
-  }, [setSession]);
+    void hydrate();
+  }, [hydrate]);
 
   useEffect(() => {
     if (!isInitialized) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
-    
-    if (!token && !inAuthGroup) {
-      // Redirect to login
-      router.replace('/(auth)/login');
-    } else if (token) {
-      if (role === 'parent' && segments[0] !== '(parent)') {
-        router.replace('/(parent)/(tabs)');
-      } else if (role === 'student' && segments[0] !== '(student)') {
-        router.replace('/(student)/(tabs)');
+    const rootSegment = segments[0];
+    const subSegment = segments[1];
+    const inAuthGroup = rootSegment === '(auth)';
+
+    if (!token) {
+      if (!inAuthGroup || subSegment === 'change-password') {
+        router.replace('/(auth)/login');
       }
+      return;
     }
-  }, [token, isInitialized, segments, role, router]);
+
+    if (mustChangePassword) {
+      if (!(inAuthGroup && subSegment === 'change-password')) {
+        router.replace('/(auth)/change-password');
+      }
+      return;
+    }
+
+    if (role === 'parent' && rootSegment !== '(parent)') {
+      router.replace('/(parent)/(tabs)');
+    } else if (role === 'student' && rootSegment !== '(student)') {
+      router.replace('/(student)/(tabs)');
+    }
+  }, [token, role, mustChangePassword, isInitialized, segments, router]);
 
   return <Slot />;
 }
@@ -58,9 +52,10 @@ function InitialLayout() {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <SafeAreaProvider>
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       <AnimatedSplashOverlay />
       <InitialLayout />
-    </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
