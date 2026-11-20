@@ -9,7 +9,8 @@ import {
   HelpCircle,
   LogOut,
   FileQuestion,
-  FileText
+  FileText,
+  BellRing
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
@@ -25,6 +26,7 @@ export function TeacherSidebar() {
     { name: t('quiz'), icon: FileQuestion, href: "/teacher/quiz" },
     { name: t('documents'), icon: FileText, href: "/teacher/documents" },
     { name: t('students'), icon: Users, href: "/teacher/students" },
+    { name: t('notifications'), icon: BellRing, href: "/teacher/notifications" },
     { name: t('settings'), icon: Settings, href: "/teacher/settings" },
   ];
 

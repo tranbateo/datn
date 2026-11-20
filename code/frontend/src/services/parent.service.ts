@@ -8,9 +8,19 @@ export interface ParentNotificationItem {
   isRead: boolean;
 }
 
+export interface ParentSubjectAnalytic {
+  subjectId: string;
+  subjectName: string;
+  attemptsCount: number;
+  averageScore: number | null;
+  bestScore: number | null;
+  masteryStatus: 'strong' | 'developing' | 'weak' | 'unassessed';
+}
+
 export interface ParentDashboardData {
   parentNotifications?: ParentNotificationItem[];
   students: {
+    relationship?: string;
     student: {
       id: string;
       fullName: string;
@@ -28,11 +38,20 @@ export interface ParentDashboardData {
         code: string;
       } | null;
       gamificationProfile?: {
-        xp: number;
+        xp?: number;
+        lifetimeXp?: number;
         level: number;
         currentStreak?: number;
+        longestStreak?: number;
       };
     };
+    summary?: {
+      totalAttempts: number;
+      overallAverageScore: number | null;
+      strongCount: number;
+      weakCount: number;
+    };
+    subjectAnalytics?: ParentSubjectAnalytic[];
     recentQuizzes: { id?: string; quiz?: { title: string }; score: number; startedAt: string }[];
     upcomingEvents: {
       id: string;
@@ -82,9 +101,19 @@ export const parentService = {
 
   // Proposals
   getProposals: () => fetchApi<any[]>('/proposals/parent'),
-  createProposal: (teacherId: string, title: string, content: string) =>
+  createProposal: (
+    teacherId: string,
+    title: string,
+    content: string,
+    studentId?: string,
+  ) =>
     fetchApi<any>('/proposals', {
       method: 'POST',
-      body: JSON.stringify({ teacherId, title, content }),
+      body: JSON.stringify({
+        teacherId,
+        title,
+        content,
+        ...(studentId ? { studentId } : {}),
+      }),
     }),
 };

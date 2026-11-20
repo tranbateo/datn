@@ -1,7 +1,7 @@
 "use client";
 import { notify } from "@/lib/toast";
 
-import { Search, Filter, Download, Users, TrendingUp, AlertTriangle, Edit, X, KeyRound, BellRing } from "lucide-react";
+import { Search, Filter, Download, Users, TrendingUp, AlertTriangle, Edit, X, KeyRound, BellRing, FileText, Send, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, useEffect, useMemo } from "react";
 import { teacherService } from "@/services/teacher.service";
@@ -59,6 +59,28 @@ export default function TeacherStudentsPage() {
   const [resetRequests, setResetRequests] = useState<HomeroomResetRequest[]>([]);
   const [resettingStudentId, setResettingStudentId] = useState<string | null>(null);
   const [tempPasswordModal, setTempPasswordModal] = useState<TempPasswordModalData | null>(null);
+
+  // Student Full Attempt History Modal
+  const [historyModal, setHistoryModal] = useState<{
+    student: { id: string; fullName: string; studentCode?: string | null; className: string };
+    attempts: Array<{
+      id: string;
+      quizTitle: string;
+      subjectName: string;
+      canEditScore: boolean;
+      score: number;
+      totalQuestions: number;
+      completedAt: string;
+    }>;
+  } | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Quick Remind Student / Parent Modal
+  const [remindStudent, setRemindStudent] = useState<StudentData | null>(null);
+  const [remindTitle, setRemindTitle] = useState("");
+  const [remindBody, setRemindBody] = useState("");
+  const [remindAudience, setRemindAudience] = useState<"STUDENTS" | "PARENTS" | "BOTH">("STUDENTS");
+  const [sendingRemind, setSendingRemind] = useState(false);
 
   // Derive quick stats
   const activeToday = students.filter(s => s.lastActivity && new Date(s.lastActivity).toDateString() === new Date().toDateString()).length;
@@ -148,10 +170,82 @@ export default function TeacherStudentsPage() {
     window.open(`/api/proxy/schools/export/credentials${query}`, '_blank');
   };
 
-  const handleOpenScoreModal = (student: StudentData) => {
-    setEditingStudent(student);
-    setNewScore(student.latestScore ?? student.progress ?? 80);
+  const handleOpenScoreModal = (student: StudentData, customAttempt?: { id: string; quizTitle: string; score: number }) => {
+    setEditingStudent(
+      customAttempt
+        ? {
+            ...student,
+            latestAttemptId: customAttempt.id,
+            latestQuizTitle: customAttempt.quizTitle,
+            latestScore: customAttempt.score,
+          }
+        : student,
+    );
+    setNewScore(customAttempt ? customAttempt.score : student.latestScore ?? student.progress ?? 80);
     setScoreReason("");
+  };
+
+  const handleOpenStudentHistory = async (student: StudentData) => {
+    setLoadingHistory(true);
+    try {
+      const res = await teacherService.getStudentAttempts(student.id);
+      setHistoryModal(res);
+    } catch (error: any) {
+      notify(error?.message || "Không thể tải lịch sử bài làm của học sinh.");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const buildRemindDraft = (
+    student: StudentData,
+    audience: "STUDENTS" | "PARENTS" | "BOTH",
+  ) => {
+    if (audience === "STUDENTS") {
+      return {
+        title: `Nhắc nhở học tập riêng cho em ${student.name}`,
+        body: `Chào em ${student.name}, thầy/cô thấy kết quả luyện tập gần đây của em cần cố gắng thêm. Em hãy xem lại Bài giảng, hỏi Gia sư AI phần chưa hiểu và làm lại bài luyện tập để cải thiện điểm số nhé!`,
+      };
+    }
+    if (audience === "PARENTS") {
+      return {
+        title: `Thông báo tình hình học tập của em ${student.name}`,
+        body: `Kính gửi Quý phụ huynh em ${student.name} (${student.className || student.grade}), sau khi đã nhắc nhở em trên lớp nhưng kết quả học tập vẫn cần cải thiện, mong gia đình phối hợp đôn đốc em ôn bài và hoàn thành bài luyện tập trên AI Tutor.`,
+      };
+    }
+    return {
+      title: `Nhắc nhở tình hình học tập của em ${student.name}`,
+      body: `Kính gửi Quý phụ huynh và em ${student.name} (${student.className || student.grade}), giáo viên trao đổi về tình hình ôn tập và làm bài gần đây. Mong gia đình và em cùng phối hợp ôn lại bài giảng và làm bài luyện tập trên AI Tutor.`,
+    };
+  };
+
+  const handleOpenRemindModal = (student: StudentData) => {
+    setRemindStudent(student);
+    setRemindAudience("STUDENTS");
+    const draft = buildRemindDraft(student, "STUDENTS");
+    setRemindTitle(draft.title);
+    setRemindBody(draft.body);
+  };
+
+  const handleSendQuickRemind = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!remindStudent || !remindTitle.trim() || !remindBody.trim()) return;
+    setSendingRemind(true);
+    try {
+      const res = await teacherService.sendNotification({
+        targetType: "STUDENT",
+        studentId: remindStudent.id,
+        audience: remindAudience,
+        title: remindTitle.trim(),
+        body: remindBody.trim(),
+      });
+      notify(res.message || "Đã gửi thông báo nhắc nhở!");
+      setRemindStudent(null);
+    } catch (error: any) {
+      notify(error?.message || "Không thể gửi thông báo.");
+    } finally {
+      setSendingRemind(false);
+    }
   };
 
   const handleSaveScore = async (e: React.FormEvent) => {
@@ -396,7 +490,21 @@ export default function TeacherStudentsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        <button
+                          onClick={() => handleOpenStudentHistory(student)}
+                          className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 transition-colors"
+                          title="Xem lịch sử toàn bộ bài làm của học sinh"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> Bài làm
+                        </button>
+                        <button
+                          onClick={() => handleOpenRemindModal(student)}
+                          className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 transition-colors"
+                          title="Nhắc nhở riêng Học sinh trước hoặc thông báo Phụ huynh"
+                        >
+                          <BellRing className="w-3.5 h-3.5" /> Nhắc nhở
+                        </button>
                         {student.isHomeroomTeacher && (
                           <button
                             onClick={() =>
@@ -407,24 +515,22 @@ export default function TeacherStudentsPage() {
                               )
                             }
                             disabled={resettingStudentId === student.id}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 transition-colors disabled:opacity-50"
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 transition-colors disabled:opacity-50"
                             title="GVCN cấp lại mật khẩu tạm cho học sinh lớp chủ nhiệm"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
                             {resettingStudentId === student.id ? "Đang cấp..." : "Cấp MK"}
                           </button>
                         )}
-                        {student.latestAttemptId ? (
+                        {student.latestAttemptId && (
                           <button
                             onClick={() => handleOpenScoreModal(student)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 transition-colors"
                             title="Chỉnh sửa điểm bài kiểm tra gần nhất (FR-QUIZ-007)"
                           >
                             <Edit className="w-3.5 h-3.5" /> Sửa điểm
                           </button>
-                        ) : !student.isHomeroomTeacher ? (
-                          <span className="text-xs text-gray-400">Chưa có bài</span>
-                        ) : null}
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -547,6 +653,177 @@ export default function TeacherStudentsPage() {
           </div>
         </div>
       )}
+      {/* Student Full Attempts History Modal */}
+      {(historyModal || loadingHistory) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            {loadingHistory || !historyModal ? (
+              <div className="p-14 flex justify-center">
+                <Loader2 className="w-7 h-7 animate-spin text-indigo-600" />
+              </div>
+            ) : (
+              <>
+                <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                      Lịch sử bài làm: {historyModal.student.fullName}
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      {historyModal.student.studentCode ? `Mã: ${historyModal.student.studentCode} • ` : ""}
+                      {historyModal.student.className} • {historyModal.attempts.length} bài đã nộp
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setHistoryModal(null)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5 divide-y divide-gray-100 dark:divide-gray-800">
+                  {historyModal.attempts.length === 0 ? (
+                    <div className="py-10 text-center text-sm text-gray-500">
+                      Học sinh chưa hoàn thành bài luyện tập nào trong phạm vi bạn phụ trách.
+                    </div>
+                  ) : (
+                    historyModal.attempts.map((att) => {
+                      const matchedStudent = students.find((s) => s.id === historyModal.student.id);
+                      return (
+                        <div key={att.id} className="py-3 flex items-center justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                              {att.quizTitle}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              {att.subjectName} • {att.totalQuestions} câu •{" "}
+                              {new Date(att.completedAt).toLocaleString("vi-VN")}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2.5 shrink-0">
+                            <span
+                              className={`px-2.5 py-1 rounded-lg text-xs font-extrabold ${
+                                att.score >= 80
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : att.score >= 60
+                                    ? "bg-blue-50 text-blue-700"
+                                    : "bg-rose-50 text-rose-700"
+                              }`}
+                            >
+                              {att.score}%
+                            </span>
+                            {att.canEditScore && matchedStudent && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setHistoryModal(null);
+                                  handleOpenScoreModal(matchedStudent, {
+                                    id: att.id,
+                                    quizTitle: att.quizTitle,
+                                    score: att.score,
+                                  });
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold"
+                              >
+                                <Edit className="w-3 h-3" /> Sửa điểm
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Remind Parent Modal */}
+      {remindStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <BellRing className="w-4 h-4 text-emerald-600" />
+                Nhắc nhở học tập: {remindStudent.name}
+              </h3>
+              <button
+                onClick={() => setRemindStudent(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSendQuickRemind} className="p-5 space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                  Đối tượng nhận
+                </label>
+                <select
+                  value={remindAudience}
+                  onChange={(e) => {
+                    const nextAud = e.target.value as "STUDENTS" | "PARENTS" | "BOTH";
+                    setRemindAudience(nextAud);
+                    if (remindStudent) {
+                      const draft = buildRemindDraft(remindStudent, nextAud);
+                      setRemindTitle(draft.title);
+                      setRemindBody(draft.body);
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm"
+                >
+                  <option value="STUDENTS">1. Chỉ nhắc riêng Học sinh trước (chưa báo Phụ huynh)</option>
+                  <option value="PARENTS">2. Báo riêng Phụ huynh liên kết (khi HS chưa tiến bộ)</option>
+                  <option value="BOTH">3. Gửi đồng thời cả Phụ huynh & Học sinh</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                  Tiêu đề *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={remindTitle}
+                  onChange={(e) => setRemindTitle(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                  Nội dung nhắc nhở *
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={remindBody}
+                  onChange={(e) => setRemindBody(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm resize-none"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setRemindStudent(null)}
+                  className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 text-xs font-semibold"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={sendingRemind}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {sendingRemind ? "Đang gửi..." : "Gửi thông báo"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <TempPasswordModal
         data={tempPasswordModal}
         onClose={() => setTempPasswordModal(null)}

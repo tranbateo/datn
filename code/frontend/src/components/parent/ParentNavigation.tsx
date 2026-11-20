@@ -27,6 +27,18 @@ export function ParentNavigation() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [userProfile, setUserProfile] = useState<any | null>(null);
 
+  const refreshNotifications = async () => {
+    try {
+      const notificationsData = await fetchApi('/notifications').catch(() => []);
+      if (Array.isArray(notificationsData)) {
+        setNotifications(notificationsData);
+        setHasUnread(notificationsData.some((n: any) => !n.isRead));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -49,6 +61,10 @@ export function ParentNavigation() {
       }
     };
     fetchUserData();
+    const timer = setInterval(() => {
+      void refreshNotifications();
+    }, 30_000);
+    return () => clearInterval(timer);
   }, []);
 
   const handleMarkAllRead = async () => {
@@ -147,7 +163,11 @@ export function ParentNavigation() {
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <button 
-            onClick={() => setShowNotifications(!showNotifications)}
+            onClick={() => {
+              const next = !showNotifications;
+              setShowNotifications(next);
+              if (next) void refreshNotifications();
+            }}
             className="relative w-8 h-8 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
           >
             <Bell className="w-5 h-5" />
@@ -258,7 +278,11 @@ export function ParentNavigation() {
         </button>
         <div className="relative">
           <button 
-            onClick={() => setShowNotifications(!showNotifications)}
+            onClick={() => {
+              const next = !showNotifications;
+              setShowNotifications(next);
+              if (next) void refreshNotifications();
+            }}
             className="relative w-8 h-8 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
           >
             <Bell className="w-5 h-5" />

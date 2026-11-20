@@ -26,7 +26,7 @@ const PUBLISHED_DOC_EXCLUDED_STATUSES = [
 
 @Injectable()
 export class CoursesService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   private async getStudentClassScope(userId: string) {
     const student = await this.prisma.user.findUnique({
@@ -184,8 +184,9 @@ export class CoursesService {
 
   async findOne(id: string, user: UserContext) {
     const where: Prisma.CourseWhereInput = { id };
-    let studentScope: Awaited<ReturnType<typeof this.getStudentClassScope>> | null =
-      null;
+    let studentScope: Awaited<
+      ReturnType<typeof this.getStudentClassScope>
+    > | null = null;
 
     if (user.role === Role.STUDENT) {
       studentScope = await this.getStudentClassScope(user.id);
@@ -275,7 +276,11 @@ export class CoursesService {
 
         // Fallback: if a seeded document has no rows in public.documents yet (and no uploaded PDF),
         // derive detailed readable sections directly from matching course lessons
-        if (matchedChunks.length === 0 && !hasFile && course.lessons.length > 0) {
+        if (
+          matchedChunks.length === 0 &&
+          !hasFile &&
+          course.lessons.length > 0
+        ) {
           const isAdvancedDoc = !doc.fileName.toUpperCase().startsWith('SGK_');
           const isTap2 = doc.fileName.toLowerCase().includes('tap_2');
           const isTap1 = doc.fileName.toLowerCase().includes('tap_1');
@@ -421,6 +426,112 @@ export class CoursesService {
     return this.prisma.course.delete({
       where: { id },
     });
+  }
+
+  private async assertCanManageCourse(
+    course: {
+      id: string;
+      teacherId: string;
+      subjectId: string | null;
+      schoolId: string | null;
+    },
+    user: UserContext,
+  ) {
+    if (user.role !== Role.TEACHER) return;
+    if (course.teacherId === user.id) return;
+    if (course.subjectId) {
+      const assigned = await this.prisma.classSubjectTeacher.findFirst({
+        where: {
+          teacherId: user.id,
+          subjectId: course.subjectId,
+          ...(course.schoolId ? { class: { schoolId: course.schoolId } } : {}),
+        },
+        select: { id: true },
+      });
+      if (assigned) return;
+    }
+    throw new ForbiddenException(
+      'Bạn chỉ được chỉnh sửa học phần và bài giảng thuộc môn học mình phụ trách.',
+    );
+  }
+
+  async createLesson(
+    courseId: string,
+    dto: { title: string; content?: string; order?: number; videoUrl?: string },
+    user: UserContext,
+  ) {
+    const cleanTitle = (dto.title || '').trim();
+    if (!cleanTitle) {
+      throw new BadRequestException(
+        'Tên chương / bài giảng không được để trống.',
+      );
+    }
+    const course = await this.findOne(courseId, user);
+    await this.assertCanManageCourse(course, user);
+
+    const nextOrder =
+      typeof dto.order === 'number' && Number.isFinite(dto.order)
+        ? dto.order
+        : (course.lessons?.length || 0) + 1;
+
+    return this.prisma.lesson.create({
+      data: {
+        courseId: course.id,
+        title: cleanTitle,
+        content: (dto.content || '').trim() || null,
+        videoUrl: dto.videoUrl?.trim() || null,
+        order: nextOrder,
+      },
+    });
+  }
+
+  async updateLesson(
+    courseId: string,
+    lessonId: string,
+    dto: {
+      title?: string;
+      content?: string;
+      order?: number;
+      videoUrl?: string;
+    },
+    user: UserContext,
+  ) {
+    const course = await this.findOne(courseId, user);
+    await this.assertCanManageCourse(course, user);
+
+    const existing = await this.prisma.lesson.findFirst({
+      where: { id: lessonId, courseId: course.id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy chương bài giảng.');
+    }
+
+    return this.prisma.lesson.update({
+      where: { id: lessonId },
+      data: {
+        ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
+        ...(dto.content !== undefined ? { content: dto.content.trim() } : {}),
+        ...(dto.videoUrl !== undefined
+          ? { videoUrl: dto.videoUrl.trim() || null }
+          : {}),
+        ...(dto.order !== undefined ? { order: Number(dto.order) } : {}),
+      },
+    });
+  }
+
+  async deleteLesson(courseId: string, lessonId: string, user: UserContext) {
+    const course = await this.findOne(courseId, user);
+    await this.assertCanManageCourse(course, user);
+
+    const existing = await this.prisma.lesson.findFirst({
+      where: { id: lessonId, courseId: course.id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy chương bài giảng.');
+    }
+
+    await this.prisma.lesson.delete({ where: { id: lessonId } });
+    return { success: true };
   }
 
   async enrollCourse(courseId: string, user: UserContext) {

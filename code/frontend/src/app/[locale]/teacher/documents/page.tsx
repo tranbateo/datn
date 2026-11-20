@@ -148,8 +148,8 @@ export default function TeacherDocumentsPage() {
         <div className="border-b border-gray-100 dark:border-card-border p-4 flex items-center justify-between">
           <div className="relative w-full max-w-sm">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={t('search')}
@@ -163,7 +163,7 @@ export default function TeacherDocumentsPage() {
             <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
               <tr>
                 <th className="px-6 py-4 font-semibold text-xs">Tên tài liệu (PDF)</th>
-                <th className="px-6 py-4 font-semibold text-xs">Lớp / Khóa học</th>
+                <th className="px-6 py-4 font-semibold text-xs">Lớp</th>
                 <th className="px-6 py-4 font-semibold text-xs">Trạng thái RAG (BR-DOC-001)</th>
                 <th className="px-6 py-4 font-semibold text-xs">Ngày tải lên</th>
                 <th className="px-6 py-4 font-semibold text-xs text-right">Thao tác</th>
@@ -275,7 +275,7 @@ export default function TeacherDocumentsPage() {
             <form onSubmit={handleUploadDocument} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Chọn Lớp / Khóa học áp dụng *
+                  Chọn Lớp áp dụng *
                 </label>
                 <select
                   value={selectedCourseId}
@@ -283,7 +283,7 @@ export default function TeacherDocumentsPage() {
                   className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:border-primary"
                   required
                 >
-                  <option value="">-- Chọn khóa học --</option>
+                  <option value="">-- Chọn --</option>
                   {courses.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.title}

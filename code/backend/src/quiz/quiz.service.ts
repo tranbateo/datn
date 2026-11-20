@@ -494,6 +494,241 @@ export class QuizService {
   }
 
   /**
+   * AI tự động giải đáp án đúng & viết hướng dẫn giải chi tiết cho các câu hỏi
+   * giáo viên nhập thủ công (cả Trắc nghiệm lẫn Tự luận) mà không cần giáo viên tự điền đáp án.
+   */
+  async solveManualQuestionsWithAi(params: {
+    subjectName?: string | null;
+    grade?: number | null;
+    questions: Array<{
+      content: string;
+      options?: string[];
+      correctOption?: string | number | null;
+      explanation?: string | null;
+    }>;
+  }): Promise<
+    Array<{
+      content: string;
+      options: string[];
+      correctOption: string;
+      explanation: string;
+      solvedByAi: boolean;
+    }>
+  > {
+    const subjectLabel = params.subjectName || 'Tổng hợp';
+    const gradeLabel = params.grade ? `Lớp ${params.grade}` : 'THCS';
+
+    const results: Array<{
+      content: string;
+      options: string[];
+      correctOption: string;
+      explanation: string;
+      solvedByAi: boolean;
+    }> = [];
+
+    for (const q of params.questions || []) {
+      const cleanContent = String(q.content || '').trim();
+      const cleanOptions = Array.isArray(q.options)
+        ? q.options.map((o) => String(o || '').trim()).filter(Boolean)
+        : [];
+      const isMultipleChoice = cleanOptions.length >= 2;
+
+      const providedAnswer =
+        q.correctOption !== undefined &&
+        q.correctOption !== null &&
+        String(q.correctOption).trim() !== ''
+          ? String(q.correctOption).trim()
+          : '';
+      const providedExplanation = String(q.explanation || '').trim();
+
+      // Always resolve index -> actual option text if teacher passed numeric index
+      let resolvedProvided = providedAnswer;
+      if (isMultipleChoice && /^\d+$/.test(providedAnswer)) {
+        const idx = Number(providedAnswer);
+        if (idx >= 0 && idx < cleanOptions.length) {
+          resolvedProvided = cleanOptions[idx];
+        }
+      }
+
+      try {
+        const prompt = isMultipleChoice
+          ? [
+              `Bạn là giáo viên giỏi môn ${subjectLabel} (${gradeLabel}) chương trình GDPT 2018 Việt Nam.`,
+              `Hãy giải câu hỏi trắc nghiệm sau, xác định CHÍNH XÁC phương án đúng và viết lời giải ngắn gọn, rõ ràng bằng tiếng Việt:`,
+              `Câu hỏi: ${cleanContent}`,
+              `Các phương án:`,
+              ...cleanOptions.map(
+                (opt, i) => `${String.fromCharCode(65 + i)}. ${opt}`,
+              ),
+              `CHỈ trả về JSON hợp lệ theo định dạng sau (không kèm markdown thừa):`,
+              `{"correctIndex": 0, "explanation": "Lời giải chi tiết từng bước bằng tiếng Việt"}`,
+            ].join('\n')
+          : [
+              `Bạn là giáo viên giỏi môn ${subjectLabel} (${gradeLabel}) chương trình GDPT 2018 Việt Nam.`,
+              `Hãy giải câu hỏi tự luận sau và cung cấp đáp án chuẩn kèm hướng dẫn từng bước bằng tiếng Việt:`,
+              `Câu hỏi: ${cleanContent}`,
+              `CHỈ trả về JSON hợp lệ theo định dạng sau (không kèm markdown thừa):`,
+              `{"correctAnswer": "Đáp án chuẩn ngắn gọn", "explanation": "Hướng dẫn giải chi tiết từng bước để AI đối chiếu chấm bài và sửa lỗi cho học sinh"}`,
+            ].join('\n');
+
+        const aiResp = await Promise.race([
+          this.llm.invoke([
+            {
+              role: 'system',
+              content:
+                'Bạn là trợ lý giáo viên chấm bài và giải đề chính xác. Luôn trả về đúng một đối tượng JSON hợp lệ bằng tiếng Việt, không lẫn ký tự tiếng Trung.',
+            },
+            { role: 'user', content: prompt },
+          ]),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('AI_SOLVE_TIMEOUT')), 25000),
+          ),
+        ]);
+
+        const rawText = stripReasoningBlocks(
+          typeof aiResp.content === 'string'
+            ? aiResp.content
+            : Array.isArray(aiResp.content)
+              ? aiResp.content.map((c) => c.text || '').join('')
+              : '',
+        );
+
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (isMultipleChoice) {
+            const idx = Number(parsed.correctIndex);
+            const aiCorrect =
+              Number.isInteger(idx) && idx >= 0 && idx < cleanOptions.length
+                ? cleanOptions[idx]
+                : resolvedProvided || cleanOptions[0];
+            const aiExplanation =
+              String(parsed.explanation || '').trim() ||
+              providedExplanation ||
+              `Đáp án đúng là: ${aiCorrect}.`;
+            results.push({
+              content: cleanContent,
+              options: cleanOptions,
+              correctOption: aiCorrect,
+              explanation: aiExplanation,
+              solvedByAi: true,
+            });
+            continue;
+          } else {
+            const aiCorrect =
+              String(parsed.correctAnswer || '').trim() ||
+              resolvedProvided ||
+              'Đáp án do AI đánh giá theo lời giải chuẩn';
+            const aiExplanation =
+              String(parsed.explanation || '').trim() ||
+              providedExplanation ||
+              aiCorrect;
+            results.push({
+              content: cleanContent,
+              options: [],
+              correctOption: aiCorrect,
+              explanation: aiExplanation,
+              solvedByAi: true,
+            });
+            continue;
+          }
+        }
+      } catch {
+        // Fallback below if LLM fails or times out
+      }
+
+      results.push({
+        content: cleanContent,
+        options: cleanOptions,
+        correctOption:
+          resolvedProvided ||
+          (isMultipleChoice ? cleanOptions[0] : 'Đáp án mẫu do AI đánh giá'),
+        explanation:
+          providedExplanation ||
+          'AI sẽ tự động đối chiếu và phân tích lỗi sai khi học sinh nộp bài.',
+        solvedByAi: false,
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * AI chấm bài tự luận thông minh (nhận diện đúng/sai theo ngữ nghĩa, phân tích lỗi sai & hướng dẫn sửa).
+   */
+  private async gradeEssayWithAi(params: {
+    subjectName: string;
+    grade?: number | null;
+    questionContent: string;
+    referenceAnswer: string;
+    referenceExplanation?: string | null;
+    studentAnswer: string;
+  }): Promise<{
+    isCorrect: boolean;
+    errorAnalysis: string | null;
+    correction: string | null;
+  } | null> {
+    try {
+      const prompt = [
+        `Bạn là giáo viên chấm bài môn ${params.subjectName}${params.grade ? ` (Lớp ${params.grade})` : ''}.`,
+        `Đề bài: ${params.questionContent}`,
+        `Đáp án tham khảo: ${params.referenceAnswer}`,
+        params.referenceExplanation
+          ? `Hướng dẫn giải chuẩn: ${params.referenceExplanation}`
+          : '',
+        `Bài làm của học sinh: ${params.studentAnswer}`,
+        `Hãy đánh giá bài làm của học sinh là ĐÚNG hay SAI về mặt kiến thức/kết quả (chấp nhận cách diễn đạt khác nhưng đúng bản chất).`,
+        `CHỈ trả về JSON hợp lệ:`,
+        `{"isCorrect": true/false, "errorAnalysis": "Nếu sai, chỉ rõ học sinh sai ở đâu; nếu đúng để null", "correction": "Nếu sai, hướng dẫn cách sửa và lời giải đúng ngắn gọn; nếu đúng để null"}`,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      const aiResp = await Promise.race([
+        this.llm.invoke([
+          {
+            role: 'system',
+            content:
+              'Bạn là hệ thống chấm bài tự luận công tâm, chính xác cho học sinh Việt Nam. Chỉ trả về một đối tượng JSON hợp lệ bằng tiếng Việt.',
+          },
+          { role: 'user', content: prompt },
+        ]),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('AI_GRADE_TIMEOUT')), 18000),
+        ),
+      ]);
+
+      const rawText = stripReasoningBlocks(
+        typeof aiResp.content === 'string'
+          ? aiResp.content
+          : Array.isArray(aiResp.content)
+            ? aiResp.content.map((c) => c.text || '').join('')
+            : '',
+      );
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (typeof parsed.isCorrect !== 'boolean') return null;
+
+      return {
+        isCorrect: parsed.isCorrect,
+        errorAnalysis: parsed.isCorrect
+          ? null
+          : String(parsed.errorAnalysis || '').trim() ||
+            'Bài làm chưa chính xác so với yêu cầu đề bài.',
+        correction: parsed.isCorrect
+          ? null
+          : String(parsed.correction || '').trim() ||
+            params.referenceExplanation ||
+            params.referenceAnswer,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Chấm điểm bài thi (cả Trắc nghiệm & Tự luận), lưu kết quả vào lịch sử đã làm,
    * và tuân thủ quy tắc:
    * - Câu nào ĐÚNG thì thôi (không hiện phần sửa lỗi rườm rà).
@@ -511,8 +746,11 @@ export class QuizService {
 
     let rawCorrectCount = 0;
     const totalQuestions = quiz.questions.length;
+    const subjectName = quiz.subject?.name || 'Tổng hợp';
 
-    const questionResults = quiz.questions.map((question, idx) => {
+    const questionResults = [];
+    for (let idx = 0; idx < quiz.questions.length; idx++) {
+      const question = quiz.questions[idx];
       const userAnswerObj = (dto.answers || []).find(
         (a) => a.questionId === question.id,
       );
@@ -522,7 +760,7 @@ export class QuizService {
         null;
 
       const parsedOptions = this.parseOptionsArray(question.options);
-      const evalResult = evaluateAndCorrectQuestion({
+      let evalResult = evaluateAndCorrectQuestion({
         questionContent: question.content,
         options: parsedOptions,
         correctOption: question.correctOption,
@@ -530,11 +768,31 @@ export class QuizService {
         userAnswer: rawUserAnswer,
       });
 
+      // Nếu là câu Tự luận và học sinh có trả lời -> dùng AI chấm ngữ nghĩa, phân tích lỗi sai & hướng dẫn sửa bài
+      if (parsedOptions.length === 0 && rawUserAnswer) {
+        const aiGrade = await this.gradeEssayWithAi({
+          subjectName,
+          grade: quiz.grade,
+          questionContent: question.content,
+          referenceAnswer: question.correctOption,
+          referenceExplanation: question.explanation,
+          studentAnswer: rawUserAnswer,
+        });
+        if (aiGrade) {
+          evalResult = {
+            ...evalResult,
+            isCorrect: aiGrade.isCorrect,
+            errorAnalysis: aiGrade.errorAnalysis,
+            correction: aiGrade.correction,
+          };
+        }
+      }
+
       if (evalResult.isCorrect) {
         rawCorrectCount++;
       }
 
-      return {
+      questionResults.push({
         questionNumber: idx + 1,
         questionId: question.id,
         questionContent: question.content,
@@ -548,8 +806,8 @@ export class QuizService {
         errorAnalysis: evalResult.isCorrect ? null : evalResult.errorAnalysis,
         correction: evalResult.isCorrect ? null : evalResult.correction,
         explanation: evalResult.isCorrect ? null : question.explanation,
-      };
-    });
+      });
+    }
 
     const percentage =
       totalQuestions > 0 ? rawCorrectCount / totalQuestions : 0;

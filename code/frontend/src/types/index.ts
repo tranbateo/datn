@@ -30,8 +30,23 @@ export interface Student extends User {
   }>;
 }
 
+export interface TeacherStudentRole {
+  studentId: string;
+  studentName: string;
+  className?: string | null;
+  isHomeroom: boolean;
+  homeroomClassName?: string | null;
+  subjects: string[];
+  summary: string;
+}
+
 export interface Teacher extends User {
   courses?: Course[];
+  isHomeroom?: boolean;
+  homeroomClassNames?: string[];
+  roleSummary?: string;
+  studentNames?: string[];
+  studentRoles?: TeacherStudentRole[];
   homeroomClasses?: Array<{ id: string; name: string; grade?: number }>;
   subjectClasses?: Array<{
     class?: { id: string; name: string; grade?: number };
@@ -65,6 +80,7 @@ export interface Proposal {
   content: string;
   status: string;
   teacher?: { fullName: string };
+  student?: { id: string; fullName: string } | null;
   createdAt: string;
 }
 

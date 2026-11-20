@@ -17,15 +17,38 @@ export class ProposalsService {
     content: string,
     studentId?: string,
   ) {
-    return this.prisma.proposal.create({
+    const proposal = await this.prisma.proposal.create({
       data: {
         parentId,
         teacherId,
         title,
         content,
-        studentId,
+        studentId: studentId || undefined,
+      },
+      include: {
+        parent: { select: { fullName: true } },
+        student: { select: { fullName: true } },
       },
     });
+
+    // Notify teacher via bell notification (BR-NOTIFY-001: never fail primary op)
+    try {
+      const parentName = proposal.parent?.fullName || 'Phụ huynh';
+      const studentSuffix = proposal.student?.fullName
+        ? ` (HS ${proposal.student.fullName})`
+        : '';
+      await this.prisma.notification.create({
+        data: {
+          userId: teacherId,
+          title: `[Kiến nghị mới] ${parentName}${studentSuffix}`,
+          body: `${title}: ${content.trim().slice(0, 140)}`,
+        },
+      });
+    } catch {
+      // Ignore notification delivery error
+    }
+
+    return proposal;
   }
 
   // Get proposals for a specific parent
@@ -70,9 +93,33 @@ export class ProposalsService {
     if (proposal.teacherId !== teacherId)
       throw new ForbiddenException('Not authorized');
 
-    return this.prisma.proposal.update({
+    const updated = await this.prisma.proposal.update({
       where: { id: proposalId },
       data: { status },
+      include: {
+        teacher: { select: { fullName: true } },
+      },
     });
+
+    // Notify parent about teacher's decision (BR-NOTIFY-001)
+    try {
+      const statusLabel =
+        status === 'APPROVED'
+          ? 'Đã duyệt'
+          : status === 'REJECTED'
+            ? 'Từ chối'
+            : status;
+      await this.prisma.notification.create({
+        data: {
+          userId: proposal.parentId,
+          title: `[Phản hồi kiến nghị] ${statusLabel}: ${proposal.title}`,
+          body: `Giáo viên ${updated.teacher?.fullName || ''} đã cập nhật trạng thái kiến nghị "${proposal.title}" thành "${statusLabel}".`,
+        },
+      });
+    } catch {
+      // Ignore notification delivery error
+    }
+
+    return updated;
   }
 }

@@ -159,44 +159,140 @@ export class ParentsService {
         const next7Days = new Date();
         next7Days.setDate(now.getDate() + 7);
 
-        const [recentQuizzes, upcomingEvents, recentNotifications] =
-          await Promise.all([
-            this.prisma.quizAttempt.findMany({
-              where: { userId: studentId },
-              take: 5,
-              orderBy: { startedAt: 'desc' },
-              include: {
-                quiz: {
-                  include: { subject: true },
-                },
+        const studentGrade =
+          link.student.classEnrollments?.[0]?.class?.grade ??
+          link.student.grade ??
+          6;
+
+        const [
+          recentQuizzes,
+          allAttempts,
+          gradeSubjects,
+          upcomingEvents,
+          recentNotifications,
+        ] = await Promise.all([
+          this.prisma.quizAttempt.findMany({
+            where: { userId: studentId },
+            take: 5,
+            orderBy: { startedAt: 'desc' },
+            include: {
+              quiz: {
+                include: { subject: true },
               },
-            }),
-            this.prisma.calendarEvent.findMany({
-              where: {
-                userId: studentId,
-                startTime: {
-                  gte: now,
-                  lte: next7Days,
-                },
+            },
+          }),
+          this.prisma.quizAttempt.findMany({
+            where: { userId: studentId },
+            include: {
+              quiz: { select: { subjectId: true } },
+            },
+            orderBy: { completedAt: 'desc' },
+          }),
+          this.prisma.subject.findMany({
+            where: { grade: studentGrade },
+            orderBy: { name: 'asc' },
+          }),
+          this.prisma.calendarEvent.findMany({
+            where: {
+              userId: studentId,
+              startTime: {
+                gte: now,
+                lte: next7Days,
               },
-              orderBy: { startTime: 'asc' },
-            }),
-            this.prisma.notification.findMany({
-              where: { userId: studentId },
-              take: 5,
-              orderBy: { createdAt: 'desc' },
-            }),
-          ]);
+            },
+            orderBy: { startTime: 'asc' },
+          }),
+          this.prisma.notification.findMany({
+            where: {
+              userId: studentId,
+              NOT: {
+                title: { startsWith: '[Nhắc riêng HS' },
+              },
+            },
+            take: 5,
+            orderBy: { createdAt: 'desc' },
+          }),
+        ]);
+
+        const attemptsBySubject = new Map<string, number[]>();
+        for (const att of allAttempts) {
+          const sid = att.quiz?.subjectId;
+          if (!sid) continue;
+          const list = attemptsBySubject.get(sid) || [];
+          list.push(Math.max(0, Math.min(100, Number(att.score || 0))));
+          attemptsBySubject.set(sid, list);
+        }
+
+        const subjectAnalytics = gradeSubjects.map((sub) => {
+          const scores = attemptsBySubject.get(sub.id) || [];
+          const attemptsCount = scores.length;
+          const averageScore =
+            attemptsCount > 0
+              ? Math.round(
+                  scores.reduce((sum, s) => sum + s, 0) / attemptsCount,
+                )
+              : null;
+          const bestScore = attemptsCount > 0 ? Math.max(...scores) : null;
+          const masteryStatus: 'strong' | 'developing' | 'weak' | 'unassessed' =
+            averageScore === null
+              ? 'unassessed'
+              : averageScore >= 80
+                ? 'strong'
+                : averageScore >= 60
+                  ? 'developing'
+                  : 'weak';
+          return {
+            subjectId: sub.id,
+            subjectName: sub.name,
+            attemptsCount,
+            averageScore,
+            bestScore,
+            masteryStatus,
+          };
+        });
+
+        const overallAverageScore =
+          allAttempts.length > 0
+            ? Math.round(
+                allAttempts.reduce((sum, a) => sum + Number(a.score || 0), 0) /
+                  allAttempts.length,
+              )
+            : null;
 
         const activeClass = link.student.classEnrollments?.[0]?.class || null;
+        const gp = link.student.gamificationProfile;
 
         return {
           relationship: link.relationship || 'Phụ huynh',
           student: {
             ...link.student,
+            grade: studentGrade,
             className: activeClass?.name || null,
             homeroomTeacher: activeClass?.homeroomTeacher || null,
+            gamificationProfile: gp
+              ? {
+                  ...gp,
+                  xp: gp.lifetimeXp,
+                }
+              : {
+                  xp: 0,
+                  lifetimeXp: 0,
+                  level: 1,
+                  currentStreak: 0,
+                  longestStreak: 0,
+                },
           },
+          summary: {
+            totalAttempts: allAttempts.length,
+            overallAverageScore,
+            strongCount: subjectAnalytics.filter(
+              (s) => s.masteryStatus === 'strong',
+            ).length,
+            weakCount: subjectAnalytics.filter(
+              (s) => s.masteryStatus === 'weak',
+            ).length,
+          },
+          subjectAnalytics,
           recentQuizzes,
           upcomingEvents,
           recentNotifications,
@@ -286,60 +382,188 @@ export class ParentsService {
       },
     });
 
-    const teachersMap = new Map<string, any>();
+    interface TeacherStudentRole {
+      studentId: string;
+      studentName: string;
+      className: string | null;
+      isHomeroom: boolean;
+      homeroomClassName: string | null;
+      subjects: string[];
+    }
+
+    const teachersMap = new Map<
+      string,
+      {
+        id: string;
+        fullName: string | null;
+        email: string | null;
+        phone: string | null;
+        avatarUrl: string | null;
+        studentRolesMap: Map<string, TeacherStudentRole>;
+      }
+    >();
+
+    const ensureTeacherRole = (
+      t: {
+        id: string;
+        fullName: string | null;
+        email: string | null;
+        phone: string | null;
+        avatarUrl: string | null;
+      },
+      studentId: string,
+      studentName: string,
+      className: string | null,
+    ): TeacherStudentRole => {
+      let entry = teachersMap.get(t.id);
+      if (!entry) {
+        entry = {
+          ...t,
+          studentRolesMap: new Map<string, TeacherStudentRole>(),
+        };
+        teachersMap.set(t.id, entry);
+      }
+      let role = entry.studentRolesMap.get(studentId);
+      if (!role) {
+        role = {
+          studentId,
+          studentName,
+          className,
+          isHomeroom: false,
+          homeroomClassName: null,
+          subjects: [],
+        };
+        entry.studentRolesMap.set(studentId, role);
+      } else if (!role.className && className) {
+        role.className = className;
+      }
+      return role;
+    };
 
     links.forEach((link) => {
+      const studentId = link.student.id;
       const studentName = link.student.fullName || 'Học sinh';
+      const primaryClassName =
+        link.student.classEnrollments?.[0]?.class?.name || null;
 
       // 1. From Official School Classes (GVCN & GVBM)
       link.student.classEnrollments.forEach((ce) => {
         const cls = ce.class;
         if (cls.homeroomTeacher) {
-          const t = cls.homeroomTeacher;
-          const existing = teachersMap.get(t.id) || {
-            ...t,
-            roles: [],
-          };
-          existing.roles.push(`GVCN ${cls.name} (${studentName})`);
-          teachersMap.set(t.id, existing);
+          const role = ensureTeacherRole(
+            cls.homeroomTeacher,
+            studentId,
+            studentName,
+            cls.name,
+          );
+          role.isHomeroom = true;
+          role.homeroomClassName = cls.name;
         }
 
         cls.subjectTeachers.forEach((st) => {
           if (st.teacher) {
-            const t = st.teacher;
-            const existing = teachersMap.get(t.id) || {
-              ...t,
-              roles: [],
-            };
-            existing.roles.push(
-              `GV Bộ môn ${st.subject.name} - ${cls.name} (${studentName})`,
+            const role = ensureTeacherRole(
+              st.teacher,
+              studentId,
+              studentName,
+              cls.name,
             );
-            teachersMap.set(t.id, existing);
+            const subjName = st.subject?.name?.trim();
+            if (subjName && !role.subjects.includes(subjName)) {
+              role.subjects.push(subjName);
+            }
           }
         });
       });
 
-      // 2. From Course Enrollments
+      // 2. From Course Enrollments (only add if subject not already covered)
       link.student.enrollments.forEach((enr) => {
         const t = enr.course?.teacher;
         if (t) {
-          const existing = teachersMap.get(t.id) || {
-            ...t,
-            roles: [],
-          };
-          const roleLabel = `GV ${enr.course.title} (${studentName})`;
-          if (!existing.roles.includes(roleLabel)) {
-            existing.roles.push(roleLabel);
+          const role = ensureTeacherRole(
+            t,
+            studentId,
+            studentName,
+            primaryClassName,
+          );
+          const subjectLabel =
+            enr.course.subject?.name?.trim() || enr.course.title?.trim();
+          if (subjectLabel && !role.subjects.includes(subjectLabel)) {
+            role.subjects.push(subjectLabel);
           }
-          teachersMap.set(t.id, existing);
         }
       });
     });
 
-    const teachers = Array.from(teachersMap.values()).map((t) => ({
-      ...t,
-      roleSummary: Array.from(new Set(t.roles)).join(' • '),
-    }));
+    const formatStudentRoleSummary = (
+      r: TeacherStudentRole,
+      includeStudentName: boolean,
+    ) => {
+      const parts: string[] = [];
+      if (r.isHomeroom) {
+        parts.push(
+          r.homeroomClassName ? `GVCN ${r.homeroomClassName}` : 'GVCN',
+        );
+      }
+      if (r.subjects.length > 0) {
+        const classSuffix = r.className ? ` (${r.className})` : '';
+        parts.push(
+          `GV Bộ môn ${r.subjects.join(', ')}${r.isHomeroom ? '' : classSuffix}`,
+        );
+      }
+      const base = parts.join(' • ') || 'Giáo viên';
+      return includeStudentName ? `${base} — ${r.studentName}` : base;
+    };
+
+    const teachers = Array.from(teachersMap.values())
+      .map((t) => {
+        const studentRoles = Array.from(t.studentRolesMap.values()).map(
+          (r) => ({
+            ...r,
+            summary: formatStudentRoleSummary(r, false),
+          }),
+        );
+        const homeroomClassNames = Array.from(
+          new Set(
+            studentRoles
+              .filter((r) => r.isHomeroom)
+              .map((r) => r.homeroomClassName)
+              .filter((c): c is string => Boolean(c)),
+          ),
+        );
+        const isHomeroom = studentRoles.some((r) => r.isHomeroom);
+        const studentNames = studentRoles.map((r) => r.studentName);
+        const roleSummary = studentRoles
+          .map((r) =>
+            formatStudentRoleSummary(
+              r,
+              studentRoles.length > 1 || links.length > 1,
+            ),
+          )
+          .join(' • ');
+
+        return {
+          id: t.id,
+          fullName: t.fullName,
+          email: t.email,
+          phone: t.phone,
+          avatarUrl: t.avatarUrl,
+          isHomeroom,
+          homeroomClassNames,
+          studentNames,
+          studentRoles,
+          roleSummary,
+        };
+      })
+      .sort((a, b) => {
+        if (Boolean(a.isHomeroom) !== Boolean(b.isHomeroom)) {
+          return a.isHomeroom ? -1 : 1;
+        }
+        return String(a.fullName || '').localeCompare(
+          String(b.fullName || ''),
+          'vi',
+        );
+      });
 
     return { teachers };
   }

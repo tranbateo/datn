@@ -4,7 +4,7 @@ import { notify } from "@/lib/toast";
 import { API_ENDPOINTS } from "@/constants/api";
 import { useEffect, useState, useMemo, useRef } from "react";
 import { fetchApi } from "@/lib/api-client";
-import { Plus, GraduationCap, Users, CheckCircle2, Upload, BookOpen } from "lucide-react";
+import { Plus, GraduationCap, Users, CheckCircle2, Upload, BookOpen, Layers, Edit, Trash2, X, Loader2 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { useTranslations } from "next-intl";
 import { teacherService } from "@/services/teacher.service";
@@ -16,6 +16,80 @@ export default function TeacherCourseManagement() {
   const [loading, setLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState("ALL");
+
+  // Lesson Manager Modal state
+  const [managingCourse, setManagingCourse] = useState<{
+    id: string;
+    title: string;
+    lessons: Array<{ id: string; title: string; content?: string | null; order: number }>;
+  } | null>(null);
+  const [loadingLessons, setLoadingLessons] = useState(false);
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+  const [lessonTitle, setLessonTitle] = useState("");
+  const [lessonContent, setLessonContent] = useState("");
+  const [savingLesson, setSavingLesson] = useState(false);
+
+  const openLessonManager = async (courseId: string, courseTitle: string) => {
+    setLoadingLessons(true);
+    setEditingLessonId(null);
+    setLessonTitle("");
+    setLessonContent("");
+    try {
+      const detail = await teacherService.getCourseDetail(courseId);
+      setManagingCourse({
+        id: courseId,
+        title: detail?.title || courseTitle,
+        lessons: Array.isArray(detail?.lessons) ? detail.lessons : [],
+      });
+    } catch (err: any) {
+      notify(err?.message || "Không thể tải danh sách chương bài giảng.");
+    } finally {
+      setLoadingLessons(false);
+    }
+  };
+
+  const handleSaveLesson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!managingCourse || !lessonTitle.trim()) return;
+    setSavingLesson(true);
+    try {
+      if (editingLessonId) {
+        await teacherService.updateLesson(managingCourse.id, editingLessonId, {
+          title: lessonTitle.trim(),
+          content: lessonContent.trim(),
+        });
+        notify("Đã cập nhật nội dung chương bài giảng!");
+      } else {
+        await teacherService.createLesson(managingCourse.id, {
+          title: lessonTitle.trim(),
+          content: lessonContent.trim(),
+        });
+        notify("Đã thêm chương bài giảng mới! Học sinh và Gia sư AI đã có thể xem ngay.");
+      }
+      setEditingLessonId(null);
+      setLessonTitle("");
+      setLessonContent("");
+      await openLessonManager(managingCourse.id, managingCourse.title);
+      await loadCourses();
+    } catch (err: any) {
+      notify(err?.message || "Không thể lưu chương bài giảng.");
+    } finally {
+      setSavingLesson(false);
+    }
+  };
+
+  const handleDeleteLesson = async (lessonId: string) => {
+    if (!managingCourse) return;
+    if (!confirm("Bạn có chắc muốn xóa chương bài giảng này?")) return;
+    try {
+      await teacherService.deleteLesson(managingCourse.id, lessonId);
+      notify("Đã xóa chương bài giảng.");
+      await openLessonManager(managingCourse.id, managingCourse.title);
+      await loadCourses();
+    } catch (err: any) {
+      notify(err?.message || "Không thể xóa chương bài giảng.");
+    }
+  };
 
   const loadCourses = async () => {
     setLoading(true);
@@ -166,7 +240,7 @@ export default function TeacherCourseManagement() {
                 <th className="px-6 py-4 font-semibold text-xs">{t("enrollment")}</th>
                 <th className="px-6 py-4 font-semibold text-xs">{t("lessons")}</th>
                 <th className="px-6 py-4 font-semibold text-xs">{t("trend")}</th>
-                <th className="px-6 py-4 font-semibold text-xs text-right">Tải tài liệu RAG</th>
+                <th className="px-6 py-4 font-semibold text-xs text-right">Quản lý Bài giảng & PDF</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -184,7 +258,12 @@ export default function TeacherCourseManagement() {
                 </tr>
               ) : (
                 filteredCourses.map((course) => (
-                  <CourseRow key={course.id} course={course} onUploaded={loadCourses} />
+                  <CourseRow
+                    key={course.id}
+                    course={course}
+                    onUploaded={loadCourses}
+                    onManageLessons={() => openLessonManager(course.id, course.title)}
+                  />
                 ))
               )}
             </tbody>
@@ -197,11 +276,176 @@ export default function TeacherCourseManagement() {
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={loadCourses}
       />
+
+      {/* Lesson Chapters CRUD Modal */}
+      {(managingCourse || loadingLessons) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            {loadingLessons || !managingCourse ? (
+              <div className="p-16 flex justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              </div>
+            ) : (
+              <>
+                <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
+                      Quản lý Chương bài giảng (Hiển thị trực tiếp cho Học sinh & Gia sư AI)
+                    </span>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                      {managingCourse.title} ({managingCourse.lessons.length} chương)
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setManagingCourse(null)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  {/* Existing lessons list */}
+                  <div className="lg:col-span-6 space-y-2.5">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                      Danh sách chương hiện có
+                    </h4>
+                    {managingCourse.lessons.length === 0 ? (
+                      <p className="text-sm text-gray-500 py-6 text-center border border-dashed border-gray-200 rounded-xl">
+                        Chưa có chương bài giảng nào.
+                      </p>
+                    ) : (
+                      managingCourse.lessons.map((lesson, idx) => (
+                        <div
+                          key={lesson.id}
+                          className={`p-3.5 rounded-xl border transition-colors ${
+                            editingLessonId === lesson.id
+                              ? "border-blue-400 bg-blue-50/50 dark:bg-blue-950/30"
+                              : "border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-gray-900 dark:text-white">
+                                {idx + 1}. {lesson.title}
+                              </div>
+                              {lesson.content && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                                  {lesson.content}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingLessonId(lesson.id);
+                                  setLessonTitle(lesson.title);
+                                  setLessonContent(lesson.content || "");
+                                }}
+                                className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50"
+                                title="Chỉnh sửa chương"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLesson(lesson.id)}
+                                className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"
+                                title="Xóa chương"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Add / Edit lesson form */}
+                  <form
+                    onSubmit={handleSaveLesson}
+                    className="lg:col-span-6 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 space-y-3.5 h-fit"
+                  >
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                        {editingLessonId ? "Chỉnh sửa chương bài giảng" : "Thêm chương bài giảng mới"}
+                      </h4>
+                      {editingLessonId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingLessonId(null);
+                            setLessonTitle("");
+                            setLessonContent("");
+                          }}
+                          className="text-xs text-blue-600 hover:underline font-semibold"
+                        >
+                          + Tạo chương mới
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                        Tên chương / bài học *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={lessonTitle}
+                        onChange={(e) => setLessonTitle(e.target.value)}
+                        placeholder="VD: Chương V: Phân số & Hỗn số"
+                        className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                        Nội dung kiến thức bài giảng (Hỗ trợ Markdown) *
+                      </label>
+                      <textarea
+                        rows={7}
+                        required
+                        value={lessonContent}
+                        onChange={(e) => setLessonContent(e.target.value)}
+                        placeholder="Nhập lý thuyết trọng tâm, công thức, ví dụ minh họa và bài tập tự luyện..."
+                        className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm resize-y"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={savingLesson}
+                      className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold disabled:opacity-50 transition-colors"
+                    >
+                      {savingLesson
+                        ? "Đang lưu..."
+                        : editingLessonId
+                          ? "Lưu thay đổi chương"
+                          : "Thêm chương vào Bài giảng"}
+                    </button>
+                  </form>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function CourseRow({ course, onUploaded }: { course: any; onUploaded: () => void }) {
+function CourseRow({
+  course,
+  onUploaded,
+  onManageLessons,
+}: {
+  course: any;
+  onUploaded: () => void;
+  onManageLessons: () => void;
+}) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -286,22 +530,33 @@ function CourseRow({ course, onUploaded }: { course: any; onUploaded: () => void
         </div>
       </td>
       <td className="px-6 py-4 text-right">
-        <input
-          type="file"
-          accept=".pdf,.doc,.docx,.md,.txt"
-          className="hidden"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
-          title="Tải lên tài liệu học tập (PDF, DOCX, TXT)"
-        >
-          <Upload className="w-4 h-4" />
-          {uploading ? "Đang tải..." : "Tải tài liệu"}
-        </button>
+        <div className="inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onManageLessons}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 rounded-lg transition-colors"
+            title="Xem, thêm hoặc sửa nội dung từng chương bài giảng"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Quản lý chương
+          </button>
+          <input
+            type="file"
+            accept="application/pdf,.pdf"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
+            title="Tải lên tài liệu PDF (Học sinh xem PDF gốc & AI RAG đọc luôn)"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            {uploading ? "Đang tải..." : "Tải PDF"}
+          </button>
+        </div>
       </td>
     </tr>
   );

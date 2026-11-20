@@ -105,7 +105,7 @@
       "students": "Học sinh",
       "parents": "Phụ huynh",
       "teachers": "Giáo viên",
-      "courses": "Quản lý khóa học",
+      "courses": "Quản lý bài giảng",
       "aiConfig": "Mô hình AI",
       "settings": "Cài đặt chung",
       "portal": "Cổng Quản Trị Viên",
@@ -117,7 +117,7 @@
     },
     "Header": {
       "title": "EduAI Quản trị",
-      "search": "Tìm kiếm học sinh, khóa học...",
+      "search": "Tìm kiếm học sinh, bài giảng...",
       "exportData": "Xuất dữ liệu",
       "createNew": "Tạo mới"
     },
@@ -261,14 +261,14 @@
       "subjectEngagement": "Tương tác theo Môn học"
     },
     "Courses": {
-      "title": "Quản lý Khóa học",
+      "title": "Quản lý Bài giảng",
       "subtitle": "Quản lý chương trình giảng dạy, ghi danh và cấu trúc bài học.",
       "filter": "Bộ lọc",
-      "newCourse": "Thêm Khóa học",
-      "totalActive": "Khóa học đang hoạt động",
+      "newCourse": "Thêm Bài giảng/Tài liệu",
+      "totalActive": "Bài giảng đang hoạt động",
       "totalEnrollments": "Tổng lượt đăng ký",
       "avgCompletion": "Tỷ lệ hoàn thành trung bình",
-      "courseTitle": "Tên khóa học & Giảng viên",
+      "courseTitle": "Tên môn học & Giảng viên",
       "category": "Danh mục",
       "enrollment": "Đăng ký",
       "lessons": "Bài giảng",
@@ -591,13 +591,14 @@
       "quiz": "Ngân hàng Trắc nghiệm",
       "documents": "Tài liệu AI (RAG)",
       "students": "Theo dõi Học sinh",
+      "notifications": "Thông báo & Phụ huynh",
       "settings": "Cài đặt cá nhân",
       "logout": "Đăng xuất",
       "viewProfile": "Xem hồ sơ"
     },
     "Dashboard": {
       "title": "Tổng quan Giáo viên",
-      "subtitle": "Xin chào! Đây là tóm tắt tình hình học tập của lớp bạn.",
+      "subtitle": "",
       "totalStudents": "Tổng học sinh",
       "totalCourses": "Khóa học đã tạo",
       "totalQuizzes": "Trắc nghiệm đã tạo",

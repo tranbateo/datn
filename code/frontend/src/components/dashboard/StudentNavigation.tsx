@@ -37,51 +37,60 @@ export function StudentNavigation() {
   const [userProfile, setUserProfile] = useState<any | null>(() => getCachedProfileSync());
   const [profileLoading, setProfileLoading] = useState<boolean>(() => !getCachedProfileSync());
 
+  const refreshNotifications = async () => {
+    try {
+      const notificationsData = await fetchApi('/notifications').catch(() => []);
+      const notifList = Array.isArray(notificationsData) ? notificationsData : [];
+      setNotifications(notifList);
+      setHasUnread(notifList.some((n: any) => !n.isRead));
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     const fetchUserData = async () => {
       try {
         const cached = sessionStorage.getItem(PROFILE_CACHE_KEY);
+        let profileLoadedFromCache = false;
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed?.profile && Date.now() - (parsed.ts || 0) < PROFILE_TTL_MS) {
             setUserProfile(parsed.profile);
             setProfileLoading(false);
-            if (Array.isArray(parsed.notifications)) {
-              setHasUnread(Boolean(parsed.hasUnread));
-              setNotifications(parsed.notifications);
-              return;
-            }
+            profileLoadedFromCache = true;
           }
         }
 
         const [profileData, notificationsData] = await Promise.all([
-          usersService.getProfile().catch(() => null),
-          fetchApi('/notifications').catch(() => [])
+          profileLoadedFromCache
+            ? Promise.resolve(null)
+            : usersService.getProfile().catch(() => null),
+          fetchApi('/notifications').catch(() => []),
         ]);
-        
-        if (profileData) {
-          setUserProfile(profileData);
-        }
-        setProfileLoading(false);
-        
-        let unread = false;
-        const notifList = Array.isArray(notificationsData) ? notificationsData : [];
-        setNotifications(notifList);
-        unread = notifList.some((n: any) => !n.isRead);
-        setHasUnread(unread);
 
         if (profileData) {
+          setUserProfile(profileData);
           sessionStorage.setItem(
             PROFILE_CACHE_KEY,
-            JSON.stringify({ profile: profileData, hasUnread: unread, notifications: notifList, ts: Date.now() }),
+            JSON.stringify({ profile: profileData, ts: Date.now() }),
           );
         }
+        setProfileLoading(false);
+
+        const notifList = Array.isArray(notificationsData) ? notificationsData : [];
+        setNotifications(notifList);
+        setHasUnread(notifList.some((n: any) => !n.isRead));
       } catch (error) {
         console.error("Failed to fetch user data", error);
         setProfileLoading(false);
       }
     };
     fetchUserData();
+    const timer = setInterval(() => {
+      void refreshNotifications();
+    }, 30_000);
+    return () => clearInterval(timer);
   }, []);
 
   const handleMarkAllRead = async () => {
@@ -199,7 +208,11 @@ export function StudentNavigation() {
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <button 
-            onClick={() => setShowNotifications(!showNotifications)}
+            onClick={() => {
+              const next = !showNotifications;
+              setShowNotifications(next);
+              if (next) void refreshNotifications();
+            }}
             className="relative w-8 h-8 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
           >
             <Bell className="w-5 h-5" />
@@ -336,7 +349,11 @@ export function StudentNavigation() {
         </button>
         <div className="relative">
           <button 
-            onClick={() => setShowNotifications(!showNotifications)}
+            onClick={() => {
+              const next = !showNotifications;
+              setShowNotifications(next);
+              if (next) void refreshNotifications();
+            }}
             className="relative w-8 h-8 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
           >
             <Bell className="w-5 h-5" />

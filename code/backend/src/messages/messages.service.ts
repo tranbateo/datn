@@ -57,6 +57,35 @@ export class MessagesService {
       },
     });
 
+    // Notify receiver immediately on Notification Bell (BR-NOTIFY-001: non-blocking)
+    try {
+      const sender = await this.prisma.user.findUnique({
+        where: { id: senderId },
+        select: { fullName: true, role: true },
+      });
+      const rolePrefix =
+        sender?.role === 'PARENT'
+          ? 'Phụ huynh'
+          : sender?.role === 'TEACHER'
+            ? 'Giáo viên'
+            : 'Người dùng';
+      const senderName = sender?.fullName || rolePrefix;
+      const preview =
+        content.trim().length > 100
+          ? `${content.trim().slice(0, 97)}...`
+          : content.trim();
+
+      await this.prisma.notification.create({
+        data: {
+          userId: receiverId,
+          title: `[Tin nhắn mới] ${rolePrefix} ${senderName}`,
+          body: preview,
+        },
+      });
+    } catch {
+      // Push/notification error must not fail message delivery
+    }
+
     return message;
   }
 }

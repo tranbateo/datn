@@ -220,6 +220,28 @@ export class TeacherService {
       ),
     );
 
+    const homeroomStudentIds = scope.homeroomClasses.flatMap((c) =>
+      c.enrollments.map((e) => e.studentId),
+    );
+
+    let pendingPasswordResetCount = 0;
+    if (homeroomStudentIds.length > 0) {
+      try {
+        const rows = await this.prisma.$queryRawUnsafe<Array<{ cnt: number }>>(
+          `SELECT COUNT(*)::int AS cnt FROM "PasswordResetRequest"
+           WHERE role = 'STUDENT' AND status = 'PENDING' AND "userId"::text = ANY($1::text[])`,
+          homeroomStudentIds,
+        );
+        pendingPasswordResetCount = Number(rows[0]?.cnt || 0);
+      } catch {
+        pendingPasswordResetCount = 0;
+      }
+    }
+
+    const pendingProposalsCount = await this.prisma.proposal.count({
+      where: { teacherId, status: 'PENDING' },
+    });
+
     return {
       teacherProfile: {
         fullName: scope.teacher.fullName || 'Giáo viên',
@@ -231,6 +253,8 @@ export class TeacherService {
       totalCourses,
       totalQuizzes,
       averageScore,
+      pendingPasswordResetCount,
+      pendingProposalsCount,
       homeroomClassesCount: scope.homeroomClasses.length,
       subjectClassesCount: scope.subjectClasses.length,
       homeroomClasses: scope.homeroomClasses.map((c) => ({
@@ -598,13 +622,24 @@ export class TeacherService {
 
   async createQuiz(teacherId: string, dto: CreateQuizDto) {
     const scope = await this.getTeacherScope(teacherId);
+    const targetSubjectId = dto.subjectId || scope.subjectIds[0] || null;
+    if (
+      targetSubjectId &&
+      scope.subjectIds.length > 0 &&
+      !scope.subjectIds.includes(targetSubjectId)
+    ) {
+      throw new ForbiddenException(
+        'Bạn chỉ được tạo đề kiểm tra thuộc môn học mình được phân công giảng dạy.',
+      );
+    }
+
     const quiz = await this.prisma.quiz.create({
       data: {
         schoolId: scope.schoolId,
         title: dto.title,
         description: dto.description,
         grade: dto.grade,
-        subjectId: dto.subjectId || scope.subjectIds[0] || null,
+        subjectId: targetSubjectId,
         duration: dto.duration || 15,
         isGraduation: dto.isGraduation || false,
         status: dto.status || 'DRAFT',
@@ -636,11 +671,53 @@ export class TeacherService {
         'Không có quyền thao tác đề của trường khác.',
       );
     }
+    if (
+      quiz.subjectId &&
+      scope.subjectIds.length > 0 &&
+      !scope.subjectIds.includes(quiz.subjectId)
+    ) {
+      throw new ForbiddenException(
+        'Bạn chỉ được thay đổi trạng thái đề thuộc môn học mình phụ trách.',
+      );
+    }
 
     const updated = await this.prisma.quiz.update({
       where: { id: quizId },
       data: { status: upperStatus },
     });
+
+    // When teacher assigns quiz (ASSIGNED), notify students in classes where this teacher teaches this subject
+    if (upperStatus === 'ASSIGNED' && quiz.status !== 'ASSIGNED') {
+      try {
+        const targetClassIds = scope.subjectClasses
+          .filter((sc) => !quiz.subjectId || sc.subjectId === quiz.subjectId)
+          .map((sc) => sc.classId);
+        const classIdsToNotify =
+          targetClassIds.length > 0 ? targetClassIds : scope.classIds;
+
+        if (classIdsToNotify.length > 0) {
+          const enrollments = await this.prisma.classEnrollment.findMany({
+            where: { classId: { in: classIdsToNotify }, status: 'ACTIVE' },
+            select: { studentId: true },
+          });
+          const uniqueStudentIds = Array.from(
+            new Set(enrollments.map((e) => e.studentId)),
+          );
+          if (uniqueStudentIds.length > 0) {
+            const teacherName = scope.teacher.fullName || 'Giáo viên';
+            await this.prisma.notification.createMany({
+              data: uniqueStudentIds.map((sid) => ({
+                userId: sid,
+                title: `[Bài tập mới] ${quiz.title}`,
+                body: `GV ${teacherName} vừa giao đề kiểm tra "${quiz.title}" (${quiz.duration || 15} phút). Em hãy vào mục Luyện tập để hoàn thành bài nhé!`,
+              })),
+            });
+          }
+        }
+      } catch {
+        // BR-NOTIFY-001: Push/notification failure must not fail main transaction
+      }
+    }
 
     await this.auditLogService.logAction(
       teacherId,
@@ -671,11 +748,48 @@ export class TeacherService {
       throw new BadRequestException('Điểm số phải từ 0 đến 100.');
     }
 
+    const scope = await this.getTeacherScope(teacherId);
     const attempt = await this.prisma.quizAttempt.findUnique({
       where: { id: attemptId },
+      include: {
+        quiz: { select: { id: true, schoolId: true, subjectId: true } },
+      },
     });
     if (!attempt) {
       throw new NotFoundException('Không tìm thấy bài làm.');
+    }
+    if (
+      scope.schoolId &&
+      attempt.quiz?.schoolId &&
+      attempt.quiz.schoolId !== scope.schoolId
+    ) {
+      throw new ForbiddenException(
+        'Không có quyền chỉnh sửa điểm bài làm của trường khác.',
+      );
+    }
+    if (
+      attempt.quiz?.subjectId &&
+      scope.subjectIds.length > 0 &&
+      !scope.subjectIds.includes(attempt.quiz.subjectId)
+    ) {
+      throw new ForbiddenException(
+        'Bạn chỉ được điều chỉnh điểm bài kiểm tra thuộc môn học mình trực tiếp giảng dạy.',
+      );
+    }
+    if (scope.classIds.length > 0) {
+      const inTeacherClass = await this.prisma.classEnrollment.findFirst({
+        where: {
+          studentId: attempt.userId,
+          classId: { in: scope.classIds },
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+      if (!inTeacherClass) {
+        throw new ForbiddenException(
+          'Học sinh này không thuộc lớp bạn phụ trách giảng dạy.',
+        );
+      }
     }
 
     const oldScore = attempt.score;
@@ -704,6 +818,34 @@ export class TeacherService {
     if (!dtos || dtos.length === 0) {
       return { count: 0 };
     }
+
+    const scope = await this.getTeacherScope(teacherId);
+    const quizIds = Array.from(
+      new Set(dtos.map((d) => d.quizId).filter(Boolean)),
+    );
+    if (quizIds.length > 0) {
+      const targetQuizzes = await this.prisma.quiz.findMany({
+        where: { id: { in: quizIds } },
+        select: { id: true, schoolId: true, subjectId: true },
+      });
+      for (const q of targetQuizzes) {
+        if (scope.schoolId && q.schoolId && q.schoolId !== scope.schoolId) {
+          throw new ForbiddenException(
+            'Không có quyền thêm câu hỏi vào đề của trường khác.',
+          );
+        }
+        if (
+          q.subjectId &&
+          scope.subjectIds.length > 0 &&
+          !scope.subjectIds.includes(q.subjectId)
+        ) {
+          throw new ForbiddenException(
+            'Bạn chỉ được thêm câu hỏi vào đề kiểm tra thuộc môn học mình phụ trách.',
+          );
+        }
+      }
+    }
+
     const created: any = await this.prisma.quizQuestion.createMany({
       data: dtos.map((dto) => ({
         quizId: dto.quizId,
@@ -717,6 +859,168 @@ export class TeacherService {
       })),
     });
     return { count: created.count };
+  }
+
+  async getQuizDetails(teacherId: string, quizId: string) {
+    const scope = await this.getTeacherScope(teacherId);
+    const quiz = await this.prisma.quiz.findUnique({
+      where: { id: quizId },
+      include: {
+        subject: { select: { id: true, name: true, grade: true } },
+        questions: true,
+        attempts: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                studentCode: true,
+                classEnrollments: {
+                  where: { status: 'ACTIVE' },
+                  take: 1,
+                  include: { class: { select: { id: true, name: true } } },
+                },
+              },
+            },
+          },
+          orderBy: { completedAt: 'desc' },
+        },
+      },
+    });
+
+    if (!quiz) throw new NotFoundException('Không tìm thấy đề kiểm tra.');
+    if (scope.schoolId && quiz.schoolId && quiz.schoolId !== scope.schoolId) {
+      throw new ForbiddenException('Không có quyền xem đề của trường khác.');
+    }
+    if (
+      quiz.subjectId &&
+      scope.subjectIds.length > 0 &&
+      !scope.subjectIds.includes(quiz.subjectId)
+    ) {
+      throw new ForbiddenException(
+        'Bạn chỉ được xem chi tiết đề kiểm tra thuộc môn học mình phụ trách.',
+      );
+    }
+
+    const allowedClassIds = new Set(scope.classIds);
+    const scopedAttempts = quiz.attempts
+      .filter((att) => {
+        if (allowedClassIds.size === 0) return true;
+        const cid = att.user?.classEnrollments?.[0]?.class?.id;
+        return Boolean(cid && allowedClassIds.has(cid));
+      })
+      .map((att) => ({
+        id: att.id,
+        studentId: att.userId,
+        studentName: att.user?.fullName || 'Học sinh',
+        studentCode: att.user?.studentCode || '',
+        className: att.user?.classEnrollments?.[0]?.class?.name || '',
+        score: att.score,
+        totalQuestions: att.totalQuestions,
+        completedAt: att.completedAt || att.startedAt,
+      }));
+
+    return {
+      id: quiz.id,
+      title: quiz.title,
+      description: quiz.description,
+      grade: quiz.grade,
+      status: quiz.status,
+      duration: quiz.duration,
+      subject: quiz.subject,
+      questions: quiz.questions.map((q) => ({
+        id: q.id,
+        content: q.content,
+        options:
+          typeof q.options === 'string'
+            ? (() => {
+                try {
+                  return JSON.parse(q.options);
+                } catch {
+                  return [];
+                }
+              })()
+            : Array.isArray(q.options)
+              ? q.options
+              : [],
+        correctOption: q.correctOption,
+        explanation: q.explanation,
+      })),
+      attempts: scopedAttempts,
+    };
+  }
+
+  async getStudentAttempts(teacherId: string, studentId: string) {
+    const scope = await this.getTeacherScope(teacherId);
+    const homeroomClassIds = new Set(scope.homeroomClasses.map((c) => c.id));
+
+    const enrollment = await this.prisma.classEnrollment.findFirst({
+      where: {
+        studentId,
+        status: 'ACTIVE',
+        ...(scope.classIds.length > 0
+          ? { classId: { in: scope.classIds } }
+          : {}),
+      },
+      include: {
+        class: { select: { id: true, name: true, grade: true } },
+        student: {
+          select: { id: true, fullName: true, studentCode: true, email: true },
+        },
+      },
+    });
+
+    if (!enrollment) {
+      throw new ForbiddenException(
+        'Học sinh này không thuộc các lớp bạn phụ trách.',
+      );
+    }
+
+    const isGvcn = homeroomClassIds.has(enrollment.classId);
+
+    const attempts = await this.prisma.quizAttempt.findMany({
+      where: {
+        userId: studentId,
+        ...(!isGvcn && scope.subjectIds.length > 0
+          ? { quiz: { subjectId: { in: scope.subjectIds } } }
+          : {}),
+      },
+      include: {
+        quiz: {
+          select: {
+            id: true,
+            title: true,
+            subjectId: true,
+            subject: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { completedAt: 'desc' },
+      take: 30,
+    });
+
+    return {
+      student: {
+        id: enrollment.student.id,
+        fullName: enrollment.student.fullName || 'Học sinh',
+        studentCode: enrollment.student.studentCode,
+        className: enrollment.class.name,
+        grade: enrollment.class.grade,
+        isHomeroomTeacher: isGvcn,
+      },
+      attempts: attempts.map((a) => ({
+        id: a.id,
+        quizId: a.quizId,
+        quizTitle: a.quiz?.title || 'Bài luyện tập',
+        subjectName: a.quiz?.subject?.name || 'Tổng hợp',
+        canEditScore: Boolean(
+          a.quiz?.subjectId && scope.subjectIds.includes(a.quiz.subjectId),
+        ),
+        score: a.score,
+        totalQuestions: a.totalQuestions,
+        completedAt: a.completedAt || a.startedAt,
+      })),
+    };
   }
 
   async createQuizWithAiQuestions(
@@ -1113,6 +1417,249 @@ export class TeacherService {
         role: enrollment.student.role,
       },
       message: `Đã cấp mật khẩu tạm mới cho học sinh ${enrollment.student.fullName || enrollment.student.studentCode}. Học sinh sẽ cần đổi mật khẩu ngay khi đăng nhập.`,
+    };
+  }
+
+  /**
+   * Lists linked Parents of students enrolled in this teacher's homeroom or subject classes
+   * so teachers can message or contact them directly.
+   */
+  async getScopedParents(teacherId: string) {
+    const scope = await this.getTeacherScope(teacherId);
+    if (scope.classIds.length === 0) {
+      return [];
+    }
+
+    const homeroomClassIds = new Set(scope.homeroomClasses.map((c) => c.id));
+    const enrollments = await this.prisma.classEnrollment.findMany({
+      where: { classId: { in: scope.classIds }, status: 'ACTIVE' },
+      include: {
+        class: { select: { id: true, name: true, grade: true } },
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            studentCode: true,
+            studentLinks: {
+              include: {
+                parent: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    phone: true,
+                    email: true,
+                    isActive: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const parentMap = new Map<
+      string,
+      {
+        id: string;
+        fullName: string;
+        phone: string | null;
+        email: string | null;
+        students: Array<{
+          id: string;
+          fullName: string;
+          studentCode: string | null;
+          className: string;
+          teacherRole: 'GVCN' | 'GVBM';
+        }>;
+      }
+    >();
+
+    for (const enr of enrollments) {
+      const stu = enr.student;
+      const teacherRole = homeroomClassIds.has(enr.classId) ? 'GVCN' : 'GVBM';
+      for (const link of stu.studentLinks) {
+        if (!link.parent?.isActive) continue;
+        const p = link.parent;
+        if (!parentMap.has(p.id)) {
+          parentMap.set(p.id, {
+            id: p.id,
+            fullName: p.fullName || 'Phụ huynh',
+            phone: p.phone || null,
+            email: p.email || null,
+            students: [],
+          });
+        }
+        const entry = parentMap.get(p.id)!;
+        if (!entry.students.some((s) => s.id === stu.id)) {
+          entry.students.push({
+            id: stu.id,
+            fullName: stu.fullName || 'Học sinh',
+            studentCode: stu.studentCode || null,
+            className: enr.class.name,
+            teacherRole,
+          });
+        }
+      }
+    }
+
+    return Array.from(parentMap.values()).sort((a, b) =>
+      a.fullName.localeCompare(b.fullName, 'vi'),
+    );
+  }
+
+  /**
+   * Teacher sends notification strictly within their assigned classes/students
+   * to Parents, Students, or Both (GEMINI.md Section 5.2 & BR-NOTIFY-001).
+   */
+  async sendScopedNotification(
+    teacherId: string,
+    payload: {
+      targetType: 'CLASS' | 'STUDENT';
+      classId?: string;
+      studentId?: string;
+      audience: 'PARENTS' | 'STUDENTS' | 'BOTH';
+      title: string;
+      body: string;
+    },
+  ) {
+    const cleanTitle = (payload.title || '').trim();
+    const cleanBody = (payload.body || '').trim();
+    if (!cleanTitle || !cleanBody) {
+      throw new BadRequestException(
+        'Vui lòng nhập đầy đủ tiêu đề và nội dung thông báo.',
+      );
+    }
+
+    const scope = await this.getTeacherScope(teacherId);
+    if (scope.classIds.length === 0) {
+      throw new ForbiddenException(
+        'Bạn chưa được phân công lớp học nào để gửi thông báo.',
+      );
+    }
+
+    let targetStudentIds: string[] = [];
+    let scopeLabel = '';
+
+    if (payload.targetType === 'CLASS') {
+      if (!payload.classId || !scope.classIds.includes(payload.classId)) {
+        throw new ForbiddenException(
+          'Bạn chỉ được gửi thông báo cho các lớp mình phụ trách.',
+        );
+      }
+      const cls = await this.prisma.class.findUnique({
+        where: { id: payload.classId },
+        include: {
+          enrollments: {
+            where: { status: 'ACTIVE' },
+            select: { studentId: true },
+          },
+        },
+      });
+      if (!cls) throw new NotFoundException('Không tìm thấy lớp học.');
+      targetStudentIds = cls.enrollments.map((e) => e.studentId);
+      scopeLabel = cls.name;
+    } else {
+      if (!payload.studentId) {
+        throw new BadRequestException(
+          'Vui lòng chọn học sinh cần gửi thông báo.',
+        );
+      }
+      const enrollment = await this.prisma.classEnrollment.findFirst({
+        where: {
+          studentId: payload.studentId,
+          classId: { in: scope.classIds },
+          status: 'ACTIVE',
+        },
+        include: {
+          class: { select: { name: true } },
+          student: { select: { fullName: true, studentCode: true } },
+        },
+      });
+      if (!enrollment) {
+        throw new ForbiddenException(
+          'Học sinh này không thuộc lớp bạn phụ trách.',
+        );
+      }
+      targetStudentIds = [payload.studentId];
+      scopeLabel = `${enrollment.student.fullName || 'Học sinh'} (${enrollment.class.name})`;
+    }
+
+    if (targetStudentIds.length === 0) {
+      throw new BadRequestException(
+        'Không có học sinh nào trong phạm vi đã chọn.',
+      );
+    }
+
+    const studentRecipientIds = new Set<string>();
+    const parentRecipientIds = new Set<string>();
+
+    if (payload.audience === 'STUDENTS' || payload.audience === 'BOTH') {
+      targetStudentIds.forEach((id) => studentRecipientIds.add(id));
+    }
+
+    if (payload.audience === 'PARENTS' || payload.audience === 'BOTH') {
+      const parentLinks = await this.prisma.parentStudentLink.findMany({
+        where: {
+          studentId: { in: targetStudentIds },
+          parent: { isActive: true },
+        },
+        select: { parentId: true },
+      });
+      parentLinks.forEach((l) => parentRecipientIds.add(l.parentId));
+    }
+
+    const allRecipientIds = Array.from(
+      new Set([...studentRecipientIds, ...parentRecipientIds]),
+    );
+
+    if (allRecipientIds.length === 0) {
+      throw new BadRequestException(
+        'Chưa có tài khoản Phụ huynh nào liên kết với học sinh trong phạm vi bạn chọn. Hãy chọn gửi cho "Học sinh" hoặc "Cả Phụ huynh & Học sinh".',
+      );
+    }
+
+    const teacherName = scope.teacher.fullName || 'Giáo viên';
+    const isGvcnScope =
+      payload.classId &&
+      scope.homeroomClasses.some((c) => c.id === payload.classId);
+    const senderPrefix =
+      payload.audience === 'STUDENTS'
+        ? `[Nhắc riêng HS - ${isGvcnScope ? 'GVCN' : 'GV'} ${teacherName}]`
+        : isGvcnScope
+          ? `[GVCN ${teacherName}]`
+          : `[GV ${teacherName}]`;
+    const fullTitle = cleanTitle.startsWith('[')
+      ? cleanTitle
+      : `${senderPrefix} ${cleanTitle}`;
+
+    await this.prisma.notification.createMany({
+      data: allRecipientIds.map((uid) => ({
+        userId: uid,
+        title: fullTitle,
+        body: cleanBody,
+      })),
+    });
+
+    await this.auditLogService.logAction(
+      teacherId,
+      'SEND_CLASS_NOTIFICATION',
+      'Notification',
+      {
+        targetType: payload.targetType,
+        scopeLabel,
+        audience: payload.audience,
+        studentRecipientsCount: studentRecipientIds.size,
+        parentRecipientsCount: parentRecipientIds.size,
+      },
+    );
+
+    return {
+      success: true,
+      sentCount: allRecipientIds.length,
+      studentRecipientsCount: studentRecipientIds.size,
+      parentRecipientsCount: parentRecipientIds.size,
+      message: `Đã gửi thông báo thành công tới ${parentRecipientIds.size} phụ huynh và ${studentRecipientIds.size} học sinh (${scopeLabel}).`,
     };
   }
 }

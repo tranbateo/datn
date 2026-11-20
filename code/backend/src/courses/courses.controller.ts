@@ -112,4 +112,47 @@ export class CoursesController {
   remove(@Param('id') id: string, @Req() req: RequestWithUser) {
     return this.coursesService.remove(id, req.user);
   }
+
+  @Post(':id/lessons')
+  @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
+  createLesson(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      title: string;
+      content?: string;
+      order?: number;
+      videoUrl?: string;
+    },
+    @Req() req: RequestWithUser,
+  ) {
+    return this.coursesService.createLesson(id, body, req.user);
+  }
+
+  @Patch(':id/lessons/:lessonId')
+  @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
+  updateLesson(
+    @Param('id') id: string,
+    @Param('lessonId') lessonId: string,
+    @Body()
+    body: {
+      title?: string;
+      content?: string;
+      order?: number;
+      videoUrl?: string;
+    },
+    @Req() req: RequestWithUser,
+  ) {
+    return this.coursesService.updateLesson(id, lessonId, body, req.user);
+  }
+
+  @Delete(':id/lessons/:lessonId')
+  @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
+  deleteLesson(
+    @Param('id') id: string,
+    @Param('lessonId') lessonId: string,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.coursesService.deleteLesson(id, lessonId, req.user);
+  }
 }

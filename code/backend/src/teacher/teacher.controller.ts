@@ -62,6 +62,27 @@ export class TeacherController {
     );
   }
 
+  @Get('parents')
+  async getScopedParents(@Req() req: any) {
+    return this.teacherService.getScopedParents(req.user.id);
+  }
+
+  @Post('notifications/send')
+  async sendScopedNotification(
+    @Req() req: any,
+    @Body()
+    body: {
+      targetType: 'CLASS' | 'STUDENT';
+      classId?: string;
+      studentId?: string;
+      audience: 'PARENTS' | 'STUDENTS' | 'BOTH';
+      title: string;
+      body: string;
+    },
+  ) {
+    return this.teacherService.sendScopedNotification(req.user.id, body);
+  }
+
   @Get('courses')
   async getCourses(@Req() req: any) {
     return this.teacherService.getCourses(req.user.id);
@@ -129,10 +150,54 @@ export class TeacherController {
     return this.teacherService.deleteDocument(req.user.id, id);
   }
 
+  @Get('students/:studentId/attempts')
+  async getStudentAttempts(
+    @Req() req: any,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.teacherService.getStudentAttempts(req.user.id, studentId);
+  }
+
+  @Get('quizzes/:id/details')
+  async getQuizDetails(@Req() req: any, @Param('id') id: string) {
+    return this.teacherService.getQuizDetails(req.user.id, id);
+  }
+
+  @Post('quizzes/solve-manual')
+  async solveManualQuizQuestions(
+    @Req() req: any,
+    @Body()
+    body: {
+      courseId?: string;
+      questions: Array<{
+        content: string;
+        options?: string[];
+        correctOption?: string | number | null;
+        explanation?: string | null;
+      }>;
+    },
+  ) {
+    let subjectName: string | null = null;
+    let grade: number | null = null;
+    if (body.courseId) {
+      const courses = await this.teacherService.getCourses(req.user.id);
+      const matched = courses.find((c) => c.id === body.courseId);
+      if (matched) {
+        subjectName = matched.subject;
+        grade = matched.gradeNum || null;
+      }
+    }
+    return this.quizService.solveManualQuestionsWithAi({
+      subjectName,
+      grade,
+      questions: body.questions || [],
+    });
+  }
+
   @Post('quizzes/ai-build')
   async createQuizWithAiQuestions(
     @Req() req: any,
-    @Body() dto: AiBuildQuizDto,
+    @Body() dto: AiBuildQuizDto & { autoSolveWithAi?: boolean },
   ) {
     const teacherId = req.user.id;
     const {
@@ -143,6 +208,7 @@ export class TeacherController {
       duration,
       isGraduation,
       questions,
+      autoSolveWithAi,
     } = dto;
 
     let generatedQuestions = questions;
@@ -151,6 +217,30 @@ export class TeacherController {
         courseId: courseId || '',
         topic: topic || title,
         numQuestions: numQuestions || 5,
+      });
+    } else if (
+      autoSolveWithAi ||
+      generatedQuestions.some(
+        (q: any) =>
+          q.correctOption === undefined ||
+          q.correctOption === null ||
+          String(q.correctOption).trim() === '',
+      )
+    ) {
+      let subjectName: string | null = null;
+      let grade: number | null = null;
+      if (courseId) {
+        const courses = await this.teacherService.getCourses(teacherId);
+        const matched = courses.find((c) => c.id === courseId);
+        if (matched) {
+          subjectName = matched.subject;
+          grade = matched.gradeNum || null;
+        }
+      }
+      generatedQuestions = await this.quizService.solveManualQuestionsWithAi({
+        subjectName,
+        grade,
+        questions: generatedQuestions,
       });
     }
 

@@ -86,4 +86,8 @@ export class AiBuildQuizDto {
   @IsOptional()
   @IsArray()
   questions?: any[];
+
+  @IsOptional()
+  @IsBoolean()
+  autoSolveWithAi?: boolean;
 }

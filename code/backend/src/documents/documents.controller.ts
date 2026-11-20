@@ -29,7 +29,7 @@ export class DocumentsController {
   constructor(
     @InjectQueue('document-ingestion') private readonly documentQueue: Queue,
     private readonly documentsService: DocumentsService,
-  ) {}
+  ) { }
 
   @Get('course/:courseId')
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN, Role.STUDENT)
@@ -82,7 +82,7 @@ export class DocumentsController {
     @Query('courseId') courseId: string,
   ) {
     if (!courseId) {
-      throw new BadRequestException('Vui lòng chọn khóa học áp dụng.');
+      throw new BadRequestException('Vui lòng chọn áp dụng.');
     }
     return this.uploadDocument(req, file, courseId);
   }

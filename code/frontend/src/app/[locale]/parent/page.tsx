@@ -4,7 +4,24 @@ import { useState, useEffect } from 'react';
 import { parentService, ParentDashboardData } from '@/services/parent.service';
 import { formatClassLabel } from '@/services/users.service';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Calendar, Bell, Clock, TrendingUp, AlertTriangle, School, UserCheck, KeyRound, Copy, Check, CheckCircle2 } from 'lucide-react';
+import {
+  Loader2,
+  Calendar,
+  Bell,
+  Clock,
+  TrendingUp,
+  AlertTriangle,
+  School,
+  UserCheck,
+  KeyRound,
+  Copy,
+  Check,
+  CheckCircle2,
+  Flame,
+  BookOpen,
+  Award,
+  Target,
+} from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslations } from 'next-intl';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -173,87 +190,279 @@ export default function ParentDashboardPage() {
           </TabsList>
         )}
 
-        {data.students.map(({ student, recentQuizzes, upcomingEvents, recentNotifications }) => {
-          const chartData = recentQuizzes
-            .map((q) => ({
-              name: q.quiz?.title || 'Bài tập',
-              score: q.score,
-              date: new Date(q.startedAt).toLocaleDateString('vi-VN'),
-            }))
-            .reverse();
+        {data.students.map(
+          ({
+            student,
+            summary,
+            subjectAnalytics,
+            recentQuizzes,
+            upcomingEvents,
+            recentNotifications,
+          }) => {
+            const chartData = recentQuizzes
+              .map((q) => ({
+                name: q.quiz?.title || 'Bài tập',
+                score: q.score,
+                date: new Date(q.startedAt).toLocaleDateString('vi-VN'),
+              }))
+              .reverse();
 
-          return (
-            <TabsContent key={student.id} value={student.id} className="space-y-6 mt-0 focus-visible:outline-none focus-visible:ring-0">
-              {/* Student Header */}
-              <div className="bg-indigo-600 dark:bg-indigo-900 rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center gap-6 shadow-lg relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-8 opacity-10">
-                  <TrendingUp className="w-48 h-48" />
-                </div>
-                <div className="relative z-10 w-20 h-20 bg-white rounded-full flex items-center justify-center text-indigo-600 text-3xl font-bold border-4 border-indigo-400/30 shadow-inner shrink-0">
-                  {student.fullName.charAt(0)}
-                </div>
-                <div className="relative z-10 text-white space-y-2">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <h2 className="text-2xl font-bold">{student.fullName}</h2>
-                    {student.studentCode && (
-                      <span className="bg-white/20 px-2.5 py-0.5 rounded-md text-xs font-mono font-bold">
-                        Mã HS: {student.studentCode}
-                      </span>
-                    )}
+            const studentXp =
+              student.gamificationProfile?.xp ??
+              student.gamificationProfile?.lifetimeXp ??
+              0;
+            const studentStreak =
+              student.gamificationProfile?.currentStreak ?? 0;
+
+            return (
+              <TabsContent
+                key={student.id}
+                value={student.id}
+                className="space-y-6 mt-0 focus-visible:outline-none focus-visible:ring-0"
+              >
+                {/* Student Header */}
+                <div className="bg-indigo-600 dark:bg-indigo-900 rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center gap-6 shadow-lg relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-8 opacity-10">
+                    <TrendingUp className="w-48 h-48" />
                   </div>
-                  <div className="flex flex-wrap gap-2.5 text-indigo-100 text-sm font-medium">
-                    {student.school?.name && (
-                      <span className="bg-white/15 px-3 py-1 rounded-full flex items-center gap-1.5">
-                        <School className="w-3.5 h-3.5" /> {student.school.name}
+                  <div className="relative z-10 w-20 h-20 bg-white rounded-full flex items-center justify-center text-indigo-600 text-3xl font-bold border-4 border-indigo-400/30 shadow-inner shrink-0">
+                    {student.fullName.charAt(0)}
+                  </div>
+                  <div className="relative z-10 text-white space-y-2">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <h2 className="text-2xl font-bold">{student.fullName}</h2>
+                      {student.studentCode && (
+                        <span className="bg-white/20 px-2.5 py-0.5 rounded-md text-xs font-mono font-bold">
+                          Mã HS: {student.studentCode}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2.5 text-indigo-100 text-sm font-medium">
+                      {student.school?.name && (
+                        <span className="bg-white/15 px-3 py-1 rounded-full flex items-center gap-1.5">
+                          <School className="w-3.5 h-3.5" /> {student.school.name}
+                        </span>
+                      )}
+                      <span className="bg-white/20 px-3 py-1 rounded-full">
+                        {formatClassLabel(student.className, student.grade)}
                       </span>
-                    )}
-                    <span className="bg-white/20 px-3 py-1 rounded-full">
-                      {formatClassLabel(student.className, student.grade)}
-                    </span>
-                    {student.homeroomTeacher && (
-                      <span className="bg-white/15 px-3 py-1 rounded-full flex items-center gap-1.5">
-                        <UserCheck className="w-3.5 h-3.5" /> GVCN: {student.homeroomTeacher.fullName}
+                      {student.homeroomTeacher && (
+                        <span className="bg-white/15 px-3 py-1 rounded-full flex items-center gap-1.5">
+                          <UserCheck className="w-3.5 h-3.5" /> GVCN:{' '}
+                          {student.homeroomTeacher.fullName}
+                        </span>
+                      )}
+                      <span className="bg-white/20 px-3 py-1 rounded-full">
+                        {t('level')} {student.gamificationProfile?.level || 1}
                       </span>
-                    )}
-                    <span className="bg-white/20 px-3 py-1 rounded-full">{t("level")} {student.gamificationProfile?.level || 1}</span>
-                    <span className="bg-white/20 px-3 py-1 rounded-full">{student.gamificationProfile?.xp || 0} XP</span>
+                      <span className="bg-white/20 px-3 py-1 rounded-full">
+                        {studentXp} XP
+                      </span>
+                      <span className="bg-white/20 px-3 py-1 rounded-full flex items-center gap-1">
+                        <Flame className="w-3.5 h-3.5 text-amber-300" /> Chuỗi{' '}
+                        {studentStreak} ngày
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column: Chart */}
-                <Card className="lg:col-span-2 rounded-3xl shadow-sm border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-indigo-500" /> {t("scoreChart")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {chartData.length > 0 ? (
-                      <div className="h-[300px] w-full mt-4">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                            <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                            <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                            <Tooltip
-                              contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                              cursor={{ fill: '#f1f5f9' }}
-                            />
-                            <Bar dataKey="score" fill="#6366f1" radius={[6, 6, 0, 0]} maxBarSize={50} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    ) : (
-                      <div className="h-[300px] flex items-center justify-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl">
-                        <p className="text-slate-500 dark:text-slate-400 text-sm italic">{t("noExams")}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                {/* Real Academic Summary Strip */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-800 shadow-sm">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Tổng bài đã hoàn thành
+                    </p>
+                    <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
+                      {summary?.totalAttempts ?? 0}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-800 shadow-sm">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Điểm trung bình toàn kỳ
+                    </p>
+                    <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                      {summary?.overallAverageScore != null
+                        ? `${summary.overallAverageScore}/100`
+                        : 'Chưa có'}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/40 shadow-sm">
+                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                      <Award className="w-3.5 h-3.5" /> Môn nắm vững (≥80)
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300 mt-1">
+                      {summary?.strongCount ?? 0}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-rose-100 dark:border-rose-900/40 shadow-sm">
+                    <p className="text-xs font-medium text-rose-700 dark:text-rose-400 flex items-center gap-1">
+                      <Target className="w-3.5 h-3.5" /> Môn cần củng cố (&lt;60)
+                    </p>
+                    <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">
+                      {summary?.weakCount ?? 0}
+                    </p>
+                  </div>
+                </div>
 
-                {/* Right Column: Schedule & Notifications */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Left Column: Chart + Real Subject Analytics */}
+                  <div className="lg:col-span-2 space-y-6">
+                    <Card className="rounded-3xl shadow-sm border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+                      <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-indigo-500" />{' '}
+                          {t('scoreChart')}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {chartData.length > 0 ? (
+                          <div className="h-[300px] w-full mt-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart
+                                data={chartData}
+                                margin={{
+                                  top: 10,
+                                  right: 10,
+                                  left: -20,
+                                  bottom: 0,
+                                }}
+                              >
+                                <CartesianGrid
+                                  strokeDasharray="3 3"
+                                  vertical={false}
+                                  stroke="#e2e8f0"
+                                />
+                                <XAxis
+                                  dataKey="name"
+                                  stroke="#64748b"
+                                  fontSize={12}
+                                  tickLine={false}
+                                  axisLine={false}
+                                />
+                                <YAxis
+                                  stroke="#64748b"
+                                  fontSize={12}
+                                  tickLine={false}
+                                  axisLine={false}
+                                />
+                                <Tooltip
+                                  contentStyle={{
+                                    borderRadius: '12px',
+                                    border: 'none',
+                                    boxShadow:
+                                      '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                  }}
+                                  cursor={{ fill: '#f1f5f9' }}
+                                />
+                                <Bar
+                                  dataKey="score"
+                                  fill="#6366f1"
+                                  radius={[6, 6, 0, 0]}
+                                  maxBarSize={50}
+                                />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        ) : (
+                          <div className="h-[260px] flex items-center justify-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl">
+                            <p className="text-slate-500 dark:text-slate-400 text-sm italic">
+                              {t('noExams')}
+                            </p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Real Per-Subject Mastery Breakdown */}
+                    <Card className="rounded-3xl shadow-sm border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <BookOpen className="w-5 h-5 text-indigo-500" />
+                          Phân tích năng lực theo từng môn (Khối {student.grade})
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {subjectAnalytics && subjectAnalytics.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            {subjectAnalytics.map((sub) => {
+                              const statusMeta =
+                                sub.masteryStatus === 'strong'
+                                  ? {
+                                      label: 'Nắm vững',
+                                      badge:
+                                        'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+                                      bar: 'bg-emerald-500',
+                                    }
+                                  : sub.masteryStatus === 'developing'
+                                    ? {
+                                        label: 'Đang tiến bộ',
+                                        badge:
+                                          'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+                                        bar: 'bg-amber-500',
+                                      }
+                                    : sub.masteryStatus === 'weak'
+                                      ? {
+                                          label: 'Cần củng cố',
+                                          badge:
+                                            'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+                                          bar: 'bg-rose-500',
+                                        }
+                                      : {
+                                          label: 'Chưa đánh giá',
+                                          badge:
+                                            'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+                                          bar: 'bg-slate-300 dark:bg-slate-700',
+                                        };
+
+                              return (
+                                <div
+                                  key={sub.subjectId}
+                                  className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2.5"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                                      {sub.subjectName}
+                                    </h4>
+                                    <span
+                                      className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full shrink-0 ${statusMeta.badge}`}
+                                    >
+                                      {statusMeta.label}
+                                    </span>
+                                  </div>
+                                  <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all duration-500 ${statusMeta.bar}`}
+                                      style={{
+                                        width: `${sub.averageScore ?? 0}%`,
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                                    <span>
+                                      {sub.attemptsCount > 0
+                                        ? `${sub.attemptsCount} lượt làm • Cao nhất: ${sub.bestScore}`
+                                        : 'Con chưa làm bài kiểm tra môn này'}
+                                    </span>
+                                    <span className="font-bold text-slate-700 dark:text-slate-200">
+                                      {sub.averageScore != null
+                                        ? `${sub.averageScore}/100`
+                                        : '--'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500 dark:text-slate-400 italic text-center py-6">
+                            Chưa có dữ liệu môn học cho khối lớp hiện tại.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Right Column: Schedule & Notifications */}
                 <div className="space-y-6">
                   {/* Schedule */}
                   <Card className="rounded-3xl shadow-sm border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">

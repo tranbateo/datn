@@ -1,8 +1,9 @@
 "use client";
 
-import { Users, Library, FileQuestion, TrendingUp, AlertCircle, BookOpen, GraduationCap, School } from "lucide-react";
+import { Users, Library, FileQuestion, TrendingUp, AlertCircle, BookOpen, GraduationCap, School, KeyRound, BellRing, ArrowRight } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/routing";
 
 interface HomeroomClassItem {
   id: string;
@@ -32,6 +33,8 @@ interface DashboardData {
   totalCourses: number;
   totalQuizzes: number;
   averageScore: number;
+  pendingPasswordResetCount?: number;
+  pendingProposalsCount?: number;
   homeroomClasses?: HomeroomClassItem[];
   subjectClasses?: SubjectClassItem[];
   performanceData: { name: string; score: number }[];
@@ -47,6 +50,8 @@ export default function TeacherDashboardClient({ data }: { data: DashboardData }
     totalCourses,
     totalQuizzes,
     averageScore,
+    pendingPasswordResetCount = 0,
+    pendingProposalsCount = 0,
     homeroomClasses = [],
     subjectClasses = [],
     performanceData,
@@ -102,6 +107,58 @@ export default function TeacherDashboardClient({ data }: { data: DashboardData }
           </div>
         )}
       </div>
+
+      {/* Urgent Action Banners: Pending Password Resets & Parent Proposals */}
+      {(pendingPasswordResetCount > 0 || pendingProposalsCount > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {pendingPasswordResetCount > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/70 rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                    {pendingPasswordResetCount} yêu cầu cấp lại mật khẩu (Lớp CN)
+                  </div>
+                  <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-0.5">
+                    Học sinh lớp chủ nhiệm đang chờ bạn xác nhận và cấp mật khẩu tạm.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/teacher/notifications?tab=password-resets"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 transition-colors"
+              >
+                Xử lý ngay <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          )}
+          {pendingProposalsCount > 0 && (
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/70 rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
+                  <BellRing className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-blue-900 dark:text-blue-200">
+                    {pendingProposalsCount} kiến nghị từ Phụ huynh chờ phản hồi
+                  </div>
+                  <p className="text-xs text-blue-700 dark:text-blue-300/80 mt-0.5">
+                    Xem và phản hồi đề xuất học tập từ phụ huynh lớp bạn phụ trách.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/teacher/notifications?tab=parents"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0 transition-colors"
+              >
+                Xem ngay <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Teaching Assignment Summary Card (GVCN & GVBM by Grade/Class) */}
       {(homeroomClasses.length > 0 || subjectClasses.length > 0) && (
