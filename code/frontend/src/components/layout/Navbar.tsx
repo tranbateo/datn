@@ -12,18 +12,24 @@ import { cookies } from "next/headers";
 import { decodeJwt } from "jose";
 import { logout } from "@/app/[locale]/(auth)/actions";
 
+function getValidSessionUser(token?: string): { role?: string } | null {
+  if (!token) return null;
+  try {
+    const decoded = decodeJwt(token) as { role?: string; exp?: number };
+    if (decoded.exp && decoded.exp * 1000 <= Date.now()) {
+      return null;
+    }
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
 export default async function Navbar() {
   const t = await getTranslations("Navigation");
   const cookieStore = await cookies();
   const token = cookieStore.get("auth-token")?.value;
-  let user: { role?: string } | null = null;
-  if (token) {
-    try {
-      user = decodeJwt(token) as { role?: string };
-    } catch {
-      user = null;
-    }
-  }
+  const user = getValidSessionUser(token);
 
   const getDashboardHref = (role?: string) => {
     const r = (role || "").toUpperCase();

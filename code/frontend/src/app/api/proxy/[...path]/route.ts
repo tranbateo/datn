@@ -73,11 +73,20 @@ async function proxyRequest(request: NextRequest, pathArray: string[]) {
 
     const responseHeaders = new Headers(response.headers);
     responseHeaders.delete('content-encoding');
+    responseHeaders.delete('content-length');
 
     // Preserve real-time SSE streaming without buffering entire body
     const respContentType = response.headers.get('content-type') || '';
     if (respContentType.includes('text/event-stream') && response.body) {
       return new NextResponse(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    }
+
+    if (response.status === 204 || response.status === 304) {
+      return new NextResponse(null, {
         status: response.status,
         statusText: response.statusText,
         headers: responseHeaders,

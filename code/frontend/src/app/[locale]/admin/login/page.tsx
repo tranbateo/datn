@@ -21,11 +21,36 @@ export default function AdminLoginPage() {
 
     const formData = new FormData(e.currentTarget);
 
+    const formatAuthError = (errCode: string) => {
+      const knownErrors = [
+        'EMAIL_EXISTS',
+        'EMAIL_SEND_FAILED',
+        'OTP_NOT_FOUND',
+        'OTP_EXPIRED',
+        'OTP_INVALID',
+        'UNAUTHORIZED_ADMIN_REGISTRATION',
+        'PENDING_APPROVAL',
+        'INVALID_CREDENTIALS',
+        'LOGIN_FAILED',
+        'NETWORK_ERROR',
+        'SIGNUP_FAILED',
+        'OTP_VERIFICATION_FAILED',
+        'NOT_ADMIN',
+        'SCHOOL_SUSPENDED',
+        'SCHOOL_LICENSE_EXPIRED',
+        'ACCOUNT_DISABLED',
+        'roleMismatch',
+      ];
+      return knownErrors.includes(errCode)
+        ? t(`Errors.${errCode}` as Parameters<typeof t>[0])
+        : errCode;
+    };
+
     if (requireOtp) {
       formData.append('email', otpEmail);
       const result = await verifyAdminLoginOtpAction(formData);
       if (result?.error) {
-        setErrorMsg(result.error);
+        setErrorMsg(formatAuthError(result.error));
         setIsLoading(false);
       }
       return;
@@ -41,8 +66,7 @@ export default function AdminLoginPage() {
     }
 
     if (result?.error) {
-      const knownErrors = ['EMAIL_EXISTS', 'EMAIL_SEND_FAILED', 'OTP_NOT_FOUND', 'OTP_EXPIRED', 'OTP_INVALID', 'UNAUTHORIZED_ADMIN_REGISTRATION', 'PENDING_APPROVAL', 'INVALID_CREDENTIALS', 'LOGIN_FAILED', 'NETWORK_ERROR', 'SIGNUP_FAILED', 'OTP_VERIFICATION_FAILED', 'NOT_ADMIN', 'roleMismatch'];
-      setErrorMsg(knownErrors.includes(result.error) ? t(`Errors.${result.error}` as Parameters<typeof t>[0]) : result.error);
+      setErrorMsg(formatAuthError(result.error));
       setIsLoading(false);
     }
   }

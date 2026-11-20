@@ -345,9 +345,28 @@ export class AuthService {
     }
 
     const userId = parts[0];
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        school: {
+          select: { isActive: true, licenseExpiresAt: true },
+        },
+      },
+    });
     if (!user || !user.refreshTokenHash) {
       throw new UnauthorizedException('INVALID_REFRESH_TOKEN');
+    }
+    if (!user.isActive) {
+      throw new UnauthorizedException('ACCOUNT_DISABLED');
+    }
+    if (user.school && !user.school.isActive) {
+      throw new UnauthorizedException('SCHOOL_SUSPENDED');
+    }
+    if (
+      user.school?.licenseExpiresAt &&
+      new Date() > user.school.licenseExpiresAt
+    ) {
+      throw new UnauthorizedException('SCHOOL_LICENSE_EXPIRED');
     }
 
     const sha256Hash = crypto

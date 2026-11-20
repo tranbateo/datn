@@ -28,10 +28,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // Enforce first-time password change policy (BR-AUTH-003)
     if (user.mustChangePassword) {
       const req = context?.switchToHttp()?.getRequest();
-      const url: string = req?.url || req?.originalUrl || '';
+      const rawUrl: string = req?.originalUrl || req?.url || '';
+      const pathname = rawUrl.split('?')[0].replace(/\/+$/, '');
+      const method = String(req?.method || 'GET').toUpperCase();
       const isAllowedRoute =
-        url.includes('/auth/first-time-change-password') ||
-        url.includes('/users/profile');
+        pathname.endsWith('/auth/first-time-change-password') ||
+        pathname.endsWith('/auth/logout') ||
+        (method === 'GET' && pathname.endsWith('/users/profile'));
 
       if (!isAllowedRoute) {
         throw new ForbiddenException({

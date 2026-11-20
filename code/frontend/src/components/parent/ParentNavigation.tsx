@@ -2,17 +2,18 @@
 import { notify } from "@/lib/toast";
 
 import { usePathname } from "next/navigation";
-import { Link } from "@/i18n/routing";
+import { Link, useRouter } from "@/i18n/routing";
 import { Home, Link as LinkIcon, MessageSquare, Settings, Bell, LogOut, Edit3, MessageSquareWarning, X, CheckCircle2, Users } from "lucide-react";
 import { useState, useEffect } from "react";
 import { ThemeToggle } from "../ThemeToggle";
 import { logout } from "@/app/[locale]/(auth)/actions";
 import { useTranslations } from "next-intl";
 import { fetchApi } from "@/lib/api-client";
-import { getFallbackAvatar } from "@/services/users.service";
+import { getFallbackAvatar, clearProfileCache } from "@/services/users.service";
 
 export function ParentNavigation() {
   const pathname = usePathname();
+  const router = useRouter();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -72,6 +73,36 @@ export function ParentNavigation() {
       await fetchApi('/notifications/read-all', { method: 'PATCH' });
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       setHasUnread(false);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleNotificationClick = async (n: any) => {
+    if (!n.isRead) {
+      setNotifications((prev) => {
+        const next = prev.map((item) =>
+          item.id === n.id ? { ...item, isRead: true } : item,
+        );
+        setHasUnread(next.some((item: any) => !item.isRead));
+        return next;
+      });
+      try {
+        await fetchApi(`/notifications/${n.id}/read`, { method: 'PATCH' });
+      } catch {
+        // ignore
+      }
+    }
+    if (/tin nhắn|kiến nghị|đề xuất|phản hồi/i.test(n.title || '')) {
+      setShowNotifications(false);
+      router.push('/parent/contact');
+    }
+  };
+
+  const handleClearClientCache = () => {
+    clearProfileCache();
+    try {
+      sessionStorage.clear();
     } catch {
       // ignore
     }
@@ -150,7 +181,11 @@ export function ParentNavigation() {
                 {tParent("editProfile")}
               </Link>
               <form action={logout}>
-                <button type="submit" className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
+                <button
+                  type="submit"
+                  onClick={handleClearClientCache}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
+                >
                   <LogOut className="w-4 h-4" />
                   {tParent("logout")}
                 </button>
@@ -190,8 +225,19 @@ export function ParentNavigation() {
                   <div className="px-4 py-6 text-center text-xs text-gray-500">Chưa có thông báo mới.</div>
                 ) : (
                   notifications.slice(0, 6).map((n: any) => (
-                    <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
+                    <div
+                      key={n.id}
+                      onClick={() => void handleNotificationClick(n)}
+                      className={`px-4 py-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${
+                        n.isRead
+                          ? "hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                          : "bg-blue-50/50 dark:bg-blue-950/25 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
+                        {!n.isRead && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5" />}
+                      </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{n.body || n.message}</p>
                       <p className="text-[10px] text-blue-500 mt-1">
                         {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}
@@ -257,7 +303,11 @@ export function ParentNavigation() {
             </div>
           </Link>
           <form action={logout} className="mt-2">
-            <button type="submit" className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 rounded-xl transition-colors">
+            <button
+              type="submit"
+              onClick={handleClearClientCache}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 rounded-xl transition-colors"
+            >
               <LogOut className="w-4 h-4" />
               {tParent("logout")}
             </button>
@@ -305,8 +355,19 @@ export function ParentNavigation() {
                   <div className="px-4 py-6 text-center text-xs text-gray-500">Chưa có thông báo mới.</div>
                 ) : (
                   notifications.slice(0, 8).map((n: any) => (
-                    <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">{n.title}</p>
+                    <div
+                      key={n.id}
+                      onClick={() => void handleNotificationClick(n)}
+                      className={`px-4 py-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${
+                        n.isRead
+                          ? "hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                          : "bg-blue-50/50 dark:bg-blue-950/25 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">{n.title}</p>
+                        {!n.isRead && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5" />}
+                      </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{n.body || n.message}</p>
                       <p className="text-[10px] font-medium text-blue-500 mt-1.5 uppercase tracking-wider">
                         {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}

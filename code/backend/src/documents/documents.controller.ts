@@ -36,9 +36,9 @@ export class DocumentsController {
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN, Role.STUDENT)
   async getDocumentsByCourse(
     @Param('courseId') courseId: string,
-    @Req() req: { user: { schoolId: string | null } },
+    @Req() req: { user: { id: string; role: Role; schoolId: string | null } },
   ) {
-    return this.documentsService.findByCourseId(courseId, req.user.schoolId);
+    return this.documentsService.findByCourseId(courseId, req.user);
   }
 
   @Get(':id/file')

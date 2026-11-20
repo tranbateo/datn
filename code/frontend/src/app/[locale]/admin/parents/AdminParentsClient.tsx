@@ -147,8 +147,13 @@ export default function AdminParentsClient({
 
   const handleDeleteUser = async (id: string) => {
     if (!confirm("Bạn có chắc chắn muốn xóa phụ huynh này?")) return;
-    await fetchApi(`/admin/users/${id}`, { method: "DELETE" });
-    setParents(parents.filter((s) => s.id !== id));
+    try {
+      await fetchApi(`/admin/users/${id}`, { method: "DELETE" });
+      setParents(parents.filter((s) => s.id !== id));
+      notify("Đã xóa tài khoản phụ huynh.");
+    } catch (err: any) {
+      notify(err?.message || "Không thể xóa tài khoản phụ huynh.");
+    }
   };
 
   const handleResetParentPassword = async (

@@ -1523,13 +1523,24 @@ export class AdminService {
     studentId: string,
     targetClassId: string,
   ) {
-    const targetClass = await this.prisma.class.findUnique({
-      where: { id: targetClassId },
-    });
+    const [targetClass, targetStudent] = await Promise.all([
+      this.prisma.class.findUnique({ where: { id: targetClassId } }),
+      this.prisma.user.findUnique({
+        where: { id: studentId },
+        select: { id: true, role: true, schoolId: true },
+      }),
+    ]);
     if (!targetClass) {
       throw new NotFoundException('Không tìm thấy lớp học đích.');
     }
-    if (schoolId && targetClass.schoolId !== schoolId) {
+    if (!targetStudent || targetStudent.role !== Role.STUDENT) {
+      throw new NotFoundException('Không tìm thấy tài khoản học sinh.');
+    }
+    if (
+      schoolId &&
+      (targetClass.schoolId !== schoolId ||
+        (targetStudent.schoolId && targetStudent.schoolId !== schoolId))
+    ) {
       throw new ForbiddenException('Không có quyền chuyển lớp khác trường.');
     }
 
@@ -1674,6 +1685,26 @@ export class AdminService {
         'Không có quyền xóa khóa học của trường khác.',
       );
     }
+
+    // BR-DOC-001: Clean up RAG chunks before deleting course
+    const courseDocs = await this.prisma.document.findMany({
+      where: { courseId },
+      select: { id: true },
+    });
+    for (const d of courseDocs) {
+      await this.prisma
+        .$executeRawUnsafe(
+          `DELETE FROM public.documents WHERE metadata->>'documentId' = $1`,
+          d.id,
+        )
+        .catch(() => undefined);
+    }
+    await this.prisma
+      .$executeRawUnsafe(
+        `DELETE FROM public.documents WHERE metadata->>'courseId' = $1`,
+        courseId,
+      )
+      .catch(() => undefined);
 
     await this.prisma.course.delete({ where: { id: courseId } });
 
@@ -1907,8 +1938,10 @@ export class AdminService {
           where: { id: dto.classId },
           include: { subjectTeachers: { select: { teacherId: true } } },
         });
-        if (cls?.homeroomTeacherId) idSet.add(cls.homeroomTeacherId);
-        cls?.subjectTeachers.forEach((st) => idSet.add(st.teacherId));
+        if (cls && (!schoolId || cls.schoolId === schoolId)) {
+          if (cls.homeroomTeacherId) idSet.add(cls.homeroomTeacherId);
+          cls.subjectTeachers.forEach((st) => idSet.add(st.teacherId));
+        }
       }
       recipientIds = Array.from(idSet);
     } else if (dto.grade) {

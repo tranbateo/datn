@@ -103,6 +103,19 @@ export function StudentNavigation() {
     }
   };
 
+  const handleMarkSingleRead = async (notifId: string) => {
+    setNotifications((prev) => {
+      const next = prev.map((n) => (n.id === notifId ? { ...n, isRead: true } : n));
+      setHasUnread(next.some((n: any) => !n.isRead));
+      return next;
+    });
+    try {
+      await fetchApi(`/notifications/${notifId}/read`, { method: 'PATCH' });
+    } catch {
+      // ignore
+    }
+  };
+
   const handleSubmitFeedback = async () => {
     if (!feedbackContent.trim()) return;
     setFeedbackStatus("submitting");
@@ -235,8 +248,19 @@ export function StudentNavigation() {
                   <div className="px-4 py-6 text-center text-xs text-gray-500">Chưa có thông báo mới.</div>
                 ) : (
                   notifications.slice(0, 6).map((n: any) => (
-                    <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
+                    <div
+                      key={n.id}
+                      onClick={() => { if (!n.isRead) void handleMarkSingleRead(n.id); }}
+                      className={`px-4 py-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${
+                        n.isRead
+                          ? "hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                          : "bg-blue-50/50 dark:bg-blue-950/25 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
+                        {!n.isRead && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5" />}
+                      </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{n.body || n.message}</p>
                       <p className="text-[10px] text-blue-500 mt-1">
                         {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}
@@ -376,8 +400,19 @@ export function StudentNavigation() {
                   <div className="px-4 py-6 text-center text-xs text-gray-500">Chưa có thông báo mới.</div>
                 ) : (
                   notifications.slice(0, 8).map((n: any) => (
-                    <div key={n.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">{n.title}</p>
+                    <div
+                      key={n.id}
+                      onClick={() => { if (!n.isRead) void handleMarkSingleRead(n.id); }}
+                      className={`px-4 py-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${
+                        n.isRead
+                          ? "hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                          : "bg-blue-50/50 dark:bg-blue-950/25 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">{n.title}</p>
+                        {!n.isRead && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5" />}
+                      </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{n.body || n.message}</p>
                       <p className="text-[10px] font-medium text-blue-500 mt-1.5 uppercase tracking-wider">
                         {n.createdAt ? new Date(n.createdAt).toLocaleString("vi-VN") : ""}

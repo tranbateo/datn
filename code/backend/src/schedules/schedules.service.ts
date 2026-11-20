@@ -36,13 +36,48 @@ export class SchedulesService {
     });
   }
 
+  private sanitizeEventPayload(data: any) {
+    const allowed: Record<string, any> = {};
+    if (typeof data?.title === 'string' && data.title.trim()) {
+      allowed.title = data.title.trim();
+    }
+    if (data?.description !== undefined) {
+      allowed.description =
+        typeof data.description === 'string' ? data.description.trim() : null;
+    }
+    if (typeof data?.type === 'string' && data.type.trim()) {
+      allowed.type = data.type.trim().toUpperCase();
+    }
+    if (typeof data?.color === 'string' && data.color.trim()) {
+      allowed.color = data.color.trim();
+    }
+    if (data?.startTime) {
+      allowed.startTime = new Date(data.startTime);
+    }
+    if (data?.endTime) {
+      allowed.endTime = new Date(data.endTime);
+    }
+    return allowed;
+  }
+
   async createSchedule(userId: string, data: any) {
-    const payload = { ...data, userId };
-    if (payload.startTime) payload.startTime = new Date(payload.startTime);
-    if (payload.endTime) payload.endTime = new Date(payload.endTime);
+    const clean = this.sanitizeEventPayload(data);
+    if (!clean.title || !clean.startTime || !clean.endTime) {
+      throw new BadRequestException(
+        'Vui lòng nhập tiêu đề, thời gian bắt đầu và thời gian kết thúc.',
+      );
+    }
 
     return this.prisma.calendarEvent.create({
-      data: payload,
+      data: {
+        title: clean.title,
+        description: clean.description ?? null,
+        type: clean.type || 'CLASS',
+        color: clean.color || 'bg-blue-500',
+        startTime: clean.startTime,
+        endTime: clean.endTime,
+        userId,
+      },
     });
   }
 
@@ -51,9 +86,7 @@ export class SchedulesService {
     if (!event || event.userId !== userId)
       throw new BadRequestException('Event not found or unauthorized');
 
-    const payload = { ...data };
-    if (payload.startTime) payload.startTime = new Date(payload.startTime);
-    if (payload.endTime) payload.endTime = new Date(payload.endTime);
+    const payload = this.sanitizeEventPayload(data);
 
     return this.prisma.calendarEvent.update({
       where: { id },

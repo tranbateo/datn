@@ -127,12 +127,14 @@ export class QuizService {
       };
     };
 
-    const isStudent = Boolean(user && user.role === Role.STUDENT);
-    // BR-QUIZ-001: Student is not allowed to see correctOption or explanation before submitting
+    const hideAnswers = Boolean(
+      user && (user.role === Role.STUDENT || user.role === Role.PARENT),
+    );
+    // BR-QUIZ-001: Student/Parent are not allowed to see correctOption or explanation before submitting
     return {
       ...quiz,
       questions: (quiz.questions || []).map((q: any) =>
-        mapQuestionMeta(q, isStudent),
+        mapQuestionMeta(q, hideAnswers),
       ),
     };
   }
@@ -213,17 +215,23 @@ export class QuizService {
     });
     if (!quiz) throw new NotFoundException('Không tìm thấy bài kiểm tra.');
 
-    if (user?.role === Role.STUDENT) {
+    if (user?.role === Role.STUDENT || user?.role === Role.PARENT) {
       if (quiz.status === 'DRAFT' || quiz.status === 'CLOSED') {
         throw new ForbiddenException(
           'Bài kiểm tra này hiện chưa mở hoặc đã đóng.',
         );
       }
-      if (user.schoolId && quiz.schoolId && quiz.schoolId !== user.schoolId) {
-        throw new ForbiddenException(
-          'Không có quyền truy cập bài kiểm tra của trường khác.',
-        );
-      }
+    }
+    if (
+      user &&
+      user.role !== Role.ADMIN &&
+      user.schoolId &&
+      quiz.schoolId &&
+      quiz.schoolId !== user.schoolId
+    ) {
+      throw new ForbiddenException(
+        'Không có quyền truy cập bài kiểm tra của trường khác.',
+      );
     }
 
     return this.sanitizeQuizForStudent(quiz, user);
@@ -418,6 +426,8 @@ export class QuizService {
       where: {
         quiz: {
           ...(subjectId ? { subjectId } : { grade }),
+          status: { in: ['PUBLISHED', 'ASSIGNED'] },
+          ...(schoolId ? { OR: [{ schoolId }, { schoolId: null }] } : {}),
         },
       },
       take: 80,
@@ -735,14 +745,101 @@ export class QuizService {
    * - Câu nào SAI thì chỉ rõ lỗi sai của học sinh (errorAnalysis) và hướng dẫn sửa lại (correction).
    */
   async submitQuiz(quizId: string, userId: string, dto: SubmitQuizDto) {
-    const quiz = await this.prisma.quiz.findUnique({
-      where: { id: quizId },
-      include: { questions: true, subject: true },
-    });
+    const [quiz, student] = await Promise.all([
+      this.prisma.quiz.findUnique({
+        where: { id: quizId },
+        include: { questions: true, subject: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          role: true,
+          schoolId: true,
+          grade: true,
+          classEnrollments: {
+            where: { status: 'ACTIVE' },
+            take: 1,
+            include: { class: { select: { grade: true } } },
+          },
+        },
+      }),
+    ]);
 
     if (!quiz) {
       throw new NotFoundException('Không tìm thấy bài kiểm tra.');
     }
+
+    // BR-QUIZ-001: Only PUBLISHED or ASSIGNED quizzes may be submitted
+    if (quiz.status === 'DRAFT' || quiz.status === 'CLOSED') {
+      throw new ForbiddenException(
+        'Bài kiểm tra này hiện chưa mở hoặc đã đóng nên không thể nộp bài.',
+      );
+    }
+
+    if (
+      student &&
+      student.role !== Role.ADMIN &&
+      student.schoolId &&
+      quiz.schoolId &&
+      student.schoolId !== quiz.schoolId
+    ) {
+      throw new ForbiddenException(
+        'Không có quyền nộp bài kiểm tra của trường học khác.',
+      );
+    }
+
+    if (student?.role === Role.STUDENT && quiz.grade) {
+      const studentGrade =
+        student.classEnrollments?.[0]?.class?.grade ?? student.grade;
+      if (typeof studentGrade === 'number' && studentGrade !== quiz.grade) {
+        throw new ForbiddenException(
+          `Bài kiểm tra này dành cho Khối ${quiz.grade}, không thuộc khối lớp hiện tại của bạn.`,
+        );
+      }
+    }
+
+    // Idempotency Check BEFORE grading (BR-QUIZ-002) + Ownership Check (BR-USER-001)
+    if (dto.attemptId) {
+      const existingAttempt = await this.prisma.quizAttempt.findUnique({
+        where: { id: dto.attemptId },
+      });
+      if (existingAttempt) {
+        if (
+          existingAttempt.userId !== userId ||
+          existingAttempt.quizId !== quizId
+        ) {
+          throw new ForbiddenException(
+            'Mã lượt làm bài không thuộc về tài khoản hoặc bài kiểm tra này.',
+          );
+        }
+        const storedResults = Array.isArray(existingAttempt.answers)
+          ? existingAttempt.answers
+          : [];
+        const storedCorrect = Math.round(
+          (existingAttempt.score / 100) * existingAttempt.totalQuestions,
+        );
+        return {
+          attemptId: existingAttempt.id,
+          quizId: quiz.id,
+          quizTitle: quiz.title,
+          score: storedCorrect,
+          normalizedScore: existingAttempt.score,
+          totalQuestions: existingAttempt.totalQuestions,
+          xpEarned: 0,
+          isPassed: existingAttempt.score >= 50,
+          isGraduation: quiz.isGraduation,
+          completedAt: existingAttempt.completedAt,
+          questionResults: storedResults,
+        };
+      }
+    }
+
+    // Check prior completion on this quiz to prevent infinite XP / level farming (BR-XP-001)
+    const priorAttemptCount = await this.prisma.quizAttempt.count({
+      where: { quizId, userId },
+    });
+    const isFirstSubmission = priorAttemptCount === 0;
 
     let rawCorrectCount = 0;
     const totalQuestions = quiz.questions.length;
@@ -813,28 +910,6 @@ export class QuizService {
       totalQuestions > 0 ? rawCorrectCount / totalQuestions : 0;
     const normalizedScore = Math.round(percentage * 100);
 
-    // Idempotency Check (BR-QUIZ-002)
-    if (dto.attemptId) {
-      const existingAttempt = await this.prisma.quizAttempt.findUnique({
-        where: { id: dto.attemptId },
-      });
-      if (existingAttempt) {
-        return {
-          attemptId: existingAttempt.id,
-          quizId: quiz.id,
-          quizTitle: quiz.title,
-          score: rawCorrectCount,
-          normalizedScore: existingAttempt.score,
-          totalQuestions: existingAttempt.totalQuestions,
-          xpEarned: 0,
-          isPassed: existingAttempt.score >= 50,
-          isGraduation: quiz.isGraduation,
-          completedAt: existingAttempt.completedAt,
-          questionResults,
-        };
-      }
-    }
-
     const attempt = await this.prisma.quizAttempt.create({
       data: {
         ...(dto.attemptId ? { id: dto.attemptId } : {}),
@@ -847,14 +922,14 @@ export class QuizService {
       },
     });
 
-    // Add XP for student (10 XP per correct answer)
-    const xpEarned = rawCorrectCount * 10;
+    // BR-XP-001: Award XP once per quiz completion to prevent XP farming on retakes
+    const xpEarned = isFirstSubmission ? rawCorrectCount * 10 : 0;
     if (xpEarned > 0) {
       await this.gamificationService.addXp(userId, xpEarned);
     }
 
-    // Logic 1: Level-up Exam (BR-LEVEL-001: only unlocks learning_level, does not change academic_grade)
-    if (quiz.isGraduation && percentage >= 0.5) {
+    // Logic 1: Level-up Exam (BR-LEVEL-001: only unlocks learning_level once per exam)
+    if (isFirstSubmission && quiz.isGraduation && percentage >= 0.5) {
       const profile = await this.prisma.gamificationProfile.findUnique({
         where: { userId },
       });
@@ -970,14 +1045,58 @@ export class QuizService {
     }
 
     const requesterId = user?.id || user?.userId;
-    if (
-      user?.role === Role.STUDENT &&
-      requesterId &&
-      attempt.userId !== requesterId
-    ) {
-      throw new ForbiddenException(
-        'Không có quyền xem bài làm của học sinh khác.',
-      );
+    if (user && user.role !== Role.ADMIN) {
+      if (user.role === Role.STUDENT) {
+        if (requesterId && attempt.userId !== requesterId) {
+          throw new ForbiddenException(
+            'Không có quyền xem bài làm của học sinh khác.',
+          );
+        }
+      } else if (user.role === Role.PARENT && requesterId) {
+        const link = await this.prisma.parentStudentLink.findUnique({
+          where: {
+            parentId_studentId: {
+              parentId: requesterId,
+              studentId: attempt.userId,
+            },
+          },
+          select: { id: true },
+        });
+        if (!link) {
+          throw new ForbiddenException(
+            'Bạn chỉ được xem bài làm của học sinh đã liên kết.',
+          );
+        }
+      } else if (user.role === Role.TEACHER && requesterId) {
+        const inClass = await this.prisma.classEnrollment.findFirst({
+          where: {
+            studentId: attempt.userId,
+            status: 'ACTIVE',
+            class: {
+              OR: [
+                { homeroomTeacherId: requesterId },
+                { subjectTeachers: { some: { teacherId: requesterId } } },
+              ],
+            },
+          },
+          select: { id: true },
+        });
+        if (!inClass) {
+          throw new ForbiddenException(
+            'Học sinh này không thuộc lớp bạn phụ trách.',
+          );
+        }
+      } else if (user.role === Role.SCHOOL_ADMIN && user.schoolId) {
+        const studentOwner = await this.prisma.user.findUnique({
+          where: { id: attempt.userId },
+          select: { schoolId: true },
+        });
+        if (studentOwner?.schoolId && studentOwner.schoolId !== user.schoolId) {
+          throw new ForbiddenException(
+            'Không có quyền xem bài làm của trường khác.',
+          );
+        }
+      }
     }
 
     let rawStoredAnswers: any[] = [];

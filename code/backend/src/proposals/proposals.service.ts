@@ -2,14 +2,16 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
+import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ProposalsService {
   constructor(private prisma: PrismaService) {}
 
-  // Create a new proposal
+  // Create a new proposal (verified against Parent-Student link & Teacher assignment)
   async createProposal(
     parentId: string,
     teacherId: string,
@@ -17,12 +19,84 @@ export class ProposalsService {
     content: string,
     studentId?: string,
   ) {
+    if (!title?.trim() || !content?.trim() || !teacherId) {
+      throw new BadRequestException(
+        'Vui lòng nhập đầy đủ tiêu đề, nội dung và giáo viên nhận kiến nghị.',
+      );
+    }
+
+    const [parent, teacher, links] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: parentId },
+        select: { id: true, schoolId: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: teacherId },
+        select: { id: true, role: true, schoolId: true },
+      }),
+      this.prisma.parentStudentLink.findMany({
+        where: { parentId },
+        select: { studentId: true },
+      }),
+    ]);
+
+    if (!teacher || teacher.role !== Role.TEACHER) {
+      throw new NotFoundException('Không tìm thấy tài khoản giáo viên.');
+    }
+    if (
+      parent?.schoolId &&
+      teacher.schoolId &&
+      parent.schoolId !== teacher.schoolId
+    ) {
+      throw new ForbiddenException(
+        'Không thể gửi kiến nghị tới giáo viên thuộc trường học khác.',
+      );
+    }
+
+    const linkedStudentIds = links.map((l) => l.studentId);
+    if (studentId && !linkedStudentIds.includes(studentId)) {
+      throw new ForbiddenException(
+        'Bạn không có quyền gửi kiến nghị cho học sinh chưa liên kết.',
+      );
+    }
+
+    const checkStudentIds = studentId ? [studentId] : linkedStudentIds;
+    if (checkStudentIds.length > 0) {
+      const [classMatch, courseMatch] = await Promise.all([
+        this.prisma.classEnrollment.findFirst({
+          where: {
+            studentId: { in: checkStudentIds },
+            status: 'ACTIVE',
+            class: {
+              OR: [
+                { homeroomTeacherId: teacherId },
+                { subjectTeachers: { some: { teacherId } } },
+              ],
+            },
+          },
+          select: { id: true },
+        }),
+        this.prisma.enrollment.findFirst({
+          where: {
+            userId: { in: checkStudentIds },
+            course: { teacherId },
+          },
+          select: { id: true },
+        }),
+      ]);
+      if (!classMatch && !courseMatch) {
+        throw new ForbiddenException(
+          'Giáo viên này hiện không giảng dạy con của bạn.',
+        );
+      }
+    }
+
     const proposal = await this.prisma.proposal.create({
       data: {
         parentId,
         teacherId,
-        title,
-        content,
+        title: title.trim(),
+        content: content.trim(),
         studentId: studentId || undefined,
       },
       include: {
@@ -93,9 +167,17 @@ export class ProposalsService {
     if (proposal.teacherId !== teacherId)
       throw new ForbiddenException('Not authorized');
 
+    const allowedStatuses = ['PENDING', 'APPROVED', 'REJECTED'];
+    const normalizedStatus = String(status || '').toUpperCase();
+    if (!allowedStatuses.includes(normalizedStatus)) {
+      throw new BadRequestException(
+        'Trạng thái kiến nghị không hợp lệ (PENDING, APPROVED hoặc REJECTED).',
+      );
+    }
+
     const updated = await this.prisma.proposal.update({
       where: { id: proposalId },
-      data: { status },
+      data: { status: normalizedStatus },
       include: {
         teacher: { select: { fullName: true } },
       },

@@ -23,7 +23,20 @@ export default function AdminAuditLogsPage() {
   };
 
   useEffect(() => {
-    fetchLogs();
+    let active = true;
+    fetchApi<any[]>("/admin/audit-logs")
+      .then((res) => {
+        if (active) setLogs(Array.isArray(res) ? res : []);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch audit logs:", error);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const uniqueActions = Array.from(new Set(logs.map((l) => l.action).filter(Boolean)));

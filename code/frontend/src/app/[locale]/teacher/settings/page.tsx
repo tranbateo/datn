@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Save, Loader2, User, ShieldCheck, Upload, RotateCcw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { processAvatarFile, getFallbackAvatar } from '@/services/users.service';
+import { processAvatarFile, getFallbackAvatar, clearProfileCache } from '@/services/users.service';
 
 export default function TeacherSettingsPage() {
   const [name, setName] = useState('');
@@ -57,18 +57,22 @@ export default function TeacherSettingsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password.trim() && password.trim().length < 6) {
+      notify("Mật khẩu mới phải có ít nhất 6 ký tự.");
+      return;
+    }
     setSaving(true);
     setSuccess(false);
 
     try {
       const { fetchApi } = await import('@/lib/api-client');
       const payload: Record<string, string> = {
-        fullName: name,
+        fullName: name.trim(),
         avatarUrl: avatarUrl,
       };
 
-      if (password) {
-        payload.password = password;
+      if (password.trim()) {
+        payload.password = password.trim();
       }
 
       await fetchApi('/users/profile', {
@@ -76,6 +80,7 @@ export default function TeacherSettingsPage() {
         body: JSON.stringify(payload),
       });
 
+      clearProfileCache();
       setSuccess(true);
       notify("Đã cập nhật hồ sơ thành công!");
       if (password) setPassword('');

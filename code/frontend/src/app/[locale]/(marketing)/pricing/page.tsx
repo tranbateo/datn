@@ -36,7 +36,7 @@ const plans = [
 ];
 
 export default function PricingPage() {
-  const contactEmail = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "contact@example.com";
+  const contactEmail = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "contact@aitutor.edu.vn";
 
   return (
     <div className="w-full bg-white dark:bg-slate-950 py-16">

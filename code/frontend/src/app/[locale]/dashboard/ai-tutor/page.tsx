@@ -514,20 +514,33 @@ function AITutorContent() {
 
       let done = false;
       let aiText = "";
+      let sseBuffer = "";
 
       while (!done) {
         const { value, done: readerDone } = await reader.read();
         done = readerDone;
 
         if (value) {
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split("\n");
+          sseBuffer = lines.pop() ?? "";
 
-          for (const line of lines) {
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
             if (line.startsWith("data: ") && line !== "data: [DONE]") {
               try {
                 const data = JSON.parse(line.slice(6));
-                if (data.content) {
+                if (data.error) {
+                  aiText =
+                    typeof data.error === "string"
+                      ? data.error
+                      : "Xin lỗi, Gia sư AI gặp sự cố khi xử lý yêu cầu.";
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMsgId ? { ...msg, content: aiText } : msg,
+                    ),
+                  );
+                } else if (data.content) {
                   aiText += data.content;
                   setMessages((prev) =>
                     prev.map((msg) =>
@@ -544,7 +557,7 @@ function AITutorContent() {
                   );
                 }
               } catch {
-                // Ignore parse errors for partial chunks
+                // Ignore malformed JSON chunk
               }
             }
           }

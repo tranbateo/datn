@@ -821,13 +821,36 @@ export class SchoolsImportService {
   /**
    * Xuất danh sách tài khoản đã cấp phát theo Lớp để GVCN bàn giao
    */
-  async exportCredentials(schoolId: string, classId?: string): Promise<Buffer> {
+  async exportCredentials(
+    schoolId: string,
+    classId?: string,
+    requester?: { id: string; role: Role },
+  ): Promise<Buffer> {
     const wb = XLSX.utils.book_new();
 
     const whereEnrollment: any = {
+      status: 'ACTIVE',
       class: { schoolId },
     };
-    if (classId) {
+
+    if (requester?.role === Role.TEACHER) {
+      const homeroomClasses = await this.prisma.class.findMany({
+        where: { schoolId, homeroomTeacherId: requester.id },
+        select: { id: true },
+      });
+      const allowedIds = homeroomClasses.map((c) => c.id);
+      if (allowedIds.length === 0) {
+        throw new BadRequestException(
+          'Chỉ Giáo viên chủ nhiệm mới có quyền xuất danh sách tài khoản lớp mình chủ nhiệm.',
+        );
+      }
+      if (classId && !allowedIds.includes(classId)) {
+        throw new BadRequestException(
+          'Bạn chỉ được xuất danh sách tài khoản của lớp mình chủ nhiệm.',
+        );
+      }
+      whereEnrollment.classId = classId ? classId : { in: allowedIds };
+    } else if (classId) {
       whereEnrollment.classId = classId;
     }
 
@@ -891,50 +914,52 @@ export class SchoolsImportService {
     const ws = XLSX.utils.aoa_to_sheet(exportRows);
     XLSX.utils.book_append_sheet(wb, ws, 'HS_Va_PhuHuynh');
 
-    // Sheet 2: Tài khoản Giáo viên
-    const teachers = await this.prisma.user.findMany({
-      where: { schoolId, role: Role.TEACHER },
-      include: {
-        homeroomClasses: true,
-        subjectClasses: { include: { class: true, subject: true } },
-      },
-      orderBy: { fullName: 'asc' },
-    });
+    // Sheet 2: Tài khoản Giáo viên (chỉ dành cho Admin / School Admin)
+    if (requester?.role !== Role.TEACHER) {
+      const teachers = await this.prisma.user.findMany({
+        where: { schoolId, role: Role.TEACHER },
+        include: {
+          homeroomClasses: true,
+          subjectClasses: { include: { class: true, subject: true } },
+        },
+        orderBy: { fullName: 'asc' },
+      });
 
-    const teacherRows = [
-      [
-        'STT',
-        'Mã GV',
-        'Họ và Tên',
-        'Email Đăng Nhập',
-        'Số Điện Thoại',
-        'Lớp Chủ Nhiệm',
-        'Lớp - Môn Giảng Dạy',
-        'Mật Khẩu Mặc Định',
-        'Trạng Thái Đổi Mật Khẩu',
-      ],
-    ];
+      const teacherRows = [
+        [
+          'STT',
+          'Mã GV',
+          'Họ và Tên',
+          'Email Đăng Nhập',
+          'Số Điện Thoại',
+          'Lớp Chủ Nhiệm',
+          'Lớp - Môn Giảng Dạy',
+          'Mật Khẩu Mặc Định',
+          'Trạng Thái Đổi Mật Khẩu',
+        ],
+      ];
 
-    teachers.forEach((t, index) => {
-      const homeroomNames = t.homeroomClasses.map((c) => c.name).join(', ');
-      const subjectAssignments = t.subjectClasses
-        .map((sc) => `${sc.subject.name} (${sc.class.name})`)
-        .join(', ');
-      teacherRows.push([
-        String(index + 1),
-        t.studentCode || '',
-        t.fullName || '',
-        t.email || '',
-        t.phone || '',
-        homeroomNames || 'Không',
-        subjectAssignments || 'Chưa phân công',
-        'Teacher@123',
-        t.mustChangePassword ? 'Chưa đổi (Bắt buộc đổi)' : 'Đã đổi',
-      ]);
-    });
+      teachers.forEach((t, index) => {
+        const homeroomNames = t.homeroomClasses.map((c) => c.name).join(', ');
+        const subjectAssignments = t.subjectClasses
+          .map((sc) => `${sc.subject.name} (${sc.class.name})`)
+          .join(', ');
+        teacherRows.push([
+          String(index + 1),
+          t.studentCode || '',
+          t.fullName || '',
+          t.email || '',
+          t.phone || '',
+          homeroomNames || 'Không',
+          subjectAssignments || 'Chưa phân công',
+          'Teacher@123',
+          t.mustChangePassword ? 'Chưa đổi (Bắt buộc đổi)' : 'Đã đổi',
+        ]);
+      });
 
-    const wsTeachers = XLSX.utils.aoa_to_sheet(teacherRows);
-    XLSX.utils.book_append_sheet(wb, wsTeachers, 'Giao_Vien');
+      const wsTeachers = XLSX.utils.aoa_to_sheet(teacherRows);
+      XLSX.utils.book_append_sheet(wb, wsTeachers, 'Giao_Vien');
+    }
 
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   }

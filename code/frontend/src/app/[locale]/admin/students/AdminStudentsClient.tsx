@@ -137,8 +137,13 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
 
   const handleDeleteUser = async (id: string) => {
     if (!confirm('Bạn có chắc chắn muốn xóa học viên này?')) return;
-    await fetchApi(`/admin/users/${id}`, { method: 'DELETE' });
-    setStudents(students.filter(s => s.id !== id));
+    try {
+      await fetchApi(`/admin/users/${id}`, { method: 'DELETE' });
+      setStudents(students.filter(s => s.id !== id));
+      notify('Đã xóa tài khoản học sinh.');
+    } catch (err: any) {
+      notify(err?.message || 'Không thể xóa tài khoản học sinh.');
+    }
   };
 
   const handleOpenTransfer = (student: Student) => {

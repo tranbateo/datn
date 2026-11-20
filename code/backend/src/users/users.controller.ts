@@ -153,10 +153,14 @@ export class UsersController {
       id,
       adminUpdateUserDto,
       req.user.role,
+      req.user.schoolId,
     );
     await this.auditLogService.logAction(adminId, 'UPDATE_USER', 'User', {
       targetUserId: id,
-      changes: adminUpdateUserDto,
+      changes: {
+        role: adminUpdateUserDto.role,
+        isActive: adminUpdateUserDto.isActive,
+      },
     });
     return user;
   }
@@ -166,10 +170,14 @@ export class UsersController {
   @Roles(Role.ADMIN, Role.SCHOOL_ADMIN)
   async remove(@Request() req: any, @Param('id') id: string) {
     const adminId = req.user.id || req.user.userId;
-    const user = await this.usersService.remove(id);
+    const result = await this.usersService.remove(
+      id,
+      req.user.role,
+      req.user.schoolId,
+    );
     await this.auditLogService.logAction(adminId, 'DELETE_USER', 'User', {
       targetUserId: id,
     });
-    return user;
+    return result;
   }
 }

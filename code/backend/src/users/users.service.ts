@@ -160,6 +160,36 @@ export class UsersService {
           'Không có quyền truy cập hồ sơ người dùng khác.',
         );
       }
+
+      if (requester.role === Role.TEACHER) {
+        if (user.role !== Role.STUDENT) {
+          throw new ForbiddenException(
+            'Giáo viên chỉ được xem hồ sơ học sinh thuộc lớp mình phụ trách.',
+          );
+        }
+        const [homeroomClasses, subjectClasses] = await Promise.all([
+          this.prisma.class.findMany({
+            where: { homeroomTeacherId: requester.id },
+            select: { id: true },
+          }),
+          this.prisma.classSubjectTeacher.findMany({
+            where: { teacherId: requester.id },
+            select: { classId: true },
+          }),
+        ]);
+        const allowedClassIds = new Set([
+          ...homeroomClasses.map((c) => c.id),
+          ...subjectClasses.map((s) => s.classId),
+        ]);
+        const inTeacherClass = user.classEnrollments.some((ce) =>
+          allowedClassIds.has(ce.class.id),
+        );
+        if (!inTeacherClass) {
+          throw new ForbiddenException(
+            'Bạn không phụ trách lớp của học sinh này.',
+          );
+        }
+      }
     }
 
     delete (user as any).passwordHash;
@@ -171,7 +201,32 @@ export class UsersService {
     id: string,
     dto: UpdateUserDto | AdminUpdateUserDto,
     requesterRole?: Role,
+    requesterSchoolId?: string | null,
   ) {
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, schoolId: true },
+    });
+    if (!target) {
+      throw new NotFoundException('Không tìm thấy người dùng.');
+    }
+
+    if (requesterRole === Role.SCHOOL_ADMIN) {
+      if (requesterSchoolId && target.schoolId !== requesterSchoolId) {
+        throw new ForbiddenException(
+          'Không có quyền chỉnh sửa tài khoản thuộc trường khác.',
+        );
+      }
+      if (
+        target.role === Role.ADMIN ||
+        ('role' in dto && dto.role === Role.ADMIN)
+      ) {
+        throw new ForbiddenException(
+          'Quản trị trường không có quyền thao tác hoặc cấp vai trò Quản trị hệ thống.',
+        );
+      }
+    }
+
     const data: any = { ...dto };
 
     // BR-LEVEL-001: Student cannot self-change official academic grade
@@ -184,7 +239,12 @@ export class UsersService {
         this.configService.get<string>('PASSWORD_PEPPER') || 'DEFAULT_PEPPER';
       data.passwordHash = await bcrypt.hash(data.password + pepper, 10);
       data.mustChangePassword = false;
+      data.refreshTokenHash = null; // BR-AUTH-001: Revoke active sessions on password change
       delete data.password;
+    }
+
+    if ('isActive' in data && data.isActive === false) {
+      data.refreshTokenHash = null;
     }
 
     const updatedUser = await this.prisma.user.update({
@@ -196,9 +256,38 @@ export class UsersService {
     return updatedUser;
   }
 
-  async remove(id: string) {
-    return this.prisma.user.delete({
+  async remove(
+    id: string,
+    requesterRole?: Role,
+    requesterSchoolId?: string | null,
+  ) {
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, schoolId: true, fullName: true },
+    });
+    if (!target) {
+      throw new NotFoundException('Không tìm thấy người dùng.');
+    }
+    if (requesterRole === Role.SCHOOL_ADMIN) {
+      if (requesterSchoolId && target.schoolId !== requesterSchoolId) {
+        throw new ForbiddenException(
+          'Không có quyền xóa tài khoản thuộc trường khác.',
+        );
+      }
+      if (target.role === Role.ADMIN) {
+        throw new ForbiddenException(
+          'Không có quyền xóa tài khoản Quản trị hệ thống.',
+        );
+      }
+    }
+
+    await this.prisma.user.delete({
       where: { id },
     });
+    return {
+      success: true,
+      id: target.id,
+      fullName: target.fullName,
+    };
   }
 }

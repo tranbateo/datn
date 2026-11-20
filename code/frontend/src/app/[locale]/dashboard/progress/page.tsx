@@ -687,6 +687,7 @@ export default function ProgressPage() {
                           alt={entry.user.fullName}
                           width={40}
                           height={40}
+                          unoptimized
                           className="w-full h-full object-cover"
                         />
                       ) : (

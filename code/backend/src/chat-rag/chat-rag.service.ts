@@ -808,7 +808,7 @@ export class ChatRagService {
               b.score !== a.score
                 ? b.score - a.score
                 : Number(b.isTeacherUpload) - Number(a.isTeacherUpload) ||
-                  a.pageNum - b.pageNum,
+                a.pageNum - b.pageNum,
             );
 
           const matchedUploadedOrSgkChunks = scoredChunks
@@ -942,6 +942,33 @@ export class ChatRagService {
         where: { id: data.subjectId },
         select: { id: true, name: true, grade: true },
       });
+
+      if (resolvedSubject) {
+        const userRec = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            role: true,
+            grade: true,
+            classEnrollments: {
+              where: { status: 'ACTIVE' },
+              take: 1,
+              include: { class: { select: { grade: true } } },
+            },
+          },
+        });
+        if (userRec?.role === 'STUDENT') {
+          const studentGrade =
+            userRec.classEnrollments?.[0]?.class?.grade ?? userRec.grade;
+          if (
+            typeof studentGrade === 'number' &&
+            resolvedSubject.grade !== studentGrade
+          ) {
+            throw new ForbiddenException(
+              `Bạn thuộc Khối ${studentGrade}, không thể mở phiên học môn Khối ${resolvedSubject.grade}.`,
+            );
+          }
+        }
+      }
     }
 
     const sessionTitle =

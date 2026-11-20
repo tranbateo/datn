@@ -141,8 +141,13 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
 
   const handleDeleteUser = async (id: string) => {
     if (!confirm("Bạn có chắc chắn muốn xóa giáo viên này?")) return;
-    await fetchApi(`/admin/users/${id}`, { method: "DELETE" });
-    setTeachers(teachers.filter((s) => s.id !== id));
+    try {
+      await fetchApi(`/admin/users/${id}`, { method: "DELETE" });
+      setTeachers(teachers.filter((s) => s.id !== id));
+      notify("Đã xóa tài khoản giáo viên.");
+    } catch (err: any) {
+      notify(err?.message || "Không thể xóa tài khoản giáo viên.");
+    }
   };
 
   const handleExport = () => {

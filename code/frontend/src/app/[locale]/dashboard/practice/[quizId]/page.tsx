@@ -180,6 +180,11 @@ export default function TakeQuizPage() {
           xp: res.xpEarned,
           questionResults: resultMap,
         });
+        try {
+          sessionStorage.removeItem("eduai_dashboard_snapshot_v1");
+        } catch {
+          // ignore
+        }
       } catch (err) {
         console.error(err);
         hasSubmittedRef.current = false;
@@ -191,13 +196,9 @@ export default function TakeQuizPage() {
     [],
   );
 
-  // Đồng hồ đếm ngược: khi về 0 tự động thu bài và cho kết quả ngay
+  // Đồng hồ đếm ngược ổn định (chỉ tạo 1 interval thay vì tái tạo mỗi giây)
   useEffect(() => {
     if (loading || result || reviewAttemptId) return;
-    if (timeLeft <= 0) {
-      void executeFinalizeExam("TIME_EXPIRED");
-      return;
-    }
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -208,7 +209,13 @@ export default function TakeQuizPage() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [timeLeft, result, loading, reviewAttemptId, executeFinalizeExam]);
+  }, [result, loading, reviewAttemptId]);
+
+  useEffect(() => {
+    if (!loading && !result && !reviewAttemptId && timeLeft === 0) {
+      void executeFinalizeExam("TIME_EXPIRED");
+    }
+  }, [timeLeft, loading, result, reviewAttemptId, executeFinalizeExam]);
 
   // Chế độ phòng thi nghiêm ngặt: Chặn thoát trang (nút Back trình duyệt, chuyển tab, đóng trang)
   // Nếu học sinh thoát ra sẽ kết thúc luôn bài thi và chấm điểm trả kết quả ngay lập tức!

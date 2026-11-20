@@ -13,13 +13,20 @@ interface CreateCourseModalProps {
 export default function CreateCourseModal({ isOpen, onClose, onSuccess }: CreateCourseModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [grade, setGrade] = useState(10);
+  const [grade, setGrade] = useState(6);
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
 
+  const resetAndClose = () => {
+    setTitle('');
+    setDescription('');
+    setGrade(6);
+    onClose();
+  };
+
   const handleCreate = async () => {
-    if (!title) {
+    if (!title.trim()) {
       notify('Vui lòng nhập tên khóa học!');
       return;
     }
@@ -28,17 +35,17 @@ export default function CreateCourseModal({ isOpen, onClose, onSuccess }: Create
       await fetchApi(API_ENDPOINTS.COURSES.LIST, {
         method: 'POST',
         body: JSON.stringify({
-          title,
-          description,
-          grade: Number(grade)
+          title: title.trim(),
+          description: description.trim(),
+          grade: Number(grade),
         }),
       });
       notify('Tạo khóa học thành công!');
       onSuccess();
-      onClose();
-    } catch (err) {
+      resetAndClose();
+    } catch (err: any) {
       console.error(err);
-      notify('Có lỗi xảy ra khi tạo khóa học.');
+      notify(err?.message || 'Có lỗi xảy ra khi tạo khóa học.');
     } finally {
       setLoading(false);
     }
@@ -49,7 +56,7 @@ export default function CreateCourseModal({ isOpen, onClose, onSuccess }: Create
       <div className="bg-white dark:bg-card-bg rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
         <div className="p-6 border-b border-gray-100 dark:border-card-border flex justify-between items-center bg-gray-50 dark:bg-gray-800">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Tạo Khóa Học Mới</h2>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+          <button onClick={resetAndClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -90,7 +97,7 @@ export default function CreateCourseModal({ isOpen, onClose, onSuccess }: Create
 
         <div className="p-6 border-t border-gray-100 dark:border-card-border flex justify-end gap-3 bg-gray-50 dark:bg-card-bg">
           <button
-            onClick={onClose}
+            onClick={resetAndClose}
             className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors"
           >
             Hủy

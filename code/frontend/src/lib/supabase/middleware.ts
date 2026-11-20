@@ -10,9 +10,14 @@ export async function updateSession(request: NextRequest, response: NextResponse
 
   if (token) {
     try {
-      user = decodeJwt(token);
-      userRole = (user.role as string)?.toLowerCase() || 'student';
-      mustChangePassword = Boolean(user.mustChangePassword);
+      const decoded = decodeJwt(token);
+      const isExpired =
+        typeof decoded.exp === 'number' && decoded.exp * 1000 <= Date.now();
+      if (!isExpired) {
+        user = decoded;
+        userRole = (decoded.role as string)?.toLowerCase() || 'student';
+        mustChangePassword = Boolean(decoded.mustChangePassword);
+      }
     } catch {
       // Invalid token
     }

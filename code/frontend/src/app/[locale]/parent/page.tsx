@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/routing';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export default function ParentDashboardPage() {
@@ -92,11 +93,17 @@ export default function ParentDashboardPage() {
 
   if (!data?.students?.length) {
     return (
-      <div className="text-center p-12 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 max-w-xl mx-auto">
-        <h2 className="text-xl font-bold mb-3 text-slate-800 dark:text-white">{t("noLinkedAccount")}</h2>
+      <div className="text-center p-12 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 max-w-xl mx-auto space-y-4">
+        <h2 className="text-xl font-bold text-slate-800 dark:text-white">{t("noLinkedAccount")}</h2>
         <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
-          Tài khoản Phụ huynh được Nhà trường liên kết tự động theo danh sách lớp học. Nếu Quý phụ huynh chưa thấy thông tin của con, vui lòng liên hệ Giáo viên chủ nhiệm hoặc Quản trị viên nhà trường để được cập nhật.
+          Tài khoản Phụ huynh được Nhà trường liên kết tự động theo danh sách lớp học, hoặc Quý phụ huynh có thể nhập mã xác nhận 6 số từ tài khoản của con để liên kết ngay.
         </p>
+        <Link
+          href="/parent/link"
+          className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
+        >
+          Liên kết tài khoản con bằng mã 6 số →
+        </Link>
       </div>
     );
   }

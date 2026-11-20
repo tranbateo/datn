@@ -317,6 +317,7 @@ export default function ParentContactPage() {
                           src={teacher.avatarUrl}
                           alt={teacher.fullName}
                           fill
+                          unoptimized
                           className="object-cover"
                           sizes="40px"
                         />
@@ -393,7 +394,7 @@ export default function ParentContactPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-gray-50 dark:bg-slate-900">
-                  {messages.length === 0 ? (
+                  {!activeTeacherId || messages.length === 0 ? (
                     <div className="m-auto text-center space-y-1 text-gray-400">
                       <p className="text-sm">{t('noMessages')}</p>
                       {effectiveSelectedTeacher && (

@@ -87,6 +87,13 @@ export default function AiQuizBuilderModal({
     }
   };
 
+  const resetAndClose = () => {
+    setPreviewData(null);
+    setTitle("");
+    setTopic("");
+    onClose();
+  };
+
   const handleSave = async () => {
     if (previewData) {
       setSaving(true);
@@ -104,7 +111,7 @@ export default function AiQuizBuilderModal({
           }),
         });
         onSuccess(previewData);
-        onClose();
+        resetAndClose();
       } catch (err) {
         console.error(err);
         notify("Lưu quiz thất bại. Vui lòng thử lại.");
@@ -132,7 +139,7 @@ export default function AiQuizBuilderModal({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={resetAndClose}
             className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <X className="w-5 h-5" />
@@ -166,11 +173,19 @@ export default function AiQuizBuilderModal({
                       className="w-full px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">-- Chọn khóa học / lớp --</option>
-                      {courses.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.title} {c.grade ? `(Khối ${c.grade})` : ""}
-                        </option>
-                      ))}
+                      {courses.map((c) => {
+                        const gradeStr = c.grade ? String(c.grade).trim() : "";
+                        const gradeLabel = gradeStr
+                          ? /^khối/i.test(gradeStr) || /mọi/i.test(gradeStr)
+                            ? `(${gradeStr})`
+                            : `(Khối ${gradeStr})`
+                          : "";
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {c.title} {gradeLabel}
+                          </option>
+                        );
+                      })}
                     </select>
                   ) : (
                     <input
@@ -306,40 +321,53 @@ export default function AiQuizBuilderModal({
           )}
         </div>
 
-        <div className="p-6 border-t border-gray-100 dark:border-card-border flex justify-end gap-3 bg-gray-50 dark:bg-card-bg">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors"
-          >
-            Hủy
-          </button>
-          {!previewData ? (
+        <div className="p-6 border-t border-gray-100 dark:border-card-border flex justify-between items-center gap-3 bg-gray-50 dark:bg-card-bg">
+          <div>
+            {previewData && (
+              <button
+                type="button"
+                onClick={() => setPreviewData(null)}
+                className="px-4 py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
+              >
+                ← Quay lại tạo đề khác
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
             <button
-              onClick={handleGenerate}
-              disabled={loading}
-              className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl transition-all shadow-md shadow-blue-500/20 disabled:opacity-50"
+              onClick={resetAndClose}
+              className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors"
             >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4" />
-              )}
-              {loading ? "Đang tạo đề..." : `Tạo ${numQuestions} câu hỏi bằng AI`}
+              Hủy
             </button>
-          ) : (
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-xl transition-colors shadow-md shadow-green-500/20 disabled:opacity-50"
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              {saving ? "Đang lưu..." : "Lưu bản nháp (DRAFT)"}
-            </button>
-          )}
+            {!previewData ? (
+              <button
+                onClick={handleGenerate}
+                disabled={loading}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl transition-all shadow-md shadow-blue-500/20 disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                {loading ? "Đang tạo đề..." : `Tạo ${numQuestions} câu hỏi bằng AI`}
+              </button>
+            ) : (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-xl transition-colors shadow-md shadow-green-500/20 disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                {saving ? "Đang lưu..." : "Lưu bản nháp (DRAFT)"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -2,7 +2,10 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
+import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -28,7 +31,7 @@ export class ParentsService {
       };
     }
 
-    const linkCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const linkCode = crypto.randomInt(100000, 1000000).toString();
     const linkExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes
 
     await this.prisma.user.update({
@@ -45,15 +48,32 @@ export class ParentsService {
       throw new BadRequestException('Vui lòng nhập mã liên kết.');
     }
 
-    const student = await this.prisma.user.findUnique({
-      where: { linkCode: linkCode.trim() },
-    });
+    const [parent, student] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: parentId },
+        select: { id: true, schoolId: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { linkCode: linkCode.trim() },
+      }),
+    ]);
 
     if (
       !student ||
+      student.role !== Role.STUDENT ||
       (student.linkExpiresAt && new Date() > student.linkExpiresAt)
     ) {
       throw new NotFoundException('Mã liên kết không hợp lệ hoặc đã hết hạn.');
+    }
+
+    if (
+      parent?.schoolId &&
+      student.schoolId &&
+      parent.schoolId !== student.schoolId
+    ) {
+      throw new ForbiddenException(
+        'Không thể liên kết học sinh thuộc trường học khác.',
+      );
     }
 
     const existing = await this.prisma.parentStudentLink.findUnique({

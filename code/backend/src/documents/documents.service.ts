@@ -478,24 +478,62 @@ export class DocumentsService {
     });
   }
 
-  async findByCourseId(courseId: string, schoolId?: string | null) {
+  async findByCourseId(courseId: string, user: DocumentUserContext) {
     const course = await this.prisma.course.findUnique({
       where: { id: courseId },
-      select: { id: true, schoolId: true },
+      select: { id: true, schoolId: true, grade: true },
     });
-    if (course && schoolId && course.schoolId && course.schoolId !== schoolId) {
+    if (!course) {
+      throw new NotFoundException('Không tìm thấy khóa học.');
+    }
+    if (
+      user.role !== Role.ADMIN &&
+      user.schoolId &&
+      course.schoolId &&
+      course.schoolId !== user.schoolId
+    ) {
       throw new ForbiddenException(
         'Không có quyền xem tài liệu của trường khác.',
       );
     }
+
+    if (user.role === Role.STUDENT && typeof course.grade === 'number') {
+      const [studentProfile, activeEnrollment] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: user.id },
+          select: { grade: true },
+        }),
+        this.prisma.classEnrollment.findFirst({
+          where: { studentId: user.id, status: 'ACTIVE' },
+          include: { class: { select: { grade: true } } },
+        }),
+      ]);
+      const studentGrade =
+        activeEnrollment?.class?.grade ?? studentProfile?.grade ?? null;
+      if (typeof studentGrade === 'number' && studentGrade !== course.grade) {
+        throw new ForbiddenException(
+          `Tài liệu này thuộc Khối ${course.grade}, không thuộc khối lớp hiện tại của bạn.`,
+        );
+      }
+    }
+
     const docs = await this.prisma.document.findMany({
-      where: { courseId },
+      where: {
+        courseId,
+        ...(user.role === Role.STUDENT
+          ? { status: { notIn: PUBLISHED_DOC_EXCLUDED_STATUSES } }
+          : {}),
+      },
       orderBy: { uploadedAt: 'desc' },
     });
-    return docs.map((d) => ({
-      ...d,
-      hasFile: this.hasStoredPdfFile(d.id),
-    }));
+    return docs.map((d) => {
+      const safe = { ...d } as Record<string, unknown>;
+      delete safe.filePath;
+      return {
+        ...safe,
+        hasFile: this.hasStoredPdfFile(d.id),
+      };
+    });
   }
 
   async deleteDocumentByAdmin(documentId: string, user: DocumentUserContext) {

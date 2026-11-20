@@ -177,6 +177,7 @@ export class SchoolsController {
     const buffer = await this.schoolsImportService.exportCredentials(
       schoolId,
       classId,
+      { id: req.user.id, role: req.user.role },
     );
 
     res.set({
@@ -211,8 +212,15 @@ export class SchoolsController {
     @Body() dto: UpdateSchoolDto,
     @Req() req: RequestWithUser,
   ) {
-    if (req.user.role === Role.SCHOOL_ADMIN && req.user.schoolId !== id) {
-      throw new ForbiddenException('Không có quyền chỉnh sửa trường học khác.');
+    if (req.user.role === Role.SCHOOL_ADMIN) {
+      if (req.user.schoolId !== id) {
+        throw new ForbiddenException(
+          'Không có quyền chỉnh sửa trường học khác.',
+        );
+      }
+      // School Admin may update school name only, never self-extend license/quota
+      const safeDto: UpdateSchoolDto = { name: dto.name };
+      return this.schoolsService.update(id, safeDto);
     }
     return this.schoolsService.update(id, dto);
   }

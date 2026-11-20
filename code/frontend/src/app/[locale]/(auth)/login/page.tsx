@@ -33,26 +33,7 @@ export default function LoginPage() {
 
     const formData = new FormData(e.currentTarget);
 
-    if (requireOtp) {
-      formData.append("email", otpEmail);
-      const result = await verifyLoginOtpAction(formData);
-      if (result?.error) {
-        setErrorMsg(result.error);
-        setIsLoading(false);
-      }
-      return;
-    }
-
-    const result = await login(formData);
-
-    if (result?.requireOtp) {
-      setRequireOtp(true);
-      setOtpEmail(result.email as string);
-      setIsLoading(false);
-      return;
-    }
-
-    if (result?.error) {
+    const formatAuthError = (errCode: string) => {
       const knownErrors = [
         "EMAIL_EXISTS",
         "EMAIL_SEND_FAILED",
@@ -68,13 +49,37 @@ export default function LoginPage() {
         "OTP_VERIFICATION_FAILED",
         "NOT_ADMIN",
         "ADMIN_USE_PORTAL",
+        "SCHOOL_SUSPENDED",
+        "SCHOOL_LICENSE_EXPIRED",
+        "ACCOUNT_DISABLED",
         "roleMismatch",
       ];
-      setErrorMsg(
-        knownErrors.includes(result.error)
-          ? t(`Errors.${result.error}` as Parameters<typeof t>[0])
-          : result.error,
-      );
+      return knownErrors.includes(errCode)
+        ? t(`Errors.${errCode}` as Parameters<typeof t>[0])
+        : errCode;
+    };
+
+    if (requireOtp) {
+      formData.append("email", otpEmail);
+      const result = await verifyLoginOtpAction(formData);
+      if (result?.error) {
+        setErrorMsg(formatAuthError(result.error));
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    const result = await login(formData);
+
+    if (result?.requireOtp) {
+      setRequireOtp(true);
+      setOtpEmail(result.email as string);
+      setIsLoading(false);
+      return;
+    }
+
+    if (result?.error) {
+      setErrorMsg(formatAuthError(result.error));
       setIsLoading(false);
     }
   }

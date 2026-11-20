@@ -423,6 +423,27 @@ export class CoursesService {
         'Bạn chỉ được xóa học phần do mình phụ trách.',
       );
     }
+
+    // BR-DOC-001: Clean up RAG chunks & PDF files on disk before deleting course
+    const docs = await this.prisma.document.findMany({
+      where: { courseId: id },
+      select: { id: true },
+    });
+    for (const d of docs) {
+      await this.prisma
+        .$executeRawUnsafe(
+          `DELETE FROM public.documents WHERE metadata->>'documentId' = $1`,
+          d.id,
+        )
+        .catch(() => undefined);
+    }
+    await this.prisma
+      .$executeRawUnsafe(
+        `DELETE FROM public.documents WHERE metadata->>'courseId' = $1`,
+        id,
+      )
+      .catch(() => undefined);
+
     return this.prisma.course.delete({
       where: { id },
     });

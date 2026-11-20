@@ -1,7 +1,8 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/routing";
 import { curriculumService, Subject } from "@/services/curriculum.service";
 import { usersService, UserProfile } from "@/services/users.service";
@@ -24,8 +25,10 @@ import {
   Layers,
 } from "lucide-react";
 
-export default function PracticeDashboard() {
+function PracticeDashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialSubjectId = searchParams.get("subjectId");
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
@@ -57,7 +60,9 @@ export default function PracticeDashboard() {
       .then((subs) => {
         setSubjects(subs);
         if (subs.length > 0) {
-          setSelectedSubject(subs[0].id);
+          const matched =
+            initialSubjectId && subs.find((s) => s.id === initialSubjectId);
+          setSelectedSubject(matched ? matched.id : subs[0].id);
         }
         setLoading(false);
       })
@@ -65,7 +70,7 @@ export default function PracticeDashboard() {
         console.error(err);
         setLoading(false);
       });
-  }, []);
+  }, [initialSubjectId]);
 
   useEffect(() => {
     if (selectedSubject) {
@@ -419,5 +424,19 @@ export default function PracticeDashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PracticeDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        </div>
+      }
+    >
+      <PracticeDashboardContent />
+    </Suspense>
   );
 }

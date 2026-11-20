@@ -121,6 +121,11 @@ function TeacherNotificationsContent() {
   const [activeTab, setActiveTab] = useState<
     "send" | "password-resets" | "parents"
   >(resolvedInitialTab);
+  const [prevUrlTab, setPrevUrlTab] = useState(resolvedInitialTab);
+  if (resolvedInitialTab !== prevUrlTab) {
+    setPrevUrlTab(resolvedInitialTab);
+    setActiveTab(resolvedInitialTab);
+  }
   const [loading, setLoading] = useState(true);
 
   const [classes, setClasses] = useState<ClassOption[]>([]);

@@ -79,6 +79,9 @@
       "OTP_VERIFICATION_FAILED": "Xác thực OTP thất bại.",
       "NOT_ADMIN": "Tài khoản không có quyền Admin.",
       "ADMIN_USE_PORTAL": "Tài khoản Quản trị viên vui lòng đăng nhập qua Cổng Admin.",
+      "SCHOOL_SUSPENDED": "Trường học hiện đang tạm ngưng hoạt động. Vui lòng liên hệ Quản trị viên.",
+      "SCHOOL_LICENSE_EXPIRED": "Bản quyền phần mềm của nhà trường đã hết hạn. Vui lòng liên hệ Quản trị viên.",
+      "ACCOUNT_DISABLED": "Tài khoản này đã bị khóa. Vui lòng liên hệ Giáo viên chủ nhiệm hoặc Quản trị viên.",
       "roleMismatch": "Tài khoản của bạn không khớp với vai trò đã chọn. Vui lòng chọn đúng vai trò."
     }
   },
@@ -123,7 +126,7 @@
     },
     "Dashboard": {
       "overview": "Tổng quan",
-      "welcome": "Chào mừng trở lại. Dưới đây là hoạt động trên nền tảng hôm nay.",
+      "welcome": "Dưới đây là hoạt động trên nền tảng hôm nay.",
       "last30Days": "30 ngày qua ",
       "totalStudents": "TỔNG HỌC SINH",
       "activeTeachers": "GIÁO VIÊN H.ĐỘNG",

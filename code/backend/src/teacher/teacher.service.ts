@@ -623,11 +623,12 @@ export class TeacherService {
   async createQuiz(teacherId: string, dto: CreateQuizDto) {
     const scope = await this.getTeacherScope(teacherId);
     const targetSubjectId = dto.subjectId || scope.subjectIds[0] || null;
-    if (
-      targetSubjectId &&
-      scope.subjectIds.length > 0 &&
-      !scope.subjectIds.includes(targetSubjectId)
-    ) {
+    if (scope.subjectIds.length === 0) {
+      throw new ForbiddenException(
+        'Bạn chưa được phân công môn học giảng dạy nên chưa thể tạo đề kiểm tra.',
+      );
+    }
+    if (targetSubjectId && !scope.subjectIds.includes(targetSubjectId)) {
       throw new ForbiddenException(
         'Bạn chỉ được tạo đề kiểm tra thuộc môn học mình được phân công giảng dạy.',
       );
@@ -672,9 +673,8 @@ export class TeacherService {
       );
     }
     if (
-      quiz.subjectId &&
-      scope.subjectIds.length > 0 &&
-      !scope.subjectIds.includes(quiz.subjectId)
+      scope.subjectIds.length === 0 ||
+      (quiz.subjectId && !scope.subjectIds.includes(quiz.subjectId))
     ) {
       throw new ForbiddenException(
         'Bạn chỉ được thay đổi trạng thái đề thuộc môn học mình phụ trách.',
@@ -768,28 +768,31 @@ export class TeacherService {
       );
     }
     if (
-      attempt.quiz?.subjectId &&
-      scope.subjectIds.length > 0 &&
-      !scope.subjectIds.includes(attempt.quiz.subjectId)
+      scope.subjectIds.length === 0 ||
+      (attempt.quiz?.subjectId &&
+        !scope.subjectIds.includes(attempt.quiz.subjectId))
     ) {
       throw new ForbiddenException(
         'Bạn chỉ được điều chỉnh điểm bài kiểm tra thuộc môn học mình trực tiếp giảng dạy.',
       );
     }
-    if (scope.classIds.length > 0) {
-      const inTeacherClass = await this.prisma.classEnrollment.findFirst({
-        where: {
-          studentId: attempt.userId,
-          classId: { in: scope.classIds },
-          status: 'ACTIVE',
-        },
-        select: { id: true },
-      });
-      if (!inTeacherClass) {
-        throw new ForbiddenException(
-          'Học sinh này không thuộc lớp bạn phụ trách giảng dạy.',
-        );
-      }
+    if (scope.classIds.length === 0) {
+      throw new ForbiddenException(
+        'Bạn chưa được phân công lớp học nào nên không thể chỉnh sửa điểm.',
+      );
+    }
+    const inTeacherClass = await this.prisma.classEnrollment.findFirst({
+      where: {
+        studentId: attempt.userId,
+        classId: { in: scope.classIds },
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+    if (!inTeacherClass) {
+      throw new ForbiddenException(
+        'Học sinh này không thuộc lớp bạn phụ trách giảng dạy.',
+      );
     }
 
     const oldScore = attempt.score;
@@ -835,9 +838,8 @@ export class TeacherService {
           );
         }
         if (
-          q.subjectId &&
-          scope.subjectIds.length > 0 &&
-          !scope.subjectIds.includes(q.subjectId)
+          scope.subjectIds.length === 0 ||
+          (q.subjectId && !scope.subjectIds.includes(q.subjectId))
         ) {
           throw new ForbiddenException(
             'Bạn chỉ được thêm câu hỏi vào đề kiểm tra thuộc môn học mình phụ trách.',
@@ -893,9 +895,8 @@ export class TeacherService {
       throw new ForbiddenException('Không có quyền xem đề của trường khác.');
     }
     if (
-      quiz.subjectId &&
-      scope.subjectIds.length > 0 &&
-      !scope.subjectIds.includes(quiz.subjectId)
+      scope.subjectIds.length === 0 ||
+      (quiz.subjectId && !scope.subjectIds.includes(quiz.subjectId))
     ) {
       throw new ForbiddenException(
         'Bạn chỉ được xem chi tiết đề kiểm tra thuộc môn học mình phụ trách.',
@@ -905,7 +906,7 @@ export class TeacherService {
     const allowedClassIds = new Set(scope.classIds);
     const scopedAttempts = quiz.attempts
       .filter((att) => {
-        if (allowedClassIds.size === 0) return true;
+        if (allowedClassIds.size === 0) return false;
         const cid = att.user?.classEnrollments?.[0]?.class?.id;
         return Boolean(cid && allowedClassIds.has(cid));
       })
@@ -952,15 +953,18 @@ export class TeacherService {
 
   async getStudentAttempts(teacherId: string, studentId: string) {
     const scope = await this.getTeacherScope(teacherId);
+    if (scope.classIds.length === 0) {
+      throw new ForbiddenException(
+        'Bạn chưa được phân công lớp học nào nên không thể xem kết quả học sinh.',
+      );
+    }
     const homeroomClassIds = new Set(scope.homeroomClasses.map((c) => c.id));
 
     const enrollment = await this.prisma.classEnrollment.findFirst({
       where: {
         studentId,
         status: 'ACTIVE',
-        ...(scope.classIds.length > 0
-          ? { classId: { in: scope.classIds } }
-          : {}),
+        classId: { in: scope.classIds },
       },
       include: {
         class: { select: { id: true, name: true, grade: true } },
@@ -1167,9 +1171,24 @@ export class TeacherService {
       );
     }
 
+    const normalizedStatusMap: Record<string, string> = {
+      embedded: 'Embedded',
+      ready: 'Embedded',
+      published: 'Embedded',
+      unpublished: 'UNPUBLISHED',
+      archived: 'ARCHIVED',
+    };
+    const normalizedStatus =
+      normalizedStatusMap[(status || '').trim().toLowerCase()];
+    if (!normalizedStatus) {
+      throw new BadRequestException(
+        'Trạng thái tài liệu không hợp lệ (chỉ chấp nhận Embedded, UNPUBLISHED hoặc ARCHIVED).',
+      );
+    }
+
     const updated = await this.prisma.document.update({
       where: { id: documentId },
-      data: { status },
+      data: { status: normalizedStatus },
     });
 
     await this.auditLogService.logAction(
