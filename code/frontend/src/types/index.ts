@@ -14,7 +14,8 @@ export interface User {
 }
 
 export interface GamificationProfile {
-  xp: number;
+  xp?: number;
+  lifetimeXp?: number;
   level: number;
   currentStreak: number;
 }
@@ -59,11 +60,11 @@ export interface Course {
   title: string;
   description?: string | null;
   subjectId?: string | null;
-  grade?: string | null;
+  grade?: string | number | null;
   createdAt: string;
-  teacher?: { fullName: string };
-  subject?: { name: string };
-  _count?: { lessons: number; enrollments: number };
+  teacher?: { id?: string; fullName: string; studentCode?: string | null };
+  subject?: { id?: string; name: string; grade?: number };
+  _count?: { lessons: number; enrollments: number; documents?: number };
 }
 
 export interface Message {
@@ -94,10 +95,31 @@ export interface Document {
 }
 
 export interface DashboardStats {
+  schoolName?: string;
   totalStudents: number;
   activeTeachers: number;
+  totalParents?: number;
+  totalClasses?: number;
   totalLessons: number;
+  totalAttempts?: number;
   monthlyCost: number;
+  aiQuota?: {
+    used: number;
+    limit: number;
+    percentage: number;
+    provider: string;
+    isSelfHosted: boolean;
+  };
+  pendingActions?: {
+    passwordResets: {
+      student: number;
+      teacher: number;
+      parent: number;
+      total: number;
+    };
+    pendingFeedback: number;
+    classesWithoutHomeroom: number;
+  };
   recentActivity: ActivityItem[];
   tokenUsage: TokenUsage[];
   completionRate: number;

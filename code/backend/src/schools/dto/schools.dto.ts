@@ -76,11 +76,30 @@ export class UpdateSchoolDto {
 
 export class UpdateByokKeyDto {
   @ApiProperty({
+    example: 'BYOK',
+    required: false,
+    description: 'Chế độ cung cấp AI: SYSTEM (mặc định) hoặc BYOK',
+  })
+  @IsString()
+  @IsOptional()
+  aiProvider?: string;
+
+  @ApiProperty({
     example: 'AIzaSy...',
+    required: false,
     description:
       'API key Gemini / OpenAI do nhà trường cung cấp (Bring Your Own Key)',
   })
   @IsString()
-  @IsNotEmpty()
-  apiKey: string;
+  @IsOptional()
+  apiKey?: string;
+
+  @ApiProperty({
+    example: 'AIzaSy...',
+    required: false,
+    description: 'Alias cho apiKey để tương thích với giao diện Cài đặt Admin',
+  })
+  @IsString()
+  @IsOptional()
+  customApiKey?: string;
 }

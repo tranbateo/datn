@@ -10,13 +10,13 @@ import {
   Bot, 
   UserCheck,
   Settings,
-  HelpCircle,
   LogOut,
   Bell,
   MessageSquareWarning,
   School,
   ShieldAlert,
-  FileText
+  FileText,
+  FileCheck2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
@@ -33,6 +33,7 @@ export function AdminSidebar() {
     { name: t('teachers'), icon: GraduationCap, href: "/admin/teachers" },
     { name: t('parents'), icon: UserCheck, href: "/admin/parents" },
     { name: t('courses'), icon: Library, href: "/admin/courses" },
+    { name: "Ngân hàng Đề thi", icon: FileCheck2, href: "/admin/quiz" },
     { name: "Kho Tài liệu RAG", icon: FileText, href: "/admin/documents" },
     { name: t('analytics'), icon: BarChart3, href: "/admin/analytics" },
     { name: t('notifications'), icon: Bell, href: "/admin/notifications" },

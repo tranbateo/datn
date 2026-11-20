@@ -241,7 +241,7 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
             onChange={(e) => setSelectedSubject(e.target.value)}
             className="px-3.5 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500"
           >
-            <option value="all">Tất cả môn học (11 môn)</option>
+            <option value="all">Tất cả môn học ({availableSubjects.length} môn)</option>
             {availableSubjects.map((subj) => (
               <option key={subj} value={subj}>
                 Môn: {subj}
@@ -446,7 +446,7 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex gap-1.5 justify-end">
                           <button
                             onClick={() =>
                               handleResetTeacherPassword(
@@ -456,21 +456,23 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
                             }
                             disabled={resettingUserId === teacher.id}
                             title="Cấp lại mật khẩu tạm"
-                            className="p-1 text-amber-600 hover:text-amber-700 disabled:opacity-50"
+                            className="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors disabled:opacity-50"
                           >
-                            <KeyRound className="w-5 h-5" />
+                            <KeyRound className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleOpenModal(teacher)}
-                            className="p-1 text-blue-500 hover:text-blue-700"
+                            title="Chỉnh sửa"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
                           >
-                            <Edit className="w-5 h-5" />
+                            <Edit className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteUser(teacher.id)}
-                            className="p-1 text-red-500 hover:text-red-700"
+                            title="Xóa"
+                            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                           >
-                            <Trash2 className="w-5 h-5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>

@@ -5,6 +5,7 @@ import { Search, Plus, Filter, Download, ChevronLeft, ChevronRight, TrendingUp, 
 import { useTranslations } from "next-intl";
 import { useState, useMemo, useEffect } from "react";
 import { fetchApi } from "@/lib/api-client";
+import { formatClassLabel } from "@/services/users.service";
 import { Student, User } from '@/types';
 import UserModal from "@/components/admin/UserModal";
 import SchoolImportModal from "@/components/admin/SchoolImportModal";
@@ -40,6 +41,8 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGrade, setSelectedGrade] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
 
   const loadResetRequests = () => {
     fetchApi<PasswordResetRequestItem[]>("/admin/password-reset-requests?role=STUDENT")
@@ -103,6 +106,13 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
       return matchesSearch && matchesGrade && matchesStatus;
     });
   }, [students, searchTerm, selectedGrade, selectedStatus]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedStudents = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filteredStudents.slice(start, start + pageSize);
+  }, [filteredStudents, safePage]);
 
   const handleOpenModal = (user?: Student) => {
     setSelectedUser(user ? (user as unknown as User) : null);
@@ -328,8 +338,12 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-card-border">
-                  {filteredStudents.map((student: Student) => {
+                  {paginatedStudents.map((student: Student) => {
                     const activeClassName = student.classEnrollments?.[0]?.class?.name;
+                    const studentXp =
+                      student.gamificationProfile?.xp ??
+                      student.gamificationProfile?.lifetimeXp ??
+                      0;
                     return (
                       <tr key={student.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group">
                         <td className="px-6 py-4">
@@ -354,7 +368,7 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                             )}
                             {activeClassName ? (
                               <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">
-                                Lớp {activeClassName}
+                                {formatClassLabel(activeClassName, Number(student.grade) || undefined)}
                               </span>
                             ) : (
                               <span className="text-xs text-amber-600">Chưa xếp lớp</span>
@@ -370,7 +384,7 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-md">
-                              Lv.{student.gamificationProfile?.level || 1} ({student.gamificationProfile?.xp || 0} XP)
+                              Lv.{student.gamificationProfile?.level || 1} ({studentXp} XP)
                             </span>
                           </div>
                         </td>
@@ -431,11 +445,29 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
 
           {/* Pagination */}
           <div className="border-t border-gray-100 dark:border-card-border p-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-            <div>Hiển thị {filteredStudents.length} / {students.length} học sinh</div>
+            <div>
+              Hiển thị {paginatedStudents.length} / {filteredStudents.length} học sinh (Trang {safePage}/{totalPages})
+            </div>
             <div className="flex items-center gap-1">
-              <button className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-primary text-white font-medium shadow-sm">1</button>
-              <button className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-300"><ChevronRight className="w-4 h-4" /></button>
+              <button
+                type="button"
+                disabled={safePage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-3 py-1 rounded-lg bg-primary text-white font-medium text-xs shadow-sm">
+                {safePage}
+              </span>
+              <button
+                type="button"
+                disabled={safePage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>

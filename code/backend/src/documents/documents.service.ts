@@ -498,10 +498,52 @@ export class DocumentsService {
     }));
   }
 
+  async deleteDocumentByAdmin(documentId: string, user: DocumentUserContext) {
+    const doc = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: { course: { select: { schoolId: true } } },
+    });
+
+    if (!doc) {
+      throw new NotFoundException('Không tìm thấy tài liệu.');
+    }
+
+    const docSchoolId = doc.schoolId || doc.course?.schoolId || null;
+    if (
+      user.role !== Role.ADMIN &&
+      user.schoolId &&
+      docSchoolId &&
+      user.schoolId !== docSchoolId
+    ) {
+      throw new ForbiddenException(
+        'Không có quyền xóa tài liệu của trường khác.',
+      );
+    }
+
+    await this.deleteDocumentArtifacts(documentId);
+    await this.prisma.document.delete({ where: { id: documentId } });
+
+    return {
+      success: true,
+      id: documentId,
+      fileName: doc.fileName,
+    };
+  }
+
   async findAll(schoolId?: string | null) {
     const docs = await this.prisma.document.findMany({
       where: schoolId ? { schoolId } : undefined,
-      include: { course: { select: { title: true } } },
+      include: {
+        course: {
+          select: {
+            id: true,
+            title: true,
+            grade: true,
+            subject: { select: { id: true, name: true } },
+            teacher: { select: { id: true, fullName: true } },
+          },
+        },
+      },
       orderBy: { uploadedAt: 'desc' },
     });
     return docs.map((d) => ({

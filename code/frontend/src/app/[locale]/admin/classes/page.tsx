@@ -32,18 +32,60 @@ export default function AdminClassesPage() {
   const [grade, setGrade] = useState(6);
   const [homeroomTeacherId, setHomeroomTeacherId] = useState("");
   const [academicYearName, setAcademicYearName] = useState("2025-2026");
+  const [currentYearLabel, setCurrentYearLabel] = useState("2025-2026");
+  const [availableGrades, setAvailableGrades] = useState<number[]>([6, 7, 8, 9]);
+
+  const [viewingClassStudents, setViewingClassStudents] = useState<{
+    classInfo: any;
+    students: any[];
+  } | null>(null);
+  const [loadingClassStudents, setLoadingClassStudents] = useState(false);
+
+  const applyLoadedData = (
+    classesRes: any[],
+    teachersRes: any,
+    subjectsRes: any[],
+    yearsRes: any[],
+    licenseRes: any,
+  ) => {
+    setClasses(Array.isArray(classesRes) ? classesRes : []);
+    setTeachers(
+      Array.isArray(teachersRes) ? teachersRes : teachersRes?.teachers || [],
+    );
+    setSubjects(Array.isArray(subjectsRes) ? subjectsRes : []);
+    if (Array.isArray(yearsRes) && yearsRes.length > 0) {
+      const current = yearsRes.find((y: any) => y.isCurrent) || yearsRes[0];
+      if (current?.name) {
+        setCurrentYearLabel(current.name);
+        setAcademicYearName(current.name);
+      }
+    }
+    if (licenseRes?.level === "PRIMARY") {
+      setAvailableGrades([1, 2, 3, 4, 5]);
+      setGrade(1);
+    } else if (licenseRes?.level === "MIDDLE") {
+      setAvailableGrades([6, 7, 8, 9]);
+      setGrade(6);
+    } else if (licenseRes?.level === "HIGH") {
+      setAvailableGrades([10, 11, 12]);
+      setGrade(10);
+    } else {
+      setAvailableGrades([6, 7, 8, 9, 10, 11, 12]);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [classesRes, teachersRes, subjectsRes] = await Promise.all([
-        fetchApi<any[]>("/admin/classes").catch(() => []),
-        fetchApi<any>("/admin/users/teachers").catch(() => []),
-        fetchApi<any[]>("/admin/subjects").catch(() => []),
-      ]);
-      setClasses(Array.isArray(classesRes) ? classesRes : []);
-      setTeachers(Array.isArray(teachersRes) ? teachersRes : teachersRes?.teachers || []);
-      setSubjects(Array.isArray(subjectsRes) ? subjectsRes : []);
+      const [classesRes, teachersRes, subjectsRes, yearsRes, licenseRes] =
+        await Promise.all([
+          fetchApi<any[]>("/admin/classes").catch(() => []),
+          fetchApi<any>("/admin/users/teachers").catch(() => []),
+          fetchApi<any[]>("/admin/subjects").catch(() => []),
+          fetchApi<any[]>("/admin/academic-years").catch(() => []),
+          fetchApi<any>("/schools/license/me").catch(() => null),
+        ]);
+      applyLoadedData(classesRes, teachersRes, subjectsRes, yearsRes, licenseRes);
     } catch (error) {
       console.error("Failed to fetch classes:", error);
     } finally {
@@ -51,8 +93,45 @@ export default function AdminClassesPage() {
     }
   };
 
+  const handleViewClassStudents = async (clsId: string) => {
+    setLoadingClassStudents(true);
+    try {
+      const res = await fetchApi<{ classInfo: any; students: any[] }>(
+        `/admin/classes/${clsId}/students`,
+      );
+      setViewingClassStudents(res);
+    } catch (error: any) {
+      notify(error?.message || "Không thể tải danh sách học sinh của lớp.");
+    } finally {
+      setLoadingClassStudents(false);
+    }
+  };
+
   useEffect(() => {
-    fetchData();
+    let active = true;
+    Promise.all([
+      fetchApi<any[]>("/admin/classes").catch(() => []),
+      fetchApi<any>("/admin/users/teachers").catch(() => []),
+      fetchApi<any[]>("/admin/subjects").catch(() => []),
+      fetchApi<any[]>("/admin/academic-years").catch(() => []),
+      fetchApi<any>("/schools/license/me").catch(() => null),
+    ])
+      .then(([classesRes, teachersRes, subjectsRes, yearsRes, licenseRes]) => {
+        if (!active) return;
+        applyLoadedData(
+          classesRes,
+          teachersRes,
+          subjectsRes,
+          yearsRes,
+          licenseRes,
+        );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleCreateClass = async (e: React.FormEvent) => {
@@ -207,7 +286,7 @@ export default function AdminClassesPage() {
           <div className="flex items-end justify-between mt-2">
             <h3 className="text-3xl font-extrabold text-gray-900 dark:text-white">{classes.length}</h3>
             <span className="text-xs font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1 rounded-md">
-              Năm học 2025-2026
+              Năm học {currentYearLabel}
             </span>
           </div>
         </div>
@@ -256,7 +335,7 @@ export default function AdminClassesPage() {
             className="px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-200"
           >
             <option value="ALL">Tất cả khối</option>
-            {[6, 7, 8, 9, 10, 11, 12].map((g) => (
+            {availableGrades.map((g) => (
               <option key={g} value={String(g)}>
                 Khối {g}
               </option>
@@ -341,10 +420,16 @@ export default function AdminClassesPage() {
                       )}
                     </td>
                     <td className="py-4 px-6">
-                      <div className="inline-flex items-center gap-1.5 font-bold text-gray-900 dark:text-white">
+                      <button
+                        type="button"
+                        onClick={() => handleViewClassStudents(cls.id)}
+                        disabled={loadingClassStudents}
+                        title="Bấm để xem danh sách học sinh & phụ huynh của lớp"
+                        className="inline-flex items-center gap-1.5 font-bold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 px-2.5 py-1 rounded-lg transition-colors"
+                      >
                         <Users className="w-4 h-4 text-blue-500" />
                         {cls._count?.enrollments || 0} HS
-                      </div>
+                      </button>
                     </td>
                     <td className="py-4 px-6">
                       <span className="inline-flex items-center gap-1 font-mono text-xs font-bold px-2.5 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200">
@@ -417,7 +502,7 @@ export default function AdminClassesPage() {
                     onChange={(e) => setGrade(Number(e.target.value))}
                     className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                   >
-                    {[6, 7, 8, 9, 10, 11, 12].map((g) => (
+                    {availableGrades.map((g) => (
                       <option key={g} value={g}>
                         Khối {g}
                       </option>
@@ -636,6 +721,85 @@ export default function AdminClassesPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Class Students Roster Modal */}
+      {viewingClassStudents && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Danh sách Học sinh — {viewingClassStudents.classInfo?.name} (
+                  {viewingClassStudents.students.length} HS)
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  GVCN:{" "}
+                  {viewingClassStudents.classInfo?.homeroomTeacher?.fullName ||
+                    "Chưa phân công"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingClassStudents(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              {viewingClassStudents.students.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-6">
+                  Lớp học này hiện chưa có học sinh nào.
+                </p>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {viewingClassStudents.students.map((st: any) => (
+                    <div
+                      key={st.id}
+                      className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                    >
+                      <div>
+                        <div className="font-semibold text-sm text-gray-900 dark:text-white flex items-center gap-2">
+                          <span>{st.fullName}</span>
+                          {st.studentCode && (
+                            <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                              {st.studentCode}
+                            </span>
+                          )}
+                          <span className="text-xs text-emerald-600 font-semibold">
+                            Lv.{st.level} ({st.xp} XP)
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {st.email || "Chưa có email"}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-300">
+                        {st.parents && st.parents.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {st.parents.map((p: any) => (
+                              <span
+                                key={p.id}
+                                className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 font-medium"
+                              >
+                                PH: {p.fullName} ({p.phone || p.email})
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-amber-600 italic">
+                            Chưa có PH liên kết
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

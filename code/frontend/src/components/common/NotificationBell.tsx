@@ -119,6 +119,7 @@ export function NotificationBell({ className }: NotificationBellProps) {
     }
     if (pathname.startsWith("/admin")) {
       if (isPwdReset && /giáo viên/i.test(notif.title)) return "/admin/teachers";
+      if (isPwdReset && /phụ huynh/i.test(notif.title)) return "/admin/parents";
       if (isPwdReset) return "/admin/students";
       return "/admin/notifications";
     }

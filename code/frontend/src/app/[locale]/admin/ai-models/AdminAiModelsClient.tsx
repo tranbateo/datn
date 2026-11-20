@@ -56,9 +56,18 @@ export default function AdminAiModelsClient({ initialData }: { initialData: any[
     );
   }, [usages, searchUser]);
 
-  const quotaLimit = license?.aiQuotaLimit || 100000;
-  const quotaUsed = license?.aiQuotaUsed || totalTokens;
-  const quotaPercent = Math.min(100, Math.round((quotaUsed / Math.max(1, quotaLimit)) * 100));
+  const quotaLimit = license?.aiTokenQuota || 10000000;
+  const quotaUsed =
+    typeof license?.aiTokensUsed === "number" && license.aiTokensUsed > 0
+      ? license.aiTokensUsed
+      : totalTokens;
+  const quotaPercent = Math.min(
+    100,
+    Math.round((quotaUsed / Math.max(1, quotaLimit)) * 100),
+  );
+  const activeProviderName =
+    license?.activeProvider || license?.aiProvider || "SYSTEM";
+  const activeModelName = license?.activeModel || "Đang cấu hình";
 
   return (
     <div className="space-y-6 pb-10">
@@ -91,10 +100,10 @@ export default function AdminAiModelsClient({ initialData }: { initialData: any[
               </div>
               <div>
                 <h3 className="font-bold text-gray-900 dark:text-white text-lg">
-                  {license?.aiProvider || "GEMINI"} (RAG Engine)
+                  {activeProviderName}
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {license?.hasCustomApiKey ? "Sử dụng khóa BYOK của trường" : "Sử dụng hạn mức gói trường học"}
+                  Model: <span className="font-mono font-semibold">{activeModelName}</span>
                 </p>
               </div>
             </div>
@@ -115,8 +124,8 @@ export default function AdminAiModelsClient({ initialData }: { initialData: any[
               <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wider mb-1">
                 Gói bản quyền
               </p>
-              <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                {license?.licensePlan || "STANDARD"}
+              <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
+                {license?.licenseKey || "PRO"}
               </span>
             </div>
           </div>
@@ -317,7 +326,7 @@ export default function AdminAiModelsClient({ initialData }: { initialData: any[
                     </td>
                     <td className="px-6 py-4">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-100 dark:border-blue-800">
-                        {license?.aiProvider || "Gemini RAG"}
+                        {activeProviderName}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-semibold">

@@ -40,8 +40,11 @@ export class AdminController {
   }
 
   @Get('analytics/stats')
-  async getAnalyticsStats(@Req() req: AuthenticatedRequest) {
-    return this.adminService.getAnalyticsStats(req.user.schoolId);
+  async getAnalyticsStats(
+    @Req() req: AuthenticatedRequest,
+    @Query('range') range?: string,
+  ) {
+    return this.adminService.getAnalyticsStats(req.user.schoolId, range);
   }
 
   @Get('users/students')
@@ -59,9 +62,46 @@ export class AdminController {
     return this.adminService.getParents(req.user.schoolId);
   }
 
+  @Post('parents/:parentId/link-student')
+  async linkParentStudent(
+    @Req() req: AuthenticatedRequest,
+    @Param('parentId') parentId: string,
+    @Body() dto: { studentId: string; relationship?: string },
+  ) {
+    return this.adminService.linkParentStudent(
+      req.user.schoolId,
+      req.user.id,
+      parentId,
+      dto.studentId,
+      dto.relationship,
+    );
+  }
+
+  @Delete('parents/:parentId/link-student/:studentId')
+  async unlinkParentStudent(
+    @Req() req: AuthenticatedRequest,
+    @Param('parentId') parentId: string,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.adminService.unlinkParentStudent(
+      req.user.schoolId,
+      req.user.id,
+      parentId,
+      studentId,
+    );
+  }
+
   @Get('classes')
   async getClasses(@Req() req: AuthenticatedRequest) {
     return this.adminService.getClasses(req.user.schoolId);
+  }
+
+  @Get('classes/:id/students')
+  async getClassStudents(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') classId: string,
+  ) {
+    return this.adminService.getClassStudents(req.user.schoolId, classId);
   }
 
   @Post('classes')
@@ -222,9 +262,51 @@ export class AdminController {
     return this.adminService.getCourses(req.user.schoolId);
   }
 
+  @Post('courses')
+  async createCourse(
+    @Req() req: AuthenticatedRequest,
+    @Body()
+    dto: {
+      title: string;
+      description?: string;
+      subjectId: string;
+      teacherId: string;
+      grade?: number;
+    },
+  ) {
+    return this.adminService.createCourse(req.user.schoolId, req.user.id, dto);
+  }
+
+  @Delete('courses/:id')
+  async deleteCourse(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.adminService.deleteCourse(req.user.schoolId, req.user.id, id);
+  }
+
   @Get('quizzes')
   async getQuizzes(@Req() req: AuthenticatedRequest) {
     return this.adminService.getQuizzes(req.user.schoolId);
+  }
+
+  @Patch('quizzes/:id/status')
+  async updateQuizStatus(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body('status') status: string,
+  ) {
+    return this.adminService.updateQuizStatus(
+      req.user.schoolId,
+      req.user.id,
+      id,
+      status,
+    );
+  }
+
+  @Delete('quizzes/:id')
+  async deleteQuiz(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.adminService.deleteQuiz(req.user.schoolId, req.user.id, id);
   }
 
   @Get('notifications')
@@ -235,7 +317,14 @@ export class AdminController {
   @Post('notifications')
   async broadcastNotification(
     @Req() req: AuthenticatedRequest,
-    @Body() dto: { title: string; body: string; targetRole?: string },
+    @Body()
+    dto: {
+      title: string;
+      body: string;
+      targetRole?: string;
+      grade?: number;
+      classId?: string;
+    },
   ) {
     return this.adminService.broadcastNotification(
       req.user.schoolId,

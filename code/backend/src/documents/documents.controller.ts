@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   UseInterceptors,
   UploadedFile,
   Param,
@@ -29,7 +30,7 @@ export class DocumentsController {
   constructor(
     @InjectQueue('document-ingestion') private readonly documentQueue: Queue,
     private readonly documentsService: DocumentsService,
-  ) { }
+  ) {}
 
   @Get('course/:courseId')
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN, Role.STUDENT)
@@ -71,6 +72,15 @@ export class DocumentsController {
   @Roles(Role.TEACHER, Role.ADMIN, Role.SCHOOL_ADMIN)
   async getAllDocuments(@Req() req: { user: { schoolId: string | null } }) {
     return this.documentsService.findAll(req.user.schoolId);
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN, Role.SCHOOL_ADMIN)
+  async deleteDocument(
+    @Param('id') id: string,
+    @Req() req: { user: { id: string; role: Role; schoolId: string | null } },
+  ) {
+    return this.documentsService.deleteDocumentByAdmin(id, req.user);
   }
 
   @Post('upload')

@@ -9,6 +9,7 @@ import {
   UpdateSchoolDto,
   UpdateByokKeyDto,
 } from './dto/schools.dto';
+import { isSelfHostedAiEnabled } from '../common/ai-provider.adapter';
 
 @Injectable()
 export class SchoolsService {
@@ -149,8 +150,27 @@ export class SchoolsService {
           )
         : 0;
 
+    const licenseStatus = !school.isActive
+      ? 'INACTIVE'
+      : isExpired
+        ? 'EXPIRED'
+        : 'ACTIVE';
+
+    const usingSelfHosted = isSelfHostedAiEnabled(school.aiProvider);
+    const activeProvider = usingSelfHosted
+      ? 'OLLAMA (Self-hosted)'
+      : school.aiProvider === 'BYOK'
+        ? 'Gemini (BYOK)'
+        : 'Gemini (System)';
+    const activeModel = usingSelfHosted
+      ? process.env.OLLAMA_MODEL || 'qwen3-8b-ai-tutor-vn'
+      : process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview';
+
     return {
       ...rest,
+      licenseStatus,
+      activeProvider,
+      activeModel,
       hasCustomApiKey: Boolean(customApiKey),
       isExpired,
       tokensRemaining: Math.max(0, school.aiTokenQuota - school.aiTokensUsed),
@@ -172,19 +192,36 @@ export class SchoolsService {
     });
     if (!school) throw new NotFoundException('Không tìm thấy trường học.');
 
-    const hasKey = Boolean(dto.apiKey && dto.apiKey.trim().length > 0);
+    const incomingKey = (dto.apiKey ?? dto.customApiKey ?? '').trim();
+    const requestedMode = (dto.aiProvider || '').trim().toUpperCase();
+    const wantByok =
+      requestedMode === 'BYOK' || (!requestedMode && incomingKey.length > 0);
 
-    return this.prisma.school.update({
+    let nextProvider = 'SYSTEM';
+    let nextKey: string | null = null;
+
+    if (wantByok) {
+      nextProvider = 'BYOK';
+      if (incomingKey.length > 0) {
+        nextKey = incomingKey;
+      } else if (school.customApiKey) {
+        // Keep existing stored BYOK key if admin saved settings without re-entering the secret
+        nextKey = school.customApiKey;
+      } else {
+        throw new BadRequestException(
+          'Vui lòng nhập API Key khi kích hoạt chế độ BYOK.',
+        );
+      }
+    }
+
+    await this.prisma.school.update({
       where: { id: schoolId },
       data: {
-        aiProvider: hasKey ? 'BYOK' : 'SYSTEM',
-        customApiKey: hasKey ? dto.apiKey.trim() : null,
-      },
-      select: {
-        id: true,
-        aiProvider: true,
-        updatedAt: true,
+        aiProvider: nextProvider,
+        customApiKey: nextKey,
       },
     });
+
+    return this.getLicense(schoolId);
   }
 }

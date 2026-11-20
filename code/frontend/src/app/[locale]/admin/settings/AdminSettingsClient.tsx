@@ -1,6 +1,5 @@
 "use client";
 import { notify } from "@/lib/toast";
-/* eslint-disable react/no-unescaped-entities */
 
 import { useState, useEffect } from "react";
 import { Settings, Bot, Shield, Trophy, Save, Key, CheckCircle2, Globe, Building, Mail, AlertTriangle, Loader2, BookOpen, Plus, Trash2, Calendar } from "lucide-react";
@@ -11,12 +10,17 @@ interface LicenseData {
   id: string;
   name: string;
   code: string;
+  level?: string;
   licenseKey: string | null;
-  licenseStatus: string;
+  licenseStatus?: string;
+  isActive?: boolean;
+  isExpired?: boolean;
   licenseExpiresAt: string | null;
   aiTokenQuota: number;
   aiTokensUsed: number;
   aiProvider: string;
+  activeProvider?: string;
+  activeModel?: string;
   hasCustomApiKey?: boolean;
   quotaPercentage?: number;
   quotaAlertLevel?: string;
@@ -28,7 +32,7 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
 
   const [license, setLicense] = useState<LicenseData | null>(null);
   const [schoolName, setSchoolName] = useState("");
-  const [aiProvider, setAiProvider] = useState("SYSTEM_QUOTA");
+  const [aiProvider, setAiProvider] = useState("SYSTEM");
   const [customApiKey, setCustomApiKey] = useState("");
   const [savingByok, setSavingByok] = useState(false);
 
@@ -56,20 +60,26 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
   };
 
   useEffect(() => {
-    async function loadLicense() {
-      try {
-        const data = await fetchApi<LicenseData>("/schools/license/me");
-        if (data) {
-          setLicense(data);
-          setSchoolName(data.name || "");
-          setAiProvider(data.aiProvider || "SYSTEM_QUOTA");
-        }
-      } catch (err) {
-        console.error("Failed to load school license:", err);
+    let active = true;
+    Promise.all([
+      fetchApi<LicenseData>("/schools/license/me").catch(() => null),
+      fetchApi<any[]>("/admin/academic-years").catch(() => []),
+      fetchApi<any[]>("/admin/subjects").catch(() => []),
+    ]).then(([data, yearsRes, subjectsRes]) => {
+      if (!active) return;
+      if (data) {
+        setLicense(data);
+        setSchoolName(data.name || "");
+        setAiProvider(
+          data.aiProvider?.toUpperCase() === "BYOK" ? "BYOK" : "SYSTEM",
+        );
       }
-    }
-    loadLicense();
-    loadMasterData();
+      setAcademicYears(Array.isArray(yearsRes) ? yearsRes : []);
+      setSubjects(Array.isArray(subjectsRes) ? subjectsRes : []);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleCreateAcademicYear = async (e: React.FormEvent) => {
@@ -161,7 +171,8 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
         method: "PUT",
         body: JSON.stringify({
           aiProvider,
-          customApiKey: aiProvider === "BYOK" ? customApiKey : "",
+          apiKey: aiProvider === "BYOK" ? customApiKey.trim() : "",
+          customApiKey: aiProvider === "BYOK" ? customApiKey.trim() : "",
         }),
       });
       if (updated) {
@@ -169,9 +180,9 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
         setCustomApiKey("");
         notify("Đã lưu cấu hình trường học và AI lên cơ sở dữ liệu thành công!");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      notify("Không thể cập nhật cấu hình trường học.");
+      notify(err?.message || "Không thể cập nhật cấu hình trường học.");
     } finally {
       setSavingByok(false);
     }
@@ -249,11 +260,15 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
                         </h4>
                       </div>
                       <span className={`px-3 py-1 rounded-full text-xs font-bold w-fit ${
-                        license.licenseStatus === 'ACTIVE'
+                        (license.licenseStatus || (license.isActive ? 'ACTIVE' : 'INACTIVE')) === 'ACTIVE'
                           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                           : 'bg-red-100 text-red-700'
                       }`}>
-                        {license.licenseStatus}
+                        {(license.licenseStatus || (license.isActive ? 'ACTIVE' : 'INACTIVE')) === 'ACTIVE'
+                          ? 'ĐANG HOẠT ĐỘNG'
+                          : license.licenseStatus === 'EXPIRED'
+                            ? 'HẾT HẠN'
+                            : 'TẠM KHÓA'}
                       </span>
                     </div>
 
@@ -314,21 +329,21 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                     <div
-                      onClick={() => setAiProvider("SYSTEM_QUOTA")}
+                      onClick={() => setAiProvider("SYSTEM")}
                       className={`border-2 rounded-xl p-4 cursor-pointer relative transition-all ${
-                        aiProvider === "SYSTEM_QUOTA"
+                        aiProvider === "SYSTEM"
                           ? "border-blue-600 bg-blue-50/50 dark:bg-blue-900/10"
                           : "border-gray-200 dark:border-gray-700"
                       }`}
                     >
-                      {aiProvider === "SYSTEM_QUOTA" && (
+                      {aiProvider === "SYSTEM" && (
                         <div className="absolute top-3 right-3 text-blue-600">
                           <CheckCircle2 className="w-5 h-5" />
                         </div>
                       )}
                       <div className="font-bold text-gray-900 dark:text-white mb-1">System Quota (Mặc định)</div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Sử dụng Token trong gói hợp đồng B2B của trường
+                        Sử dụng động cơ AI mặc định của hệ thống & hạn mức gói trường
                       </div>
                     </div>
 
@@ -378,7 +393,14 @@ export default function AdminSettingsClient({ initialData }: { initialData?: any
                     <Bot className="w-5 h-5 text-purple-500" /> Mô hình ngôn ngữ đang kích hoạt
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Model mặc định được cấu hình qua Adapter: <span className="font-mono font-bold text-blue-600">{initialData?.aiModel || 'gemini-3.1-flash-lite-preview'}</span>
+                    Nhà cung cấp:{" "}
+                    <span className="font-semibold text-gray-900 dark:text-white">
+                      {license?.activeProvider || initialData?.activeAiProvider || "Hệ thống"}
+                    </span>{" "}
+                    • Model:{" "}
+                    <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                      {license?.activeModel || initialData?.aiModel || "Đang cấu hình qua Adapter"}
+                    </span>
                   </p>
                 </div>
               </div>
