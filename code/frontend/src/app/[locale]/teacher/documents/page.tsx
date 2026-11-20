@@ -2,7 +2,7 @@
 import { notify } from "@/lib/toast";
 
 import { useTranslations } from "next-intl";
-import { Upload, FileText, Search, CheckCircle2, Clock, Trash2, EyeOff, Eye, Loader2, X } from "lucide-react";
+import { Upload, FileText, Search, CheckCircle2, Clock, Trash2, EyeOff, Eye, Loader2, X, ExternalLink, Download, BookOpen } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { teacherService } from "@/services/teacher.service";
 import { fetchApi } from "@/lib/api-client";
@@ -11,16 +11,26 @@ interface DocumentData {
   id: string | number;
   name: string;
   courseTitle?: string;
+  grade?: number | null;
   size: string;
+  hasFile?: boolean;
+  chunksCount?: number;
   status: string;
   rawStatus?: string;
   date: string;
 }
 
+interface TeacherCourseOption {
+  id: string;
+  title: string;
+  grade?: string;
+  assignedClasses?: string[];
+}
+
 export default function TeacherDocumentsPage() {
   const t = useTranslations("Teacher.Documents");
   const [documents, setDocuments] = useState<DocumentData[]>([]);
-  const [courses, setCourses] = useState<Array<{ id: string; title: string }>>([]);
+  const [courses, setCourses] = useState<TeacherCourseOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -28,6 +38,7 @@ export default function TeacherDocumentsPage() {
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<DocumentData | null>(null);
 
   async function loadDocuments() {
     setLoading(true);
@@ -51,6 +62,7 @@ export default function TeacherDocumentsPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDocuments();
   }, []);
 
@@ -74,10 +86,14 @@ export default function TeacherDocumentsPage() {
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
-      await fetchApi(`/documents/upload/${encodeURIComponent(selectedCourseId)}`, {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetchApi<{ message?: string }>(
+        `/documents/upload/${encodeURIComponent(selectedCourseId)}`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      notify(res?.message || "Tải lên tài liệu PDF thành công!");
       setIsUploadOpen(false);
       setSelectedFile(null);
       await loadDocuments();
@@ -170,10 +186,27 @@ export default function TeacherDocumentsPage() {
                 <tr key={doc.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
                         <FileText className="w-5 h-5" />
                       </div>
-                      <span className="font-medium text-gray-900 dark:text-white">{doc.name}</span>
+                      <div className="min-w-0">
+                        <span className="font-medium text-gray-900 dark:text-white block truncate max-w-xs">
+                          {doc.name}
+                        </span>
+                        <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
+                          <span>{doc.size}</span>
+                          {doc.hasFile && (
+                            <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300 font-semibold text-[10px]">
+                              PDF gốc
+                            </span>
+                          )}
+                          {typeof doc.chunksCount === "number" && doc.chunksCount > 0 && (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                              • {doc.chunksCount} đoạn AI RAG
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-gray-600 dark:text-gray-300 font-medium">
@@ -197,6 +230,15 @@ export default function TeacherDocumentsPage() {
                   <td className="px-6 py-4 text-gray-500 dark:text-gray-400">{doc.date}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {doc.hasFile && (
+                        <button
+                          onClick={() => setPreviewDoc(doc)}
+                          className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400 transition-colors"
+                          title="Xem trực tiếp bản PDF gốc"
+                        >
+                          <BookOpen className="w-4 h-4" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleToggleStatus(doc)}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 hover:text-blue-600 transition-colors"
@@ -243,7 +285,14 @@ export default function TeacherDocumentsPage() {
                 >
                   <option value="">-- Chọn khóa học --</option>
                   {courses.map((c) => (
-                    <option key={c.id} value={c.id}>{c.title}</option>
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                      {c.assignedClasses && c.assignedClasses.length > 0
+                        ? ` (Lớp ${c.assignedClasses.join(", ")})`
+                        : c.grade
+                          ? ` (${c.grade})`
+                          : ""}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -277,6 +326,54 @@ export default function TeacherDocumentsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Teacher PDF Preview Modal */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-800">
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-rose-600 dark:text-rose-400">
+                  Xem trước bản PDF gốc (Học sinh sẽ thấy y hệt bản này)
+                </span>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white truncate">
+                  {previewDoc.name}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={`/api/proxy/documents/${previewDoc.id}/file`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  title="Mở tab mới"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+                <a
+                  href={`/api/proxy/documents/${previewDoc.id}/file?download=1`}
+                  className="p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  title="Tải PDF"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+                <button
+                  onClick={() => setPreviewDoc(null)}
+                  className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-slate-100 dark:bg-gray-950 overflow-hidden">
+              <iframe
+                src={`/api/proxy/documents/${previewDoc.id}/file`}
+                title={previewDoc.name}
+                className="w-full h-full border-0"
+              />
+            </div>
           </div>
         </div>
       )}

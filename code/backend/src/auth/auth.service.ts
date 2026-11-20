@@ -17,7 +17,9 @@ import {
   VerifyOtpDto,
   LoginDto,
   FirstTimeChangePasswordDto,
+  RequestPasswordResetDto,
 } from './dto/auth.dto';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -382,6 +384,161 @@ export class AuthService {
     return {
       accessToken: this.jwtService.sign(payload),
       refreshToken: newRefreshToken,
+    };
+  }
+
+  async requestPasswordReset(dto: RequestPasswordResetDto) {
+    const rawIdentifier = (dto.identifier || '').trim();
+    if (!rawIdentifier) {
+      throw new BadRequestException(
+        'Vui lòng nhập Mã tài khoản, Email hoặc Số điện thoại.',
+      );
+    }
+
+    if (
+      dto.role !== Role.STUDENT &&
+      dto.role !== Role.TEACHER &&
+      dto.role !== Role.PARENT
+    ) {
+      throw new BadRequestException(
+        'Vui lòng chọn vai trò Học sinh, Giáo viên hoặc Phụ huynh.',
+      );
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        role: dto.role,
+        OR: [
+          { studentCode: rawIdentifier },
+          { email: { equals: rawIdentifier, mode: 'insensitive' } },
+          { phone: rawIdentifier },
+        ],
+      },
+      include: {
+        school: { select: { id: true, name: true } },
+        classEnrollments: {
+          where: { status: 'ACTIVE' },
+          take: 1,
+          include: {
+            class: {
+              select: {
+                id: true,
+                name: true,
+                homeroomTeacherId: true,
+                homeroomTeacher: {
+                  select: { id: true, fullName: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException(
+        'Không tìm thấy tài khoản khớp với vai trò và thông tin đã nhập. Vui lòng kiểm tra lại Mã tài khoản (chú ý chữ hoa/thường), Email hoặc SĐT.',
+      );
+    }
+
+    if (!user.isActive) {
+      throw new BadRequestException(
+        'Tài khoản này đang bị tạm khóa. Vui lòng liên hệ trực tiếp Văn phòng nhà trường.',
+      );
+    }
+
+    const cleanReason = (dto.reason || '').trim().slice(0, 300) || null;
+
+    // Avoid duplicate PENDING requests for the same user
+    const existingPending = await this.prisma.$queryRawUnsafe<
+      Array<{ id: string }>
+    >(
+      `SELECT id FROM "PasswordResetRequest" WHERE "userId" = $1::uuid AND status = 'PENDING' ORDER BY "createdAt" DESC LIMIT 1`,
+      user.id,
+    );
+
+    let requestId: string;
+    if (existingPending.length > 0) {
+      requestId = existingPending[0].id;
+      await this.prisma.$executeRawUnsafe(
+        `UPDATE "PasswordResetRequest" SET identifier = $1, reason = $2, "createdAt" = now() WHERE id = $3::uuid`,
+        rawIdentifier,
+        cleanReason,
+        requestId,
+      );
+    } else {
+      const inserted = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `INSERT INTO "PasswordResetRequest" ("schoolId", "userId", role, identifier, reason, status)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'PENDING')
+         RETURNING id`,
+        user.schoolId,
+        user.id,
+        user.role,
+        rawIdentifier,
+        cleanReason,
+      );
+      requestId = inserted[0]?.id;
+    }
+
+    // Notify School Admins (and Homeroom Teacher if Student)
+    const recipientIds = new Set<string>();
+    const schoolAdmins = await this.prisma.user.findMany({
+      where: {
+        ...(user.schoolId ? { schoolId: user.schoolId } : {}),
+        role: { in: [Role.ADMIN, Role.SCHOOL_ADMIN] },
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    schoolAdmins.forEach((a) => recipientIds.add(a.id));
+
+    const activeClass = user.classEnrollments?.[0]?.class || null;
+    const homeroomTeacher = activeClass?.homeroomTeacher || null;
+    if (user.role === Role.STUDENT && homeroomTeacher?.id) {
+      recipientIds.add(homeroomTeacher.id);
+    }
+
+    const roleLabel =
+      user.role === Role.STUDENT
+        ? 'Học sinh'
+        : user.role === Role.TEACHER
+          ? 'Giáo viên'
+          : 'Phụ huynh';
+    const userDisplay = `${user.fullName || rawIdentifier}${
+      user.studentCode ? ` (${user.studentCode})` : ''
+    }${activeClass?.name ? ` - ${activeClass.name}` : ''}`;
+
+    const notificationsData = Array.from(recipientIds).map((recipientId) => ({
+      userId: recipientId,
+      title: `Yêu cầu cấp lại mật khẩu (${roleLabel})`,
+      body: `${roleLabel} ${userDisplay} đã gửi yêu cầu cấp lại mật khẩu.${
+        cleanReason ? ` Ghi chú: ${cleanReason}` : ''
+      }`,
+    }));
+
+    if (notificationsData.length > 0) {
+      await this.prisma.notification.createMany({
+        data: notificationsData,
+      });
+    }
+
+    const handlerText =
+      user.role === Role.STUDENT
+        ? homeroomTeacher?.fullName
+          ? `Giáo viên chủ nhiệm ${homeroomTeacher.fullName}${activeClass?.name ? ` (${activeClass.name})` : ''} và Quản trị viên nhà trường`
+          : 'Giáo viên chủ nhiệm và Quản trị viên nhà trường'
+        : 'Quản trị viên nhà trường';
+
+    return {
+      success: true,
+      requestId,
+      role: user.role,
+      schoolName: user.school?.name || 'Nhà trường',
+      homeroomTeacherName:
+        user.role === Role.STUDENT ? homeroomTeacher?.fullName || null : null,
+      className: user.role === Role.STUDENT ? activeClass?.name || null : null,
+      handlerText,
+      message: `Đã gửi yêu cầu cấp lại mật khẩu tới ${handlerText}. Sau khi được cấp mật khẩu tạm, vui lòng đăng nhập để đặt mật khẩu mới.`,
     };
   }
 

@@ -19,6 +19,7 @@ import {
 import { detectOutOfGradeQuery } from './curriculum-guardrail';
 
 export interface RagCitation {
+  documentId?: string;
   fileName: string;
   courseId?: string;
   page?: number;
@@ -701,9 +702,9 @@ export class ChatRagService {
       ? scoredCourses.map((sc) => sc.course)
       : scoredCourses[0]?.score > 0
         ? scoredCourses
-            .filter((sc) => sc.score > 0)
-            .slice(0, 1)
-            .map((sc) => sc.course)
+          .filter((sc) => sc.score > 0)
+          .slice(0, 1)
+          .map((sc) => sc.course)
         : scoredCourses.slice(0, 2).map((sc) => sc.course);
 
     const contextBlocks: string[] = [];
@@ -727,7 +728,122 @@ export class ChatRagService {
         `[Khóa học: ${course.title} | Môn: ${course.subject?.name || 'Tổng hợp'} - Khối ${course.grade || ''}]\nMô tả chương trình: ${course.description || ''}`,
       );
 
-      // Score lessons by query relevance, but always include all lessons of the matched subject course so AI knows the full syllabus
+      // Query real uploaded & published PDF chunks from public.documents (BR-RAG-001 scoped strictly to published docs of this course)
+      const publishedDocIds = course.documents.map((d) => d.id);
+      const publishedDocNames = course.documents.map((d) => d.fileName);
+      const seenCitationKeys = new Set<string>();
+
+      if (publishedDocIds.length > 0 || publishedDocNames.length > 0) {
+        try {
+          const rawChunks = await this.prisma.$queryRawUnsafe<
+            Array<{
+              content: string;
+              metadata: {
+                documentId?: string;
+                fileName?: string;
+                source?: string;
+                loc?: { pageNumber?: number };
+              } | null;
+            }>
+          >(
+            `SELECT content, metadata FROM public.documents
+             WHERE (cardinality($1::text[]) > 0 AND metadata->>'documentId' = ANY($1::text[]))
+                OR (metadata->>'courseId' = $2 AND cardinality($3::text[]) > 0 AND metadata->>'fileName' = ANY($3::text[]))
+             ORDER BY COALESCE((metadata->'loc'->>'pageNumber')::int, 1) ASC, id ASC
+             LIMIT 160`,
+            publishedDocIds,
+            course.id,
+            publishedDocNames,
+          );
+
+          const normalizedQuery = query.toLowerCase();
+          const scoredChunks = rawChunks
+            .map((ch) => {
+              const fileName = ch.metadata?.fileName || primarySgkDoc;
+              const pageNum = Number(ch.metadata?.loc?.pageNumber || 1);
+              const lowerContent = (ch.content || '').toLowerCase();
+              const lowerFileName = fileName.toLowerCase();
+              const isTeacherUpload = ch.metadata?.source === 'teacher_upload';
+
+              let score = 0;
+              for (const token of queryTokens) {
+                if (lowerContent.includes(token)) score += 3;
+                if (lowerFileName.includes(token) && token.length >= 3) {
+                  score += 4;
+                }
+              }
+
+              // Direct mention of this specific PDF filename in the student's question
+              const baseNameNoExt = lowerFileName.replace(/\.pdf$/i, '');
+              if (
+                normalizedQuery.includes(lowerFileName) ||
+                (baseNameNoExt.length >= 6 &&
+                  normalizedQuery.includes(baseNameNoExt))
+              ) {
+                score += 25;
+              }
+
+              // Slight boost for teacher-uploaded PDFs when relevant or when student asks about "tài liệu / đề cương / bài tập"
+              if (isTeacherUpload) {
+                if (score > 0) score += 2;
+                else if (
+                  /tài liệu|đề cương|pdf|bài tập|phiếu|giáo viên|thầy|cô/i.test(
+                    normalizedQuery,
+                  )
+                ) {
+                  score += 4;
+                }
+              }
+
+              return {
+                documentId: ch.metadata?.documentId,
+                fileName,
+                pageNum,
+                content: ch.content,
+                isTeacherUpload,
+                score,
+              };
+            })
+            .sort((a, b) =>
+              b.score !== a.score
+                ? b.score - a.score
+                : Number(b.isTeacherUpload) - Number(a.isTeacherUpload) ||
+                  a.pageNum - b.pageNum,
+            );
+
+          const matchedUploadedOrSgkChunks = scoredChunks
+            .filter((c) => c.score > 0 || c.isTeacherUpload)
+            .slice(0, 4);
+
+          if (
+            matchedUploadedOrSgkChunks[0] &&
+            matchedUploadedOrSgkChunks[0].score > bestLessonScore
+          ) {
+            bestLessonScore = matchedUploadedOrSgkChunks[0].score;
+          }
+
+          for (const ch of matchedUploadedOrSgkChunks) {
+            contextBlocks.push(
+              `[Tài liệu PDF: ${ch.fileName} - Trang ${ch.pageNum}]\n${ch.content.slice(0, 950)}`,
+            );
+            const citKey = `${ch.fileName}_${ch.pageNum}`;
+            if (!seenCitationKeys.has(citKey) && citations.length < 3) {
+              seenCitationKeys.add(citKey);
+              citations.push({
+                documentId: ch.documentId,
+                fileName: ch.fileName,
+                courseId: course.id,
+                page: ch.pageNum,
+                snippet: ch.content.substring(0, 160).trim() + '...',
+              });
+            }
+          }
+        } catch {
+          // Non-fatal fallback to structured course lessons below
+        }
+      }
+
+      // Score lessons by query relevance, but always include key lessons of the matched subject course so AI knows the full syllabus
       const scoredLessons = course.lessons
         .map((lesson, idx) => {
           const text = `${lesson.title} ${lesson.content || ''}`.toLowerCase();
@@ -773,30 +889,32 @@ export class ChatRagService {
         bestLessonScore = scoredLessons[0].lScore;
       }
 
-      for (const item of scoredLessons.slice(0, 5)) {
+      for (const item of scoredLessons.slice(0, 4)) {
         contextBlocks.push(
           `[File: ${item.docFile} - Trang ${item.pageNum} | ${item.lesson.title}]\n${item.lesson.content || ''}`,
         );
       }
 
-      // Attach clean citations only for the relevant course documents (max 2 per course)
-      const topLessonsForCitation = scoredLessons.slice(0, 2);
-      const seenCitationKeys = new Set<string>();
-      for (const item of topLessonsForCitation) {
-        const key = `${item.docFile}_${item.pageNum}`;
-        if (seenCitationKeys.has(key)) continue;
-        seenCitationKeys.add(key);
-        citations.push({
-          fileName: item.docFile,
-          courseId: course.id,
-          page: item.pageNum,
-          snippet: `${item.lesson.title}: ${(item.lesson.content || '').substring(0, 150).trim()}...`,
-        });
+      // Attach clean citations only if fewer than 2 citations already matched from real PDF chunks
+      if (citations.length < 2) {
+        const topLessonsForCitation = scoredLessons.slice(0, 2);
+        for (const item of topLessonsForCitation) {
+          if (citations.length >= 3) break;
+          const key = `${item.docFile}_${item.pageNum}`;
+          if (seenCitationKeys.has(key)) continue;
+          seenCitationKeys.add(key);
+          citations.push({
+            fileName: item.docFile,
+            courseId: course.id,
+            page: item.pageNum,
+            snippet: `${item.lesson.title}: ${(item.lesson.content || '').substring(0, 150).trim()}...`,
+          });
+        }
       }
     }
 
     // Keep context concise so Ollama num_ctx (4096) never truncates the System Prompt
-    contextDocs = contextBlocks.join('\n\n').slice(0, 4800);
+    contextDocs = contextBlocks.join('\n\n').slice(0, 5200);
     return { contextDocs, citations, bestLessonScore };
   }
 
@@ -816,16 +934,113 @@ export class ChatRagService {
     data: { title?: string; subjectId?: string },
     schoolId?: string | null,
   ) {
-    return this.prisma.chatSession.create({
+    let resolvedSubject: { id: string; name: string; grade: number } | null =
+      null;
+
+    if (data.subjectId) {
+      resolvedSubject = await this.prisma.subject.findUnique({
+        where: { id: data.subjectId },
+        select: { id: true, name: true, grade: true },
+      });
+    }
+
+    const sessionTitle =
+      data.title ||
+      (resolvedSubject
+        ? `Gia sư ${resolvedSubject.name} (Lớp ${resolvedSubject.grade})`
+        : 'Cuộc trò chuyện mới');
+
+    const session = await this.prisma.chatSession.create({
       data: {
-        title: data.title || 'Cuộc trò chuyện mới',
+        title: sessionTitle,
         user: { connect: { id: userId } },
-        ...(data.subjectId
-          ? { subject: { connect: { id: data.subjectId } } }
+        ...(resolvedSubject
+          ? { subject: { connect: { id: resolvedSubject.id } } }
           : {}),
         ...(schoolId ? { school: { connect: { id: schoolId } } } : {}),
       },
+      include: {
+        subject: { select: { id: true, name: true, grade: true } },
+      },
     });
+
+    // Khi mở phiên trực tiếp từ 1 môn học cụ thể, khởi tạo sẵn câu chào đúng môn đó & kho tài liệu của môn
+    if (resolvedSubject) {
+      const matchingCourse = await this.prisma.course.findFirst({
+        where: {
+          subjectId: resolvedSubject.id,
+          ...(schoolId ? { schoolId } : {}),
+        },
+        include: {
+          lessons: {
+            select: { title: true, order: true },
+            orderBy: { order: 'asc' },
+            take: 5,
+          },
+          documents: {
+            where: {
+              status: {
+                notIn: [
+                  'Failed',
+                  'FAILED',
+                  'UNPUBLISHED',
+                  'ARCHIVED',
+                  'Pending',
+                  'Processing',
+                ],
+              },
+            },
+            orderBy: { fileName: 'asc' },
+            take: 3,
+          },
+        },
+      });
+
+      const lessonBullets =
+        matchingCourse && matchingCourse.lessons.length > 0
+          ? matchingCourse.lessons
+            .map((l) => `- **${l.title}**`)
+            .join('\n')
+          : `- Các chuyên đề và bài tập chuẩn chương trình **${resolvedSubject.name} Lớp ${resolvedSubject.grade}**.`;
+
+      const welcomeContent = [
+        `Chào em! Thầy/Cô AI phụ trách môn **${resolvedSubject.name} (Lớp ${resolvedSubject.grade})** đã sẵn sàng đồng hành cùng em.`,
+        ``,
+        `Phiên học này đã được kết nối trực tiếp với kho bài giảng và tài liệu **${matchingCourse?.title || `${resolvedSubject.name} ${resolvedSubject.grade}`}** gồm các nội dung trọng tâm:`,
+        lessonBullets,
+        ``,
+        `Em muốn Thầy/Cô giảng bài theo từng chương, giải thích công thức hay hướng dẫn giải bài tập nào của môn **${resolvedSubject.name} Lớp ${resolvedSubject.grade}** — hãy nhắn ngay bên dưới nhé!`,
+      ].join('\n');
+
+      const welcomeCitations: RagCitation[] = (
+        matchingCourse?.documents || []
+      ).map((doc) => ({
+        fileName: doc.fileName,
+        courseId: matchingCourse?.id,
+        page: 1,
+        snippet: `Tài liệu chính khóa môn ${resolvedSubject.name} Lớp ${resolvedSubject.grade}`,
+      }));
+
+      const welcomeMsg = await this.prisma.chatMessage.create({
+        data: {
+          sessionId: session.id,
+          role: 'assistant',
+          content: welcomeContent,
+          citations:
+            welcomeCitations.length > 0 ? (welcomeCitations as any) : undefined,
+        },
+      });
+
+      return {
+        ...session,
+        messages: [welcomeMsg],
+      };
+    }
+
+    return {
+      ...session,
+      messages: [],
+    };
   }
 
   private async recordUsageAndXp(

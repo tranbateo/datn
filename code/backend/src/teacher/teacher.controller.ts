@@ -46,6 +46,22 @@ export class TeacherController {
     return this.teacherService.getStudents(req.user.id);
   }
 
+  @Get('password-reset-requests')
+  async getPasswordResetRequests(@Req() req: any) {
+    return this.teacherService.getHomeroomPasswordResetRequests(req.user.id);
+  }
+
+  @Post('students/:studentId/reset-password')
+  async resetHomeroomStudentPassword(
+    @Req() req: any,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.teacherService.resetHomeroomStudentPassword(
+      req.user.id,
+      studentId,
+    );
+  }
+
   @Get('courses')
   async getCourses(@Req() req: any) {
     return this.teacherService.getCourses(req.user.id);

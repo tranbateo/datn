@@ -5,9 +5,17 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateQuizDto, CreateQuestionDto } from './dto/teacher.dto';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import {
+  generateTemporaryPassword,
+  hashPasswordWithPepper,
+  notifyLinkedParentsOfPasswordReset,
+} from '../common/password-reset.util';
 
 @Injectable()
 export class TeacherService {
@@ -767,29 +775,72 @@ export class TeacherService {
   }
 
   async getDocuments(teacherId: string) {
+    const scope = await this.getTeacherScope(teacherId);
+    if (scope.courseIds.length === 0) {
+      return [];
+    }
+
     const documents = await this.prisma.document.findMany({
-      where: { course: { teacherId } },
-      include: { course: { select: { id: true, title: true } } },
+      where: { courseId: { in: scope.courseIds } },
+      include: { course: { select: { id: true, title: true, grade: true } } },
       orderBy: { uploadedAt: 'desc' },
     });
 
-    return documents.map((d) => ({
-      id: d.id,
-      name: d.fileName,
-      courseId: d.courseId,
-      courseTitle: d.course?.title || 'Chưa phân loại',
-      size: d.size || '1.2 MB',
-      rawStatus: d.status,
-      status:
-        d.status.toLowerCase() === 'pending' ||
-        d.status.toLowerCase() === 'processing'
-          ? 'processing'
-          : d.status.toLowerCase() === 'unpublished' ||
-              d.status.toLowerCase() === 'archived'
-            ? 'unpublished'
-            : 'ready',
-      date: new Date(d.uploadedAt).toLocaleDateString('vi-VN'),
-    }));
+    const uploadsRoot = path.resolve(process.cwd(), 'uploads', 'documents');
+    const docIds = documents.map((d) => d.id);
+    const chunkCountByDocId = new Map<string, number>();
+
+    if (docIds.length > 0) {
+      try {
+        const counts = await this.prisma.$queryRawUnsafe<
+          Array<{ doc_id: string; cnt: number }>
+        >(
+          `SELECT metadata->>'documentId' AS doc_id, COUNT(*)::int AS cnt
+           FROM public.documents
+           WHERE metadata->>'documentId' = ANY($1::text[])
+           GROUP BY metadata->>'documentId'`,
+          docIds,
+        );
+        for (const row of counts) {
+          if (row.doc_id) {
+            chunkCountByDocId.set(row.doc_id, Number(row.cnt || 0));
+          }
+        }
+      } catch {
+        // Ignore if public.documents query fails
+      }
+    }
+
+    return documents.map((d) => {
+      const pdfAbsPath = path.resolve(uploadsRoot, `${d.id}.pdf`);
+      const hasFile =
+        /^[0-9a-f-]{36}$/i.test(d.id) &&
+        pdfAbsPath.startsWith(uploadsRoot) &&
+        fs.existsSync(pdfAbsPath);
+
+      return {
+        id: d.id,
+        name: d.fileName,
+        courseId: d.courseId,
+        courseTitle: d.course?.title || 'Chưa phân loại',
+        grade: d.course?.grade || null,
+        size: d.size || '1.2 MB',
+        hasFile,
+        chunksCount: chunkCountByDocId.get(d.id) || 0,
+        rawStatus: d.status,
+        status:
+          d.status.toLowerCase() === 'pending' ||
+          d.status.toLowerCase() === 'processing'
+            ? 'processing'
+            : d.status.toLowerCase() === 'unpublished' ||
+                d.status.toLowerCase() === 'archived'
+              ? 'unpublished'
+              : d.status.toLowerCase() === 'failed'
+                ? 'failed'
+                : 'ready',
+        date: new Date(d.uploadedAt).toLocaleDateString('vi-VN'),
+      };
+    });
   }
 
   async updateDocumentStatus(
@@ -797,14 +848,18 @@ export class TeacherService {
     documentId: string,
     status: string,
   ) {
+    const scope = await this.getTeacherScope(teacherId);
     const doc = await this.prisma.document.findUnique({
       where: { id: documentId },
       include: { course: true },
     });
     if (!doc) throw new NotFoundException('Không tìm thấy tài liệu.');
-    if (doc.course.teacherId !== teacherId) {
+    const canManage =
+      doc.course.teacherId === teacherId ||
+      scope.courseIds.includes(doc.courseId);
+    if (!canManage) {
       throw new ForbiddenException(
-        'Không có quyền chỉnh sửa tài liệu của giáo viên khác.',
+        'Không có quyền chỉnh sửa tài liệu của môn học khác.',
       );
     }
 
@@ -827,18 +882,46 @@ export class TeacherService {
   }
 
   async deleteDocument(teacherId: string, documentId: string) {
+    const scope = await this.getTeacherScope(teacherId);
     const doc = await this.prisma.document.findUnique({
       where: { id: documentId },
       include: { course: true },
     });
     if (!doc) throw new NotFoundException('Không tìm thấy tài liệu.');
-    if (doc.course.teacherId !== teacherId) {
+    const canManage =
+      doc.course.teacherId === teacherId ||
+      scope.courseIds.includes(doc.courseId);
+    if (!canManage) {
       throw new ForbiddenException(
-        'Không có quyền xóa tài liệu của giáo viên khác.',
+        'Không có quyền xóa tài liệu của môn học khác.',
       );
     }
 
+    // BR-DOC-001: Consistently delete DB record, vector chunks, and stored PDF file
     await this.prisma.document.delete({ where: { id: documentId } });
+
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `DELETE FROM public.documents WHERE metadata->>'documentId' = $1`,
+        documentId,
+      );
+    } catch {
+      // Non-fatal if chunk table has no matching rows
+    }
+
+    try {
+      const uploadsRoot = path.resolve(process.cwd(), 'uploads', 'documents');
+      const pdfAbsPath = path.resolve(uploadsRoot, `${documentId}.pdf`);
+      if (
+        /^[0-9a-f-]{36}$/i.test(documentId) &&
+        pdfAbsPath.startsWith(uploadsRoot) &&
+        fs.existsSync(pdfAbsPath)
+      ) {
+        await fs.promises.unlink(pdfAbsPath);
+      }
+    } catch {
+      // Non-fatal if file already absent
+    }
 
     await this.auditLogService.logAction(
       teacherId,
@@ -851,5 +934,185 @@ export class TeacherService {
     );
 
     return { success: true };
+  }
+
+  /**
+   * Homeroom Teacher (GVCN) can view password reset requests ONLY for students
+   * actively enrolled in classes where this teacher is the official homeroom teacher.
+   */
+  async getHomeroomPasswordResetRequests(teacherId: string) {
+    const homeroomClasses = await this.prisma.class.findMany({
+      where: { homeroomTeacherId: teacherId, status: 'ACTIVE' },
+      include: {
+        enrollments: {
+          where: { status: 'ACTIVE' },
+          select: { studentId: true },
+        },
+      },
+    });
+
+    if (homeroomClasses.length === 0) {
+      return [];
+    }
+
+    const classNameByStudentId = new Map<string, string>();
+    const studentIds: string[] = [];
+    for (const cls of homeroomClasses) {
+      for (const enr of cls.enrollments) {
+        studentIds.push(enr.studentId);
+        classNameByStudentId.set(enr.studentId, cls.name);
+      }
+    }
+
+    if (studentIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        id: string;
+        userId: string;
+        role: string;
+        identifier: string;
+        reason: string | null;
+        status: string;
+        createdAt: Date;
+        resolvedAt: Date | null;
+        fullName: string | null;
+        studentCode: string | null;
+        email: string | null;
+      }>
+    >(
+      `SELECT r.id, r."userId", r.role, r.identifier, r.reason, r.status,
+              r."createdAt", r."resolvedAt",
+              u."fullName", u."studentCode", u.email
+       FROM "PasswordResetRequest" r
+       JOIN "User" u ON u.id = r."userId"
+       WHERE r.role = 'STUDENT'
+         AND r."userId"::text = ANY($1::text[])
+         AND r.status = 'PENDING'
+       ORDER BY r."createdAt" DESC
+       LIMIT 50`,
+      studentIds,
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      role: row.role,
+      identifier: row.identifier,
+      reason: row.reason,
+      status: row.status,
+      createdAt: row.createdAt,
+      resolvedAt: row.resolvedAt,
+      fullName: row.fullName || 'Học sinh',
+      studentCode: row.studentCode,
+      email: row.email,
+      className: classNameByStudentId.get(row.userId) || null,
+    }));
+  }
+
+  /**
+   * Homeroom Teacher (GVCN) resets password for a student in their own homeroom class.
+   * BR-USER-001: Strictly rejects if the teacher is NOT the official GVCN of that student.
+   * BR-AUTH-001: Revokes refresh token sessions & sets mustChangePassword = true.
+   */
+  async resetHomeroomStudentPassword(teacherId: string, studentId: string) {
+    const enrollment = await this.prisma.classEnrollment.findFirst({
+      where: {
+        studentId,
+        status: 'ACTIVE',
+        class: {
+          homeroomTeacherId: teacherId,
+          status: 'ACTIVE',
+        },
+      },
+      include: {
+        class: { select: { id: true, name: true, grade: true } },
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            studentCode: true,
+            email: true,
+            role: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!enrollment || enrollment.student.role !== Role.STUDENT) {
+      throw new ForbiddenException(
+        'Chỉ Giáo viên chủ nhiệm của lớp hoặc Quản trị viên nhà trường mới có quyền cấp lại mật khẩu cho học sinh này.',
+      );
+    }
+
+    const tempPassword = generateTemporaryPassword();
+    const passwordHash = await hashPasswordWithPepper(tempPassword);
+
+    await this.prisma.user.update({
+      where: { id: studentId },
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+        refreshTokenHash: null,
+      },
+    });
+
+    await this.prisma.$executeRawUnsafe(
+      `UPDATE "PasswordResetRequest"
+       SET status = 'RESOLVED', "resolvedById" = $1::uuid, "resolvedAt" = now()
+       WHERE "userId" = $2::uuid AND status = 'PENDING'`,
+      teacherId,
+      studentId,
+    );
+
+    const teacherProfile = await this.prisma.user.findUnique({
+      where: { id: teacherId },
+      select: { fullName: true },
+    });
+
+    const notifiedParents = await notifyLinkedParentsOfPasswordReset(
+      this.prisma,
+      {
+        studentId,
+        studentName: enrollment.student.fullName || 'Học sinh',
+        studentCode: enrollment.student.studentCode,
+        className: enrollment.class.name,
+        issuerLabel: teacherProfile?.fullName
+          ? `GVCN ${teacherProfile.fullName}`
+          : 'Giáo viên chủ nhiệm',
+        tempPassword,
+      },
+    );
+
+    await this.auditLogService.logAction(
+      teacherId,
+      'RESET_PASSWORD_BY_HOMEROOM_TEACHER',
+      'User',
+      {
+        targetUserId: studentId,
+        studentCode: enrollment.student.studentCode,
+        className: enrollment.class.name,
+        notifiedParentCount: notifiedParents.length,
+      },
+    );
+
+    return {
+      success: true,
+      tempPassword,
+      mustChangePassword: true,
+      notifiedParents,
+      user: {
+        id: enrollment.student.id,
+        fullName: enrollment.student.fullName || 'Học sinh',
+        studentCode: enrollment.student.studentCode,
+        email: enrollment.student.email,
+        className: enrollment.class.name,
+        role: enrollment.student.role,
+      },
+      message: `Đã cấp mật khẩu tạm mới cho học sinh ${enrollment.student.fullName || enrollment.student.studentCode}. Học sinh sẽ cần đổi mật khẩu ngay khi đăng nhập.`,
+    };
   }
 }

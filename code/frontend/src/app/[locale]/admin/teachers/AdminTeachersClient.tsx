@@ -1,11 +1,23 @@
 "use client";
 
-import { Search, Plus, Download, Edit, Trash2, BookOpen, GraduationCap } from "lucide-react";
+import { Search, Plus, Download, Edit, Trash2, BookOpen, GraduationCap, KeyRound, BellRing } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { fetchApi } from "@/lib/api-client";
+import { notify } from "@/lib/toast";
 import { Teacher, Course, User } from "@/types";
 import UserModal from "@/components/admin/UserModal";
+import TempPasswordModal, { TempPasswordModalData } from "@/components/shared/TempPasswordModal";
+
+interface TeacherResetRequest {
+  id: string;
+  userId: string;
+  fullName: string;
+  studentCode?: string | null;
+  email?: string | null;
+  reason?: string | null;
+  createdAt: string;
+}
 
 export default function AdminTeachersClient({ initialData }: { initialData: Teacher[] }) {
   const t = useTranslations("Admin.Teachers");
@@ -17,6 +29,44 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
   const [selectedSubject, setSelectedSubject] = useState("all");
   const [selectedGrade, setSelectedGrade] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [resetRequests, setResetRequests] = useState<TeacherResetRequest[]>([]);
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [tempPasswordModal, setTempPasswordModal] = useState<TempPasswordModalData | null>(null);
+
+  const loadResetRequests = () => {
+    fetchApi<TeacherResetRequest[]>("/admin/password-reset-requests?role=TEACHER")
+      .then((res) => setResetRequests(Array.isArray(res) ? res : []))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadResetRequests();
+  }, []);
+
+  const handleResetTeacherPassword = async (teacherId: string, fullName: string) => {
+    if (!confirm(`Cấp lại mật khẩu tạm mới cho giáo viên "${fullName}"? Phiên đăng nhập cũ sẽ bị đăng xuất.`)) {
+      return;
+    }
+    setResettingUserId(teacherId);
+    try {
+      const res = await fetchApi<{
+        tempPassword: string;
+        user: { fullName: string; studentCode?: string | null; email?: string | null };
+      }>(`/admin/users/${teacherId}/reset-password`, { method: "POST" });
+      setTempPasswordModal({
+        fullName: res.user?.fullName || fullName,
+        studentCode: res.user?.studentCode,
+        email: res.user?.email,
+        roleLabel: "Giáo viên",
+        tempPassword: res.tempPassword,
+      });
+      loadResetRequests();
+    } catch (error: any) {
+      notify(error?.message || "Không thể cấp lại mật khẩu.");
+    } finally {
+      setResettingUserId(null);
+    }
+  };
 
   const availableSubjects = useMemo(() => {
     const set = new Set<string>();
@@ -126,6 +176,51 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
           </button>
         </div>
       </div>
+
+      {/* Pending Teacher Password Reset Requests */}
+      {resetRequests.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/70 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-sm">
+            <BellRing className="w-4 h-4 shrink-0" />
+            Có {resetRequests.length} yêu cầu cấp lại mật khẩu từ Giáo viên đang chờ xử lý
+          </div>
+          <div className="space-y-2">
+            {resetRequests.map((req) => (
+              <div
+                key={req.id}
+                className="bg-white dark:bg-gray-900/90 border border-amber-200/70 dark:border-amber-900/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
+                    <span>{req.fullName}</span>
+                    {req.studentCode && (
+                      <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                        {req.studentCode}
+                      </span>
+                    )}
+                    {req.email && (
+                      <span className="text-xs text-gray-500">{req.email}</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Gửi lúc {new Date(req.createdAt).toLocaleString("vi-VN")}
+                    {req.reason ? ` • Ghi chú: "${req.reason}"` : ""}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={resettingUserId === req.userId}
+                  onClick={() => handleResetTeacherPassword(req.userId, req.fullName)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 disabled:opacity-50 transition-colors"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  {resettingUserId === req.userId ? "Đang cấp..." : "Cấp mật khẩu tạm"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters Bar */}
       <div className="bg-white dark:bg-card-bg rounded-xl border border-gray-200 dark:border-card-border p-4 flex flex-col lg:flex-row items-center gap-3 justify-between shadow-sm">
@@ -353,6 +448,19 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
+                            onClick={() =>
+                              handleResetTeacherPassword(
+                                teacher.id,
+                                teacher.fullName || teacher.studentCode || "Giáo viên",
+                              )
+                            }
+                            disabled={resettingUserId === teacher.id}
+                            title="Cấp lại mật khẩu tạm"
+                            className="p-1 text-amber-600 hover:text-amber-700 disabled:opacity-50"
+                          >
+                            <KeyRound className="w-5 h-5" />
+                          </button>
+                          <button
                             onClick={() => handleOpenModal(teacher)}
                             className="p-1 text-blue-500 hover:text-blue-700"
                           >
@@ -381,6 +489,10 @@ export default function AdminTeachersClient({ initialData }: { initialData: Teac
         onSave={handleSaveUser}
         user={selectedUser}
         role="TEACHER"
+      />
+      <TempPasswordModal
+        data={tempPasswordModal}
+        onClose={() => setTempPasswordModal(null)}
       />
     </div>
   );

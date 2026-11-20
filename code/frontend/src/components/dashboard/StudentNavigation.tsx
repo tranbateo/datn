@@ -123,7 +123,7 @@ export function StudentNavigation() {
   const navItems = [
     { name: t("home"), href: "/dashboard", icon: Home },
     { name: t("aiTutor"), href: "/dashboard/ai-tutor", icon: Bot },
-    { name: "Khóa học", href: "/dashboard/courses", icon: BookOpen },
+    { name: "Bài giảng", href: "/dashboard/courses", icon: BookOpen },
     { name: t("schedule"), href: "/dashboard/schedule", icon: Calendar },
     { name: t("practice"), href: "/dashboard/practice", icon: Edit3 },
     { name: t("progress"), href: "/dashboard/progress", icon: BarChart2 },

@@ -34,12 +34,13 @@ export class DocumentProcessor {
       const result = await this.documentsService.processAndIngestDocument(
         file,
         courseId,
+        documentId,
       );
 
       await this.documentsService.updateDocumentStatus(documentId, 'Embedded');
 
       this.logger.log(
-        `Successfully ingested document. Chunks: ${result.chunks}`,
+        `Successfully ingested document ${documentId}. Pages: ${result.pages}, Chunks: ${result.chunks}`,
       );
       return result;
     } catch (error: any) {

@@ -5,6 +5,14 @@ export const teacherService = {
   getStudents: (): Promise<any[]> => {
     return fetchApi(API_ENDPOINTS.TEACHER.STUDENTS);
   },
+  getPasswordResetRequests: (): Promise<any[]> => {
+    return fetchApi('/teacher/password-reset-requests');
+  },
+  resetHomeroomStudentPassword: (studentId: string): Promise<any> => {
+    return fetchApi(`/teacher/students/${studentId}/reset-password`, {
+      method: 'POST',
+    });
+  },
   getClasses: (): Promise<any[]> => {
     return fetchApi('/teacher/classes');
   },

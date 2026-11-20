@@ -1,6 +1,15 @@
 import { fetchApi } from '@/lib/api-client';
 
+export interface ParentNotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  isRead: boolean;
+}
+
 export interface ParentDashboardData {
+  parentNotifications?: ParentNotificationItem[];
   students: {
     student: {
       id: string;
@@ -45,6 +54,10 @@ export interface ParentDashboardData {
 
 export const parentService = {
   getDashboard: () => fetchApi<ParentDashboardData>('/parents/dashboard'),
+  markNotificationRead: (notificationId: string) =>
+    fetchApi<{ success: boolean }>(`/parents/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+    }),
   linkStudent: (linkCode: string) =>
     fetchApi<{ success: boolean; student: any }>('/parents/link-student', {
       method: 'POST',

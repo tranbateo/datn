@@ -246,6 +246,7 @@ model Document {
   courseId   String   @db.Uuid
   course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   fileName   String
+  filePath   String?
   type       String
   size       String?
   status     String   @default("Pending") // Pending, Processing, Embedded, Failed
@@ -535,4 +536,23 @@ model AuditLog {
   resource  String
   details   Json?
   createdAt DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------
+// 9. Password Reset Requests (School-managed Accounts)
+// -----------------------------------------------------------------------
+model PasswordResetRequest {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String?   @db.Uuid
+  userId       String    @db.Uuid
+  role         String
+  identifier   String
+  reason       String?
+  status       String    @default("PENDING") // PENDING, RESOLVED, REJECTED
+  resolvedById String?   @db.Uuid
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([schoolId, status, createdAt])
+  @@index([userId, status])
 }

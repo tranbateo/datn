@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Req,
   UseGuards,
@@ -84,5 +85,14 @@ export class ParentsController {
   @Get('teachers')
   async getTeachers(@Req() req: { user: { id: string } }) {
     return this.parentsService.getTeachers(req.user.id);
+  }
+
+  @Roles(Role.PARENT)
+  @Patch('notifications/:id/read')
+  async markNotificationRead(
+    @Req() req: { user: { id: string } },
+    @Param('id') id: string,
+  ) {
+    return this.parentsService.markNotificationRead(req.user.id, id);
   }
 }

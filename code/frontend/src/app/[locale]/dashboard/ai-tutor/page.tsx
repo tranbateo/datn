@@ -2,7 +2,9 @@
 import { notify } from "@/lib/toast";
 
 import { API_ENDPOINTS } from "@/constants/api";
-import { useState, useRef, useEffect } from "react";
+import { Suspense, useState, useRef, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "@/i18n/routing";
 import {
   Search,
   Edit,
@@ -42,6 +44,7 @@ interface ChatSessionItem {
   title: string;
   createdAt: string;
   updatedAt?: string;
+  subject?: { id: string; name: string; grade?: number | null } | null;
 }
 
 interface SpeechRecognitionEvent {
@@ -235,7 +238,15 @@ const markdownComponents: Components = {
   ),
 };
 
-export default function AITutorPage() {
+function AITutorContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialSubjectId = searchParams.get("subjectId");
+  const initialSubjectName = searchParams.get("subjectName");
+  const initialGrade = searchParams.get("grade");
+  const initialDocName = searchParams.get("docName");
+  const initializedSubjectKeyRef = useRef<string | null>(null);
+
   const [showHistory, setShowHistory] = useState(false);
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [historySearch, setHistorySearch] = useState("");
@@ -243,6 +254,11 @@ export default function AITutorPage() {
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [activeSubject, setActiveSubject] = useState<{
+    id: string;
+    name: string;
+    grade?: number | null;
+  } | null>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
   const [feedbackMsgId, setFeedbackMsgId] = useState<string | null>(null);
@@ -276,12 +292,96 @@ export default function AITutorPage() {
     loadSessions();
   }, []);
 
+  // Tự động khởi tạo phiên Gia sư AI gắn đúng môn học & lời chào chuyên môn khi bấm "Hỏi AI" từ một môn cụ thể
+  useEffect(() => {
+    if (!initialSubjectId) return;
+    const initKey = `${initialSubjectId}_${initialDocName || ""}`;
+    if (initializedSubjectKeyRef.current === initKey) return;
+    initializedSubjectKeyRef.current = initKey;
+
+    const initSubjectSession = async () => {
+      setLoading(true);
+      try {
+        const title = initialSubjectName
+          ? `Gia sư ${initialSubjectName}${initialGrade ? ` (Lớp ${initialGrade})` : ""}`
+          : undefined;
+        const created = await fetchApi<{
+          id: string;
+          title: string;
+          createdAt: string;
+          subject?: { id: string; name: string; grade?: number | null } | null;
+          messages?: Array<{
+            id: string;
+            role: string;
+            content: string;
+            citations?: Citation[];
+            createdAt?: string;
+          }>;
+        }>(API_ENDPOINTS.CHAT.SESSION, {
+          method: "POST",
+          body: JSON.stringify({
+            subjectId: initialSubjectId,
+            title,
+          }),
+        });
+
+        setSessionId(created.id);
+        setActiveSubject(
+          created.subject ||
+            (initialSubjectName
+              ? {
+                  id: initialSubjectId,
+                  name: initialSubjectName,
+                  grade: initialGrade ? Number(initialGrade) : null,
+                }
+              : null),
+        );
+        setSessions((prev) => [
+          {
+            id: created.id,
+            title: created.title,
+            createdAt: created.createdAt,
+            subject: created.subject || null,
+          },
+          ...prev.filter((s) => s.id !== created.id),
+        ]);
+        setMessages(
+          Array.isArray(created.messages)
+            ? created.messages.map((m) => ({
+                id: m.id,
+                role: m.role as "user" | "assistant",
+                content: m.content,
+                citations: Array.isArray(m.citations) ? m.citations : undefined,
+                createdAt: m.createdAt,
+              }))
+            : [],
+        );
+        if (initialDocName) {
+          setInputText(
+            `Thầy/Cô giúp em tóm tắt những kiến thức trọng tâm nhất trong tài liệu ${initialDocName} với ạ`,
+          );
+        }
+      } catch (err) {
+        console.error("Failed to initialize subject AI session:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initSubjectSession();
+  }, [initialSubjectId, initialSubjectName, initialGrade, initialDocName]);
+
   const handleSelectSession = async (id: string) => {
     setSessionId(id);
     setShowHistory(false);
     setLoading(true);
     try {
-      const data = await fetchApi<{ id: string; messages: any[] }>(`/chat/session/${id}`);
+      const data = await fetchApi<{
+        id: string;
+        subject?: { id: string; name: string; grade?: number | null } | null;
+        messages: any[];
+      }>(`/chat/session/${id}`);
+      setActiveSubject(data?.subject || null);
       if (data?.messages) {
         setMessages(
           data.messages.map((m: any) => ({
@@ -490,6 +590,18 @@ export default function AITutorPage() {
     }
   };
 
+  const handleResetToNewChat = () => {
+    setSessionId(null);
+    setActiveSubject(null);
+    setMessages([]);
+    setInputText("");
+    setShowHistory(false);
+    initializedSubjectKeyRef.current = null;
+    if (initialSubjectId) {
+      router.replace("/dashboard/ai-tutor");
+    }
+  };
+
   const filteredSessions = sessions.filter(
     (s) => !historySearch || s.title?.toLowerCase().includes(historySearch.toLowerCase()),
   );
@@ -514,11 +626,7 @@ export default function AITutorPage() {
         >
           <div className="p-4 flex justify-between items-center">
             <button
-              onClick={() => {
-                setSessionId(null);
-                setMessages([]);
-                setShowHistory(false);
-              }}
+              onClick={handleResetToNewChat}
               className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-colors shadow-xs"
             >
               <Edit className="w-4 h-4" /> {t("newChat", { fallback: "Cuộc trò chuyện mới" })}
@@ -566,10 +674,47 @@ export default function AITutorPage() {
         <div
           className={`${showHistory ? "hidden" : "flex"} md:flex flex-col flex-1 bg-white dark:bg-[#0f111a]`}
         >
+          {/* Active Subject Context Bar */}
+          {activeSubject && (
+            <div className="px-4 sm:px-8 py-2.5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/40 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  Gia sư môn {activeSubject.name}
+                  {activeSubject.grade ? ` • Lớp ${activeSubject.grade}` : ""}
+                </span>
+                <span className="hidden sm:inline text-slate-500 dark:text-slate-400 text-xs">
+                  Đã kết nối kho tài liệu chính khóa của môn học
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetToNewChat}
+                className="text-xs font-semibold text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
+              >
+                Đổi môn khác
+              </button>
+            </div>
+          )}
+
           {/* Chat Messages */}
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-8">
-              {messages.length === 0 ? (
+              {messages.length === 0 && loading ? (
+                <div className="flex flex-col items-center justify-center h-full mt-24 text-center px-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mb-4 shadow-md text-white animate-pulse">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Đang kết nối Gia sư AI
+                    {initialSubjectName ? ` môn ${initialSubjectName}` : ""}
+                    {initialGrade ? ` (Lớp ${initialGrade})` : ""}...
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Đang tải chương trình và kho tài liệu chính khóa của môn học
+                  </p>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full mt-14 sm:mt-20 text-center px-4">
                   <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mb-6 shadow-md shadow-blue-600/20 text-white">
                     <Sparkles className="w-7 h-7" />
@@ -812,5 +957,19 @@ export default function AITutorPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AITutorPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="h-screen flex items-center justify-center bg-white dark:bg-[#0f111a] text-slate-500 text-sm">
+          Đang tải Gia sư AI...
+        </div>
+      }
+    >
+      <AITutorContent />
+    </Suspense>
   );
 }

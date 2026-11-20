@@ -279,12 +279,20 @@ export default function StudentDashboard() {
               Chọn môn học để làm đề kiểm tra hoặc tra cứu kiến thức cùng AI Tutor
             </p>
           </div>
-          <Link
-            href="/dashboard/practice"
-            className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
-          >
-            Tất cả bài kiểm tra <ChevronRight className="w-4 h-4" />
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/dashboard/courses"
+              className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
+            >
+              Bài giảng & Tài liệu <ChevronRight className="w-4 h-4" />
+            </Link>
+            <Link
+              href="/dashboard/practice"
+              className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+            >
+              Tất cả bài kiểm tra <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
 
         {subjects.length === 0 ? (
@@ -325,7 +333,7 @@ export default function StudentDashboard() {
                     <Edit3 className="w-3.5 h-3.5" /> Luyện tập
                   </Link>
                   <Link
-                    href="/dashboard/ai-tutor"
+                    href={`/dashboard/ai-tutor?subjectId=${encodeURIComponent(sub.id)}&subjectName=${encodeURIComponent(sub.name)}&grade=${encodeURIComponent(String(sub.grade || profile?.grade || ""))}`}
                     className="px-3 py-2 rounded-lg bg-blue-50/70 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-xs font-semibold text-blue-700 dark:text-blue-300 flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <Sparkles className="w-3.5 h-3.5" /> Hỏi AI

@@ -102,3 +102,28 @@ export class RefreshTokenDto {
   @IsNotEmpty()
   refreshToken: string;
 }
+
+export class RequestPasswordResetDto {
+  @ApiProperty({
+    enum: [Role.STUDENT, Role.TEACHER, Role.PARENT],
+    example: Role.STUDENT,
+  })
+  @IsEnum(Role)
+  role: Role;
+
+  @ApiProperty({
+    example: 'HS0001 hoặc GV01 hoặc 0901000001',
+    description: 'Mã học sinh, Mã giáo viên, Email hoặc Số điện thoại',
+  })
+  @IsString()
+  @IsNotEmpty()
+  identifier: string;
+
+  @ApiProperty({
+    example: 'Em quên mật khẩu tài khoản lớp 6A',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}

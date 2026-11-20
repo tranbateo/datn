@@ -65,7 +65,7 @@ async function main() {
   console.log(`[1/8] School: ${school.name} (${school.code})`);
 
   // -------------------------------------------------------------------------
-  // 2. School Admins
+  // 2. School Admin (Single official admin account for the school)
   // -------------------------------------------------------------------------
   const schoolAdmin = await prisma.user.upsert({
     where: { email: 'admin@nguyentrai.edu.vn' },
@@ -87,50 +87,7 @@ async function main() {
       isActive: true,
     },
   });
-
-  await prisma.user.upsert({
-    where: { email: 'admin@eduai.vn' },
-    update: {
-      schoolId: school.id,
-      role: Role.ADMIN,
-      fullName: 'Quản trị viên - THCS Nguyễn Trãi',
-      passwordHash: adminPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-    create: {
-      schoolId: school.id,
-      email: 'admin@eduai.vn',
-      fullName: 'Quản trị viên - THCS Nguyễn Trãi',
-      role: Role.ADMIN,
-      passwordHash: adminPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: 'schooladmin@nguyentrai.edu.vn' },
-    update: {
-      schoolId: school.id,
-      role: Role.ADMIN,
-      fullName: 'Ban Giám Hiệu - THCS Nguyễn Trãi',
-      passwordHash: adminPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-    create: {
-      schoolId: school.id,
-      email: 'schooladmin@nguyentrai.edu.vn',
-      phone: '0909000112',
-      fullName: 'Ban Giám Hiệu - THCS Nguyễn Trãi',
-      role: Role.ADMIN,
-      passwordHash: adminPasswordHash,
-      mustChangePassword: false,
-      isActive: true,
-    },
-  });
-  console.log(`[2/8] School Admin: ${schoolAdmin.email} / admin@eduai.vn`);
+  console.log(`[2/8] School Admin: ${schoolAdmin.email}`);
 
   // -------------------------------------------------------------------------
   // 3. Synchronize & Clean Subjects according to GDPT 2018
@@ -1369,14 +1326,20 @@ async function main() {
 
     await prisma.gamificationProfile.upsert({
       where: { userId: stu.id },
-      update: { lifetimeXp: s.xp, spendableXp: s.xp, level: s.level },
+      update: {
+        lifetimeXp: 0,
+        spendableXp: 0,
+        level: 1,
+        currentStreak: 0,
+        longestStreak: 0,
+      },
       create: {
         userId: stu.id,
-        lifetimeXp: s.xp,
-        spendableXp: s.xp,
-        level: s.level,
-        currentStreak: 5,
-        longestStreak: 10,
+        lifetimeXp: 0,
+        spendableXp: 0,
+        level: 1,
+        currentStreak: 0,
+        longestStreak: 0,
       },
     });
 

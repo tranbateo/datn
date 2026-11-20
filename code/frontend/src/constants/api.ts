@@ -21,7 +21,11 @@ export const API_ENDPOINTS = {
   },
   GAMIFICATION: {
     PROFILE: '/gamification/profile',
-    LEADERBOARD: (limit: number) => `/gamification/leaderboard?limit=${limit}`,
+    ANALYTICS: '/gamification/analytics',
+    LEADERBOARD: (limit: number, grade?: number) =>
+      grade
+        ? `/gamification/leaderboard?limit=${limit}&grade=${grade}`
+        : `/gamification/leaderboard?limit=${limit}`,
     ADD_XP: '/gamification/add-xp',
   },
   CURRICULUM: {
@@ -41,6 +45,7 @@ export const API_ENDPOINTS = {
   },
   COURSES: {
     LIST: '/courses',
+    DETAIL: (id: string) => `/courses/${id}`,
     ENROLL: (id: string) => `/courses/${id}/enroll`,
   },
   CALENDAR: {

@@ -6,6 +6,7 @@ import {
   LoginDto,
   RefreshTokenDto,
   FirstTimeChangePasswordDto,
+  RequestPasswordResetDto,
 } from './dto/auth.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -56,6 +57,15 @@ export class AuthController {
     @Body() dto: FirstTimeChangePasswordDto,
   ) {
     return this.authService.firstTimeChangePassword(req.user.id, dto);
+  }
+
+  @ApiOperation({
+    summary:
+      'Submit password reset request to School Admin (and Homeroom Teacher for Students)',
+  })
+  @Post('password-reset-request')
+  async requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    return this.authService.requestPasswordReset(dto);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -30,7 +30,7 @@
   "Auth": {
     "login": "Đăng nhập",
     "signup": "Đăng ký",
-    "welcomeBack": "Chào mừng trở lại",
+    "welcomeBack": "Đăng nhập vào Edu",
     "loginDesc": "Vui lòng nhập thông tin để đăng nhập.",
     "emailLabel": "Địa chỉ Email",
     "emailPlaceholder": "Nhập email của bạn",

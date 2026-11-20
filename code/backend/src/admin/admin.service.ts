@@ -11,6 +11,11 @@ import * as bcrypt from 'bcryptjs';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import {
+  generateTemporaryPassword,
+  hashPasswordWithPepper,
+  notifyLinkedParentsOfPasswordReset,
+} from '../common/password-reset.util';
 
 @Injectable()
 export class AdminService {
@@ -1478,5 +1483,179 @@ export class AdminService {
     }
 
     return { success: true, message: 'Xóa người dùng thành công' };
+  }
+
+  /**
+   * School Admin lists pending password reset requests within their school.
+   */
+  async getPasswordResetRequests(schoolId?: string | null, role?: string) {
+    const validRoles = ['STUDENT', 'TEACHER', 'PARENT'];
+    const roleFilter =
+      role && validRoles.includes(role.toUpperCase())
+        ? role.toUpperCase()
+        : null;
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        id: string;
+        userId: string;
+        role: string;
+        identifier: string;
+        reason: string | null;
+        status: string;
+        createdAt: Date;
+        resolvedAt: Date | null;
+        fullName: string | null;
+        studentCode: string | null;
+        email: string | null;
+        phone: string | null;
+        grade: number | null;
+        className: string | null;
+      }>
+    >(
+      `SELECT r.id, r."userId", r.role, r.identifier, r.reason, r.status,
+              r."createdAt", r."resolvedAt",
+              u."fullName", u."studentCode", u.email, u.phone, u.grade,
+              (
+                SELECT c.name
+                FROM "ClassEnrollment" ce
+                JOIN "Class" c ON c.id = ce."classId"
+                WHERE ce."studentId" = u.id AND ce.status = 'ACTIVE'
+                LIMIT 1
+              ) AS "className"
+       FROM "PasswordResetRequest" r
+       JOIN "User" u ON u.id = r."userId"
+       WHERE r.status = 'PENDING'
+         AND ($1::uuid IS NULL OR r."schoolId" = $1::uuid)
+         AND ($2::text IS NULL OR r.role = $2::text)
+       ORDER BY r."createdAt" DESC
+       LIMIT 100`,
+      schoolId || null,
+      roleFilter,
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      role: row.role,
+      identifier: row.identifier,
+      reason: row.reason,
+      status: row.status,
+      createdAt: row.createdAt,
+      resolvedAt: row.resolvedAt,
+      fullName: row.fullName || row.identifier,
+      studentCode: row.studentCode,
+      email: row.email,
+      phone: row.phone,
+      grade: row.grade,
+      className: row.className,
+    }));
+  }
+
+  /**
+   * School Admin resets password for a Student, Teacher, or Parent in their school.
+   * BR-AUTH-001: Revokes existing refresh tokens, forces password change on next login, logs audit.
+   */
+  async resetUserPassword(
+    targetUserId: string,
+    actorSchoolId?: string | null,
+    actorId?: string,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: {
+        id: true,
+        schoolId: true,
+        fullName: true,
+        studentCode: true,
+        email: true,
+        phone: true,
+        role: true,
+        isActive: true,
+        classEnrollments: {
+          where: { status: 'ACTIVE' },
+          take: 1,
+          include: { class: { select: { name: true } } },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản người dùng.');
+    }
+
+    if (actorSchoolId && user.schoolId && user.schoolId !== actorSchoolId) {
+      throw new ForbiddenException(
+        'Không có quyền cấp lại mật khẩu cho tài khoản của trường khác.',
+      );
+    }
+
+    if (user.role === Role.ADMIN || user.role === Role.SCHOOL_ADMIN) {
+      throw new ForbiddenException(
+        'Không thể cấp lại mật khẩu cho tài khoản Quản trị viên bằng chức năng này.',
+      );
+    }
+
+    const tempPassword = generateTemporaryPassword();
+    const passwordHash = await hashPasswordWithPepper(tempPassword);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+        refreshTokenHash: null,
+      },
+    });
+
+    await this.prisma.$executeRawUnsafe(
+      `UPDATE "PasswordResetRequest"
+       SET status = 'RESOLVED', "resolvedById" = $1::uuid, "resolvedAt" = now()
+       WHERE "userId" = $2::uuid AND status = 'PENDING'`,
+      actorId || null,
+      user.id,
+    );
+
+    const notifiedParents =
+      user.role === Role.STUDENT
+        ? await notifyLinkedParentsOfPasswordReset(this.prisma, {
+            studentId: user.id,
+            studentName: user.fullName || user.studentCode || 'Học sinh',
+            studentCode: user.studentCode,
+            className: user.classEnrollments?.[0]?.class?.name || null,
+            issuerLabel: 'Quản trị viên nhà trường',
+            tempPassword,
+          })
+        : [];
+
+    if (actorId) {
+      await this.auditLogService.logAction(
+        actorId,
+        'RESET_PASSWORD_BY_ADMIN',
+        'User',
+        {
+          targetUserId: user.id,
+          targetRole: user.role,
+          studentCode: user.studentCode,
+          notifiedParentCount: notifiedParents.length,
+        },
+      );
+    }
+
+    return {
+      success: true,
+      tempPassword,
+      mustChangePassword: true,
+      notifiedParents,
+      user: {
+        id: user.id,
+        fullName: user.fullName || user.studentCode || user.email,
+        studentCode: user.studentCode,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+      },
+      message: `Đã cấp mật khẩu tạm mới cho ${user.fullName || user.studentCode || user.email}. Người dùng sẽ được yêu cầu đổi mật khẩu mới ngay khi đăng nhập.`,
+    };
   }
 }

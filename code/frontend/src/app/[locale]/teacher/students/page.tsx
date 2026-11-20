@@ -1,10 +1,22 @@
 "use client";
 import { notify } from "@/lib/toast";
 
-import { Search, Filter, Download, Users, TrendingUp, AlertTriangle, Edit, X } from "lucide-react";
+import { Search, Filter, Download, Users, TrendingUp, AlertTriangle, Edit, X, KeyRound, BellRing } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, useEffect, useMemo } from "react";
 import { teacherService } from "@/services/teacher.service";
+import TempPasswordModal, { TempPasswordModalData } from "@/components/shared/TempPasswordModal";
+
+interface HomeroomResetRequest {
+  id: string;
+  userId: string;
+  fullName: string;
+  studentCode?: string | null;
+  email?: string | null;
+  className?: string | null;
+  reason?: string | null;
+  createdAt: string;
+}
 
 interface StudentData {
   id: string;
@@ -43,6 +55,11 @@ export default function TeacherStudentsPage() {
   const [scoreReason, setScoreReason] = useState("");
   const [savingScore, setSavingScore] = useState(false);
 
+  // Homeroom Teacher Password Reset state
+  const [resetRequests, setResetRequests] = useState<HomeroomResetRequest[]>([]);
+  const [resettingStudentId, setResettingStudentId] = useState<string | null>(null);
+  const [tempPasswordModal, setTempPasswordModal] = useState<TempPasswordModalData | null>(null);
+
   // Derive quick stats
   const activeToday = students.filter(s => s.lastActivity && new Date(s.lastActivity).toDateString() === new Date().toDateString()).length;
   const newThisWeek = students.filter(s => s.enrolledAt && (new Date().getTime() - new Date(s.enrolledAt).getTime()) < 7 * 24 * 60 * 60 * 1000).length;
@@ -51,10 +68,14 @@ export default function TeacherStudentsPage() {
   async function loadStudents() {
     setLoading(true);
     try {
-      const data = await teacherService.getStudents();
+      const [data, requestsData] = await Promise.all([
+        teacherService.getStudents(),
+        teacherService.getPasswordResetRequests().catch(() => []),
+      ]);
       if (data) {
         setStudents(data as unknown as StudentData[]);
       }
+      setResetRequests(Array.isArray(requestsData) ? (requestsData as HomeroomResetRequest[]) : []);
     } catch (error) {
       console.error("Failed to load students", error);
     } finally {
@@ -63,8 +84,33 @@ export default function TeacherStudentsPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStudents();
   }, []);
+
+  const handleResetHomeroomStudentPassword = async (studentId: string, fullName: string, className?: string | null) => {
+    if (!confirm(`Cấp lại mật khẩu tạm mới cho học sinh "${fullName}" (lớp chủ nhiệm)? Phiên đăng nhập cũ sẽ bị đăng xuất.`)) {
+      return;
+    }
+    setResettingStudentId(studentId);
+    try {
+      const res = await teacherService.resetHomeroomStudentPassword(studentId);
+      setTempPasswordModal({
+        fullName: res?.user?.fullName || fullName,
+        studentCode: res?.user?.studentCode,
+        email: res?.user?.email,
+        className: res?.user?.className || className || null,
+        roleLabel: "Học sinh lớp chủ nhiệm",
+        tempPassword: res.tempPassword,
+        notifiedParents: res?.notifiedParents || [],
+      });
+      await loadStudents();
+    } catch (error: any) {
+      notify(error?.message || "Không thể cấp lại mật khẩu cho học sinh.");
+    } finally {
+      setResettingStudentId(null);
+    }
+  };
 
   const classOptions = useMemo(() => {
     const set = new Set<string>();
@@ -158,6 +204,54 @@ export default function TeacherStudentsPage() {
             )}
           </div>
         </div>
+
+        {resetRequests.length > 0 && (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/70 rounded-2xl p-4 sm:p-5 space-y-3">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-sm">
+              <BellRing className="w-4 h-4 shrink-0" />
+              Có {resetRequests.length} yêu cầu cấp lại mật khẩu từ Học sinh lớp chủ nhiệm
+            </div>
+            <div className="space-y-2">
+              {resetRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className="bg-white dark:bg-gray-900/90 border border-amber-200/70 dark:border-amber-900/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
+                      <span>{req.fullName}</span>
+                      {req.studentCode && (
+                        <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                          {req.studentCode}
+                        </span>
+                      )}
+                      {req.className && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                          {req.className}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Gửi lúc {new Date(req.createdAt).toLocaleString("vi-VN")}
+                      {req.reason ? ` • Ghi chú: "${req.reason}"` : ""}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={resettingStudentId === req.userId}
+                    onClick={() =>
+                      handleResetHomeroomStudentPassword(req.userId, req.fullName, req.className)
+                    }
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 disabled:opacity-50 transition-colors"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    {resettingStudentId === req.userId ? "Đang cấp..." : "Cấp mật khẩu tạm"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-white dark:bg-card-bg rounded-2xl border border-gray-100 dark:border-card-border overflow-hidden shadow-sm">
           {/* Filters */}
@@ -302,17 +396,36 @@ export default function TeacherStudentsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {student.latestAttemptId ? (
-                        <button
-                          onClick={() => handleOpenScoreModal(student)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 transition-colors"
-                          title="Chỉnh sửa điểm bài kiểm tra gần nhất (FR-QUIZ-007)"
-                        >
-                          <Edit className="w-3.5 h-3.5" /> Sửa điểm
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-400">Chưa có bài</span>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        {student.isHomeroomTeacher && (
+                          <button
+                            onClick={() =>
+                              handleResetHomeroomStudentPassword(
+                                student.id,
+                                student.name,
+                                student.className || student.grade,
+                              )
+                            }
+                            disabled={resettingStudentId === student.id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 transition-colors disabled:opacity-50"
+                            title="GVCN cấp lại mật khẩu tạm cho học sinh lớp chủ nhiệm"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            {resettingStudentId === student.id ? "Đang cấp..." : "Cấp MK"}
+                          </button>
+                        )}
+                        {student.latestAttemptId ? (
+                          <button
+                            onClick={() => handleOpenScoreModal(student)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 transition-colors"
+                            title="Chỉnh sửa điểm bài kiểm tra gần nhất (FR-QUIZ-007)"
+                          >
+                            <Edit className="w-3.5 h-3.5" /> Sửa điểm
+                          </button>
+                        ) : !student.isHomeroomTeacher ? (
+                          <span className="text-xs text-gray-400">Chưa có bài</span>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -434,6 +547,10 @@ export default function TeacherStudentsPage() {
           </div>
         </div>
       )}
+      <TempPasswordModal
+        data={tempPasswordModal}
+        onClose={() => setTempPasswordModal(null)}
+      />
     </div>
   );
 }

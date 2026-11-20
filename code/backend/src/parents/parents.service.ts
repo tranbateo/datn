@@ -204,7 +204,24 @@ export class ParentsService {
       }),
     );
 
-    return { students: studentsStats };
+    const parentNotifications = await this.prisma.notification.findMany({
+      where: { userId: parentId },
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return { students: studentsStats, parentNotifications };
+  }
+
+  async markNotificationRead(parentId: string, notificationId: string) {
+    const updated = await this.prisma.notification.updateMany({
+      where: { id: notificationId, userId: parentId },
+      data: { isRead: true },
+    });
+    if (updated.count === 0) {
+      throw new NotFoundException('Không tìm thấy thông báo.');
+    }
+    return { success: true };
   }
 
   // 4. Get Teachers (both GVCN & GVBM) for Parent's linked students

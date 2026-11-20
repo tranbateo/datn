@@ -90,6 +90,9 @@ out
 .nuxt
 dist
 
+# Uploaded local documents (PDF storage)
+code/backend/uploads/
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js

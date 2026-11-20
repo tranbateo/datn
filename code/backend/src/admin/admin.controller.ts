@@ -7,6 +7,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Req,
   UseGuards,
   BadRequestException,
@@ -294,6 +295,26 @@ export class AdminController {
     return this.adminService.updateUser(
       id,
       dto,
+      req.user.schoolId,
+      req.user.id,
+    );
+  }
+
+  @Get('password-reset-requests')
+  async getPasswordResetRequests(
+    @Req() req: AuthenticatedRequest,
+    @Query('role') role?: string,
+  ) {
+    return this.adminService.getPasswordResetRequests(req.user.schoolId, role);
+  }
+
+  @Post('users/:id/reset-password')
+  async resetUserPassword(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.adminService.resetUserPassword(
+      id,
       req.user.schoolId,
       req.user.id,
     );

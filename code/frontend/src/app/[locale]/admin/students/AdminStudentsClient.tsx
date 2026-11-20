@@ -1,13 +1,25 @@
 "use client";
 import { notify } from "@/lib/toast";
 
-import { Search, Plus, Filter, Download, ChevronLeft, ChevronRight, TrendingUp, Users, Edit, Trash2, FileSpreadsheet, ArrowRightLeft, X } from "lucide-react";
+import { Search, Plus, Filter, Download, ChevronLeft, ChevronRight, TrendingUp, Users, Edit, Trash2, FileSpreadsheet, ArrowRightLeft, X, KeyRound, BellRing } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, useMemo, useEffect } from "react";
 import { fetchApi } from "@/lib/api-client";
 import { Student, User } from '@/types';
 import UserModal from "@/components/admin/UserModal";
 import SchoolImportModal from "@/components/admin/SchoolImportModal";
+import TempPasswordModal, { TempPasswordModalData } from "@/components/shared/TempPasswordModal";
+
+interface PasswordResetRequestItem {
+  id: string;
+  userId: string;
+  fullName: string;
+  studentCode?: string | null;
+  email?: string | null;
+  className?: string | null;
+  reason?: string | null;
+  createdAt: string;
+}
 
 export default function AdminStudentsClient({ initialData }: { initialData: Student[] }) {
   const t = useTranslations("Admin.Students");
@@ -21,15 +33,54 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
   const [targetClassId, setTargetClassId] = useState("");
   const [transferring, setTransferring] = useState(false);
 
+  const [resetRequests, setResetRequests] = useState<PasswordResetRequestItem[]>([]);
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [tempPasswordModal, setTempPasswordModal] = useState<TempPasswordModalData | null>(null);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGrade, setSelectedGrade] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
+
+  const loadResetRequests = () => {
+    fetchApi<PasswordResetRequestItem[]>("/admin/password-reset-requests?role=STUDENT")
+      .then((res) => setResetRequests(Array.isArray(res) ? res : []))
+      .catch(() => {});
+  };
 
   useEffect(() => {
     fetchApi<any[]>("/admin/classes")
       .then((res) => setClasses(Array.isArray(res) ? res : []))
       .catch(() => {});
+    loadResetRequests();
   }, []);
+
+  const handleResetStudentPassword = async (studentId: string, fullName: string, className?: string | null) => {
+    if (!confirm(`Cấp lại mật khẩu tạm mới cho học sinh "${fullName}"? Phiên đăng nhập cũ sẽ bị đăng xuất.`)) {
+      return;
+    }
+    setResettingUserId(studentId);
+    try {
+      const res = await fetchApi<{
+        tempPassword: string;
+        notifiedParents?: Array<{ id: string; fullName: string; phone?: string | null }>;
+        user: { fullName: string; studentCode?: string | null; email?: string | null };
+      }>(`/admin/users/${studentId}/reset-password`, { method: "POST" });
+      setTempPasswordModal({
+        fullName: res.user?.fullName || fullName,
+        studentCode: res.user?.studentCode,
+        email: res.user?.email,
+        className: className || null,
+        roleLabel: "Học sinh",
+        tempPassword: res.tempPassword,
+        notifiedParents: res.notifiedParents || [],
+      });
+      loadResetRequests();
+    } catch (error: any) {
+      notify(error?.message || "Không thể cấp lại mật khẩu.");
+    } finally {
+      setResettingUserId(null);
+    }
+  };
 
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
@@ -121,15 +172,61 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
     window.open('/api/proxy/schools/export/credentials', '_blank');
   };
 
+  const [oneWeekAgoTs] = useState(() => Date.now() - 7 * 24 * 60 * 60 * 1000);
+
   const newThisWeekCount = useMemo(() => {
-    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return students.filter(s => s.createdAt && new Date(s.createdAt).getTime() >= oneWeekAgo).length;
-  }, [students]);
+    return students.filter(s => s.createdAt && new Date(s.createdAt).getTime() >= oneWeekAgoTs).length;
+  }, [students, oneWeekAgoTs]);
 
   return (
     <div className="flex flex-col lg:flex-row gap-8">
       {/* Main Content - Table */}
       <div className="flex-1 space-y-6">
+        {resetRequests.length > 0 && (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/70 rounded-2xl p-4 sm:p-5 space-y-3">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-sm">
+              <BellRing className="w-4 h-4 shrink-0" />
+              Có {resetRequests.length} yêu cầu cấp lại mật khẩu từ Học sinh đang chờ xử lý
+            </div>
+            <div className="space-y-2">
+              {resetRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className="bg-white dark:bg-gray-900/90 border border-amber-200/70 dark:border-amber-900/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
+                      <span>{req.fullName}</span>
+                      {req.studentCode && (
+                        <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                          {req.studentCode}
+                        </span>
+                      )}
+                      {req.className && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                          {req.className}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Gửi lúc {new Date(req.createdAt).toLocaleString("vi-VN")}
+                      {req.reason ? ` • Ghi chú: "${req.reason}"` : ""}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={resettingUserId === req.userId}
+                    onClick={() => handleResetStudentPassword(req.userId, req.fullName, req.className)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 disabled:opacity-50 transition-colors"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    {resettingUserId === req.userId ? "Đang cấp..." : "Cấp mật khẩu tạm"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-2">{t('title')}</h2>
@@ -288,6 +385,20 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
+                              onClick={() =>
+                                handleResetStudentPassword(
+                                  student.id,
+                                  student.fullName || student.studentCode || "Học sinh",
+                                  student.classEnrollments?.[0]?.class?.name || null,
+                                )
+                              }
+                              disabled={resettingUserId === student.id}
+                              title="Cấp lại mật khẩu tạm"
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              <KeyRound className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => handleOpenTransfer(student)}
                               title="Chuyển lớp / Xếp lớp"
                               className="p-1.5 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
@@ -432,6 +543,10 @@ export default function AdminStudentsClient({ initialData }: { initialData: Stud
         isOpen={isImportModalOpen} 
         onClose={() => setIsImportModalOpen(false)} 
         onSuccess={() => window.location.reload()} 
+      />
+      <TempPasswordModal
+        data={tempPasswordModal}
+        onClose={() => setTempPasswordModal(null)}
       />
     </div>
   );
