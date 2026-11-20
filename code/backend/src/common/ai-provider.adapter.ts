@@ -17,13 +17,124 @@ export interface AiChatModelAdapter {
   stream(input: unknown): Promise<AsyncIterable<AiChatResponse>>;
 }
 
+const CJK_TO_VI_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/纠错|纠正/g, ' sửa '],
+  [/纠/g, ' sửa '],
+  [/错误/g, ' sai '],
+  [/正确/g, ' đúng '],
+  [/例子/g, ' ví dụ '],
+  [/例如|比如/g, ' ví dụ '],
+  [/公式/g, ' công thức '],
+  [/步骤/g, ' bước '],
+  [/总结/g, ' tóm tắt '],
+  [/注意/g, ' lưu ý '],
+  [/练习/g, ' luyện tập '],
+  [/回答/g, ' trả lời '],
+  [/问题/g, ' câu hỏi '],
+  [/解释/g, ' giải thích '],
+  [/语法/g, ' ngữ pháp '],
+  [/动词/g, ' động từ '],
+  [/主语/g, ' chủ ngữ '],
+  [/名词/g, ' danh từ '],
+  [/形容词/g, ' tính từ '],
+  [/副词/g, ' trạng từ '],
+  [/时态/g, ' thì '],
+  [/词汇/g, ' từ vựng '],
+  [/单词/g, ' từ '],
+  [/句子/g, ' câu '],
+  [/意思/g, ' nghĩa '],
+  [/规则/g, ' quy tắc '],
+  [/答案/g, ' đáp án '],
+  [/结果/g, ' kết quả '],
+  [/方法/g, ' phương pháp '],
+  [/重点/g, ' trọng tâm '],
+  [/复习/g, ' ôn tập '],
+  [/学习/g, ' học tập '],
+  [/所以|因此/g, ' vì vậy '],
+  [/因为/g, ' bởi vì '],
+  [/但是/g, ' nhưng '],
+  [/或者/g, ' hoặc '],
+  [/以及/g, ' và '],
+  [/然后/g, ' sau đó '],
+  [/首先/g, ' đầu tiên '],
+  [/其次/g, ' tiếp theo '],
+  [/最后/g, ' cuối cùng '],
+  [/非常/g, ' rất '],
+  [/重要/g, ' quan trọng '],
+  [/需要/g, ' cần '],
+  [/可以/g, ' có thể '],
+  [/应该/g, ' nên '],
+  [/错/g, ' sai '],
+];
+
 /**
- * Loại bỏ khối suy nghĩ nội bộ <think>...</think> của dòng mô hình Qwen3-8B
- * để trả về câu trả lời sư phạm sạch sẽ hoặc chuỗi JSON thuần túy cho QuizService.
+ * Loại bỏ hiện tượng rò rỉ ký tự chữ Hán (CJK token leakage) vốn hay xảy ra ở dòng mô hình
+ * Qwen3 khi lượng tử hóa 4-bit sinh văn bản tiếng Việt.
+ */
+export function sanitizeCjkLeakage(text: string): string {
+  if (!text) return '';
+  if (!/[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/.test(text)) {
+    return text;
+  }
+
+  let cleaned = text;
+  for (const [pattern, viReplacement] of CJK_TO_VI_REPLACEMENTS) {
+    cleaned = cleaned.replace(pattern, viReplacement);
+  }
+  // Xóa bất kỳ ký tự chữ Hán nào còn sót lại
+  cleaned = cleaned.replace(/[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]+/g, '');
+  // Chuẩn hóa khoảng trắng dư (giữ nguyên xuống dòng Markdown)
+  cleaned = cleaned.replace(/ {2,}/g, ' ').replace(/ ([.,!?;:])/g, '$1');
+  return cleaned;
+}
+
+/**
+ * Loại bỏ câu rào đón lặp lại ("Chào em! Hiện tại chúng ta đang ở trong phiên học môn ... chỉ hỗ trợ ... môn này.")
+ * khi câu trả lời thực chất vẫn đang giải đáp đúng môn học (không phải câu từ chối lệch môn).
+ */
+export function stripRedundantSubjectPreamble(text: string): string {
+  if (!text) return '';
+  const preambleRegex =
+    /^\s*(?:Chào\s+(?:em|bạn)[!,.]?\s*)?Hiện tại\s+(?:chúng ta|mình)\s+đang ở trong phiên\s+(?:học|làm việc)[^.\n]*?chỉ hỗ trợ[^.\n]*?\.\s*/i;
+  const match = text.match(preambleRegex);
+  if (!match) return text;
+
+  const remainder = text.slice(match[0].length).trim();
+  // Nếu phần còn lại đủ dài và không phải câu từ chối chuyển sang phiên khác thì bỏ câu rào đón thừa
+  const isRefusalRemainder =
+    /chuyển sang phiên|mở phiên|phiên học môn khác|vui lòng chọn môn/i.test(
+      remainder.slice(0, 140),
+    );
+  if (remainder.length > 25 && !isRefusalRemainder) {
+    return remainder;
+  }
+  return text;
+}
+
+/**
+ * Loại bỏ khối suy nghĩ nội bộ <think>...</think> cũng như các thẻ </think> / <think>
+ * lẻ, ký tự CJK rò rỉ và câu rào đón phiên học thừa của dòng mô hình Qwen3-8B.
  */
 export function stripReasoningBlocks(text: string): string {
   if (!text) return '';
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const noThink = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<\/?think>/gi, '');
+  const noCjk = sanitizeCjkLeakage(noThink).trim();
+  return stripRedundantSubjectPreamble(noCjk);
+}
+
+function getPartialThinkTagSuffixLength(text: string): number {
+  const lower = text.toLowerCase();
+  const candidates = ['<think>', '</think>'];
+  const maxCheck = Math.min(lower.length, 7); // max proper prefix length of '</think>' is 7
+  for (let len = maxCheck; len >= 1; len--) {
+    const suffix = lower.slice(-len);
+    if (candidates.some((tag) => tag.startsWith(suffix))) {
+      return len;
+    }
+  }
+  return 0;
 }
 
 export interface OllamaMessagePayload {
@@ -150,6 +261,8 @@ export class OllamaChatModel implements AiChatModelAdapter {
         keep_alive: '24h',
         options: {
           temperature: this.temperature,
+          top_p: 0.85,
+          repeat_penalty: 1.05,
           num_predict: this.maxOutputTokens,
           num_ctx: 4096,
         },
@@ -197,6 +310,8 @@ export class OllamaChatModel implements AiChatModelAdapter {
           keep_alive: '24h',
           options: {
             temperature,
+            top_p: 0.85,
+            repeat_penalty: 1.05,
             num_predict: maxOutputTokens,
             num_ctx: 4096,
           },
@@ -214,6 +329,21 @@ export class OllamaChatModel implements AiChatModelAdapter {
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
       let insideThinkBlock = false;
+      let pending = '';
+      let hasEmittedContent = false;
+
+      const formatEmitChunk = (chunk: string): string => {
+        if (!chunk) return '';
+        const sanitized = sanitizeCjkLeakage(chunk);
+        if (!sanitized) return '';
+        if (!hasEmittedContent) {
+          const trimmedStart = sanitized.replace(/^\s+/, '');
+          if (!trimmedStart) return '';
+          hasEmittedContent = true;
+          return trimmedStart;
+        }
+        return sanitized;
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -229,30 +359,69 @@ export class OllamaChatModel implements AiChatModelAdapter {
 
           try {
             const parsed = JSON.parse(trimmed);
-            let token: string = parsed?.message?.content ?? '';
-            if (!token) continue;
+            const rawToken: string = parsed?.message?.content ?? '';
+            if (!rawToken) continue;
 
-            if (stripThink) {
-              if (token.includes('<think>')) {
-                insideThinkBlock = true;
-                token = token.split('<think>')[0];
-              }
-              if (insideThinkBlock) {
-                if (token.includes('</think>')) {
-                  insideThinkBlock = false;
-                  token = token.split('</think>').pop() || '';
-                } else {
-                  continue;
-                }
-              }
+            if (!stripThink) {
+              yield { content: rawToken };
+              continue;
             }
 
-            if (token) {
-              yield { content: token };
+            pending += rawToken;
+
+            while (pending.length > 0) {
+              const lower = pending.toLowerCase();
+              if (insideThinkBlock) {
+                const closeIdx = lower.indexOf('</think>');
+                if (closeIdx !== -1) {
+                  pending = pending.slice(closeIdx + '</think>'.length);
+                  insideThinkBlock = false;
+                } else {
+                  const keep = getPartialThinkTagSuffixLength(pending);
+                  pending = keep > 0 ? pending.slice(-keep) : '';
+                  break;
+                }
+              } else {
+                const openIdx = lower.indexOf('<think>');
+                const closeIdx = lower.indexOf('</think>');
+
+                // Handle orphan </think> appearing before any <think>
+                if (closeIdx !== -1 && (openIdx === -1 || closeIdx < openIdx)) {
+                  const before = formatEmitChunk(pending.slice(0, closeIdx));
+                  if (before) yield { content: before };
+                  pending = pending.slice(closeIdx + '</think>'.length);
+                  continue;
+                }
+
+                if (openIdx !== -1) {
+                  const before = formatEmitChunk(pending.slice(0, openIdx));
+                  if (before) yield { content: before };
+                  pending = pending.slice(openIdx + '<think>'.length);
+                  insideThinkBlock = true;
+                  continue;
+                }
+
+                // Hold back trailing partial '<think>' or '</think>' prefix until next chunk
+                const partialLen = getPartialThinkTagSuffixLength(pending);
+                const safeEnd = pending.length - partialLen;
+                if (safeEnd > 0) {
+                  const safeChunk = formatEmitChunk(pending.slice(0, safeEnd));
+                  if (safeChunk) yield { content: safeChunk };
+                  pending = pending.slice(safeEnd);
+                }
+                break;
+              }
             }
           } catch {
             // Bỏ qua dòng JSON chưa hoàn chỉnh
           }
+        }
+      }
+
+      if (stripThink && !insideThinkBlock && pending.length > 0) {
+        const finalChunk = formatEmitChunk(stripReasoningBlocks(pending));
+        if (finalChunk) {
+          yield { content: finalChunk };
         }
       }
     }
