@@ -3,6 +3,7 @@ import {
   Alert,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import {
   formatClassLabel,
@@ -19,10 +21,12 @@ import {
 } from '@/services/mobile.services';
 import { useAuthStore, type MobileUser } from '@/store/authStore';
 import {
+  ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   LoadingView,
   PrimaryButton,
+  UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
 
@@ -38,6 +42,7 @@ export default function StudentProfileScreen() {
 
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!user);
   const [refreshing, setRefreshing] = useState(false);
@@ -126,6 +131,49 @@ export default function StudentProfileScreen() {
     }
   };
 
+  const handleChangeAvatar = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Cần cấp quyền', 'Vui lòng cấp quyền Thư viện ảnh để đổi ảnh đại diện.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (res.canceled || !res.assets?.[0]) return;
+
+    setUploadingAvatar(true);
+    try {
+      const asset = res.assets[0];
+      const updated = await usersApi.uploadAvatar(
+        asset.uri,
+        asset.fileName || 'avatar.jpg',
+        asset.mimeType || 'image/jpeg',
+      );
+      setProfile((prev) => (prev ? { ...prev, ...updated } : updated));
+      void updateUser(updated);
+      Alert.alert('Thành công', 'Đã cập nhật ảnh đại diện mới!');
+    } catch (err: unknown) {
+      Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể tải ảnh đại diện.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleShareCode = async () => {
+    if (!linkCode) return;
+    try {
+      await Share.share({
+        message: `Mã liên kết Phụ huynh AI Tutor của ${profile?.fullName || 'con'}: ${linkCode} (hiệu lực 15 phút).`,
+      });
+    } catch {
+      // ignore
+    }
+  };
+
   const handleConfirmLogout = () => {
     Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?', [
       { text: 'Hủy', style: 'cancel' },
@@ -141,7 +189,7 @@ export default function StudentProfileScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -155,11 +203,35 @@ export default function StudentProfileScreen() {
       >
         {/* Identity Card */}
         <Card style={styles.identityCard}>
-          <View style={[styles.avatar, { backgroundColor: p.primary }]}>
-            <Text style={styles.avatarLetter}>
-              {(profile?.fullName || 'H').charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          <TouchableOpacity
+            onPress={() => void handleChangeAvatar()}
+            disabled={uploadingAvatar}
+            style={{ position: 'relative' }}
+          >
+            <UserAvatar
+              uri={profile?.avatarUrl}
+              name={profile?.fullName}
+              size={62}
+              bgColor={p.primary}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                right: -2,
+                bottom: -2,
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: p.card,
+                borderWidth: 1,
+                borderColor: p.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="camera" size={13} color={p.primary} />
+            </View>
+          </TouchableOpacity>
           <View style={{ flex: 1, gap: 4 }}>
             <Text style={{ fontSize: 18, fontWeight: '800', color: p.text }}>
               {profile?.fullName || 'Học sinh'}
@@ -221,6 +293,24 @@ export default function StudentProfileScreen() {
               <Text style={{ fontSize: 12, color: p.textMuted }}>
                 Hiệu lực 15 phút • Dùng một lần
               </Text>
+              <TouchableOpacity
+                onPress={() => void handleShareCode()}
+                style={{
+                  marginTop: 6,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  paddingHorizontal: 14,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor: p.card,
+                }}
+              >
+                <Ionicons name="share-social-outline" size={14} color={p.indigo} />
+                <Text style={{ color: p.indigo, fontSize: 12, fontWeight: '800' }}>
+                  Chia sẻ mã cho Phụ huynh
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : null}
 

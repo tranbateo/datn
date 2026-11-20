@@ -18,7 +18,7 @@ import { Card, PrimaryButton, usePalette } from '@/components/ui/mobile-ui';
 export default function ForgotPasswordScreen() {
   const p = usePalette();
   const router = useRouter();
-  const [role, setRole] = useState<'STUDENT' | 'PARENT'>('STUDENT');
+  const [role, setRole] = useState<'STUDENT' | 'TEACHER' | 'PARENT'>('STUDENT');
   const [identifier, setIdentifier] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -115,6 +115,14 @@ export default function ForgotPasswordScreen() {
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
+                  style={[styles.roleBtn, role === 'TEACHER' && { backgroundColor: p.emerald }]}
+                  onPress={() => setRole('TEACHER')}
+                >
+                  <Text style={[styles.roleText, { color: role === 'TEACHER' ? '#FFFFFF' : p.textMuted }]}>
+                    Giáo viên
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   style={[styles.roleBtn, role === 'PARENT' && { backgroundColor: p.indigo }]}
                   onPress={() => setRole('PARENT')}
                 >
@@ -132,11 +140,21 @@ export default function ForgotPasswordScreen() {
 
               <View style={styles.field}>
                 <Text style={[styles.label, { color: p.text }]}>
-                  {role === 'STUDENT' ? 'Mã học sinh hoặc Email *' : 'Số điện thoại hoặc Email *'}
+                  {role === 'STUDENT'
+                    ? 'Mã học sinh hoặc Email *'
+                    : role === 'TEACHER'
+                      ? 'Mã giáo viên, Email hoặc SĐT *'
+                      : 'Số điện thoại hoặc Email *'}
                 </Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
-                  placeholder={role === 'STUDENT' ? 'VD: HS0001' : 'VD: 0901000001'}
+                  placeholder={
+                    role === 'STUDENT'
+                      ? 'VD: HS0001'
+                      : role === 'TEACHER'
+                        ? 'VD: GV01 hoặc mai.nguyen@nguyentrai.edu.vn'
+                        : 'VD: 0901000001'
+                  }
                   placeholderTextColor={p.textMuted}
                   value={identifier}
                   onChangeText={setIdentifier}

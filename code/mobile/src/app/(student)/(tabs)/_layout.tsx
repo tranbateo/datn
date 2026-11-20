@@ -15,7 +15,7 @@ export default function StudentTabsLayout() {
         tabBarStyle: {
           backgroundColor: p.card,
           borderTopColor: p.border,
-          height: Platform.OS === 'ios' ? 84 : 64,
+          height: Platform.OS === 'ios' ? 84 : 66,
           paddingTop: 6,
           paddingBottom: Platform.OS === 'ios' ? 24 : 8,
         },
@@ -29,8 +29,8 @@ export default function StudentTabsLayout() {
         name="index"
         options={{
           title: 'Trang chủ',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
           ),
         }}
       />
@@ -38,8 +38,8 @@ export default function StudentTabsLayout() {
         name="explore"
         options={{
           title: 'Gia sư AI',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="sparkles-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'sparkles' : 'sparkles-outline'} size={size} color={color} />
           ),
         }}
       />
@@ -47,8 +47,8 @@ export default function StudentTabsLayout() {
         name="practice"
         options={{
           title: 'Luyện tập',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="create-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'create' : 'create-outline'} size={size} color={color} />
           ),
         }}
       />
@@ -56,8 +56,8 @@ export default function StudentTabsLayout() {
         name="schedule"
         options={{
           title: 'Lịch học',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={color} />
           ),
         }}
       />
@@ -65,12 +65,11 @@ export default function StudentTabsLayout() {
         name="profile"
         options={{
           title: 'Hồ sơ',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
           ),
         }}
       />
-      {/* Progress analytics screen accessible via Trang chủ / Hồ sơ */}
       <Tabs.Screen
         name="progress"
         options={{

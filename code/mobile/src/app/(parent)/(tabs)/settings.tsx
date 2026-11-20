@@ -5,12 +5,21 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { usersApi } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
-import { Card, PrimaryButton, usePalette } from '@/components/ui/mobile-ui';
+import {
+  ADAPTIVE_CONTENT_STYLE,
+  Card,
+  PrimaryButton,
+  UserAvatar,
+  usePalette,
+} from '@/components/ui/mobile-ui';
 
 export default function ParentSettingsScreen() {
   const p = usePalette();
@@ -18,7 +27,9 @@ export default function ParentSettingsScreen() {
 
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [phone, setPhone] = useState(user?.phone || '');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
   const [newPassword, setNewPassword] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [feedback, setFeedback] = useState('');
@@ -30,10 +41,43 @@ export default function ParentSettingsScreen() {
       .then((data) => {
         setFullName(data.fullName || '');
         setPhone(data.phone || '');
+        setAvatarUrl(data.avatarUrl || '');
         void updateUser(data);
       })
       .catch(() => undefined);
   }, [updateUser]);
+
+  const handleChangeAvatar = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Cần cấp quyền', 'Vui lòng cấp quyền Thư viện ảnh để đổi ảnh đại diện.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (res.canceled || !res.assets?.[0]) return;
+
+    setUploadingAvatar(true);
+    try {
+      const asset = res.assets[0];
+      const updated = await usersApi.uploadAvatar(
+        asset.uri,
+        asset.fileName || 'avatar.jpg',
+        asset.mimeType || 'image/jpeg',
+      );
+      setAvatarUrl(updated.avatarUrl || '');
+      void updateUser(updated);
+      Alert.alert('Thành công', 'Đã cập nhật ảnh đại diện!');
+    } catch (err: unknown) {
+      Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể tải ảnh.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!fullName.trim()) {
@@ -85,8 +129,43 @@ export default function ParentSettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}>
         <Text style={[styles.title, { color: p.text }]}>Cài đặt tài khoản</Text>
+
+        <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <TouchableOpacity
+            onPress={() => void handleChangeAvatar()}
+            disabled={uploadingAvatar}
+            style={{ position: 'relative' }}
+          >
+            <UserAvatar uri={avatarUrl} name={fullName || 'P'} size={62} bgColor={p.indigo} />
+            <View
+              style={{
+                position: 'absolute',
+                right: -2,
+                bottom: -2,
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: p.card,
+                borderWidth: 1,
+                borderColor: p.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="camera" size={13} color={p.indigo} />
+            </View>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 17, fontWeight: '800', color: p.text }}>
+              {fullName || 'Phụ huynh'}
+            </Text>
+            <Text style={{ fontSize: 12, color: p.textMuted, marginTop: 2 }}>
+              Chạm vào ảnh đại diện để tải ảnh mới
+            </Text>
+          </View>
+        </Card>
 
         <Card style={{ gap: 12 }}>
           <Text style={[styles.secTitle, { color: p.text }]}>Hồ sơ Phụ huynh</Text>

@@ -68,11 +68,12 @@ export interface MobileUser {
   }[];
 }
 
-export type MobileRole = 'student' | 'parent' | null;
+export type MobileRole = 'student' | 'teacher' | 'parent' | null;
 
 function normalizeRole(role?: string | null): MobileRole {
   const lower = (role || '').toLowerCase();
   if (lower === 'student') return 'student';
+  if (lower === 'teacher') return 'teacher';
   if (lower === 'parent') return 'parent';
   return null;
 }

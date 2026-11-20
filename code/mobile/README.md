@@ -1,13 +1,20 @@
 # AI Tutor Mobile (React Native / Expo)
 
-Ứng dụng di động dành cho **Học sinh** và **Phụ huynh** trong nền tảng **AI Tutor**, kết nối trực tiếp với Backend API tập trung (`code/backend`).
+Ứng dụng di động dành cho **Học sinh**, **Giáo viên** và **Phụ huynh** trong nền tảng **AI Tutor**, kết nối trực tiếp với Backend API tập trung (`code/backend`).
 
 ## Chức năng chính
 
 ### Xác thực & Bảo mật (`BR-AUTH-001`, `BR-AUTH-002`)
-- Đăng nhập cho **Học sinh** (Mã học sinh / Email) và **Phụ huynh** (Số điện thoại / Email).
+- Đăng nhập cho **Học sinh** (Mã học sinh / Email), **Giáo viên** (Mã GV / Email / SĐT, hỗ trợ 2FA OTP khi bật) và **Phụ huynh** (Số điện thoại / Email).
 - Lưu `accessToken` và `refreshToken` bằng **`expo-secure-store`** (Keychain / Keystore), tự động xoay vòng refresh token khi phiên hết hạn và thu hồi session khi đăng xuất.
 - Bắt buộc đổi mật khẩu lần đầu (`mustChangePassword`) và gửi yêu cầu cấp lại mật khẩu tới GVCN / Quản trị viên nhà trường.
+
+### Cổng Giáo viên (`(teacher)`)
+- **Tổng quan:** Thống kê lớp chủ nhiệm (`GVCN`), lớp bộ môn (`GVBM`), cảnh báo yêu cầu cấp mật khẩu & đơn Phụ huynh chờ duyệt, học sinh cần lưu ý và chuông thông báo.
+- **Học sinh:** Lọc theo lớp, tìm kiếm, xem lịch sử bài làm, chỉnh sửa điểm thủ công kèm lý do (`BR-QUIZ-002`) và cấp mật khẩu tạm cho học sinh lớp chủ nhiệm.
+- **Liên lạc & Thông báo:** Nhắn tin 2 chiều với Phụ huynh, duyệt/từ chối đơn xin phép, gửi thông báo cả lớp (chọn Phụ huynh / Học sinh / Cả hai) và xử lý yêu cầu quên mật khẩu.
+- **Đề & Tài liệu:** Xem chi tiết đề & kết quả học sinh, duyệt xuất bản / giao bài / đóng đề (`BR-QUIZ-001`), bật/tắt xuất bản hoặc xóa tài liệu RAG (`BR-DOC-001`).
+- **Cài đặt:** Chỉnh sửa hồ sơ, đổi mật khẩu, gửi góp ý và đăng xuất.
 
 ### Cổng Học sinh (`(student)`)
 - **Trang chủ:** Tổng quan trường/lớp/GVCN, cấp độ, XP, chuỗi học tập, môn học theo khối, lịch sắp tới và thông báo.

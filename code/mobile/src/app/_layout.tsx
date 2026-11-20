@@ -41,6 +41,8 @@ function InitialLayout() {
 
     if (role === 'parent' && rootSegment !== '(parent)') {
       router.replace('/(parent)/(tabs)');
+    } else if (role === 'teacher' && rootSegment !== '(teacher)') {
+      router.replace('/(teacher)/(tabs)');
     } else if (role === 'student' && rootSegment !== '(student)') {
       router.replace('/(student)/(tabs)');
     }

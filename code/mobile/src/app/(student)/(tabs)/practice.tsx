@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   curriculumApi,
   quizApi,
@@ -96,13 +96,15 @@ export default function StudentPracticeScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!selectedSubject) return;
-    const run = async () => {
-      await loadSubjectData(selectedSubject);
-    };
-    void run();
-  }, [selectedSubject, loadSubjectData]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!selectedSubject) return;
+      const run = async () => {
+        await loadSubjectData(selectedSubject);
+      };
+      void run();
+    }, [selectedSubject, loadSubjectData]),
+  );
 
   const handleGenerateRandom = async () => {
     if (!selectedSubject) return;

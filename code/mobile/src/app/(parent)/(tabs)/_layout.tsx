@@ -15,7 +15,7 @@ export default function ParentTabsLayout() {
         tabBarStyle: {
           backgroundColor: p.card,
           borderTopColor: p.border,
-          height: Platform.OS === 'ios' ? 84 : 64,
+          height: Platform.OS === 'ios' ? 84 : 66,
           paddingTop: 6,
           paddingBottom: Platform.OS === 'ios' ? 24 : 8,
         },
@@ -29,8 +29,8 @@ export default function ParentTabsLayout() {
         name="index"
         options={{
           title: 'Tổng quan',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
           ),
         }}
       />
@@ -38,8 +38,12 @@ export default function ParentTabsLayout() {
         name="contact"
         options={{
           title: 'Liên lạc GV',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -47,8 +51,8 @@ export default function ParentTabsLayout() {
         name="link"
         options={{
           title: 'Liên kết',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="link-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'link' : 'link-outline'} size={size} color={color} />
           ),
         }}
       />
@@ -56,8 +60,8 @@ export default function ParentTabsLayout() {
         name="settings"
         options={{
           title: 'Cài đặt',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'settings' : 'settings-outline'} size={size} color={color} />
           ),
         }}
       />

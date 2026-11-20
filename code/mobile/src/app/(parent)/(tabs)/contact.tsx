@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import {
   formatClassLabel,
   parentApi,
@@ -26,12 +27,14 @@ import {
 } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
 import {
+  ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
   LoadingView,
   PrimaryButton,
+  UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
 
@@ -50,6 +53,7 @@ export default function ParentContactScreen() {
   const [teachers, setTeachers] = useState<ParentTeacherItem[]>([]);
   const [children, setChildren] = useState<ChildSummary[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string>('ALL');
+  const [teacherSearch, setTeacherSearch] = useState('');
   const [proposals, setProposals] = useState<ProposalItem[]>([]);
 
   // Active Chat modal state
@@ -106,15 +110,18 @@ export default function ParentContactScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    const run = async () => {
-      await loadData();
-    };
-    void run();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      const run = async () => {
+        await loadData();
+      };
+      void run();
+    }, [loadData]),
+  );
 
   // Per-child scoped teacher display (prevents GVCN badge bleed between siblings)
   const scopedTeachers = useMemo(() => {
+    const query = teacherSearch.trim().toLowerCase();
     return teachers
       .filter((t) => {
         if (selectedChildId === 'ALL') return true;
@@ -155,8 +162,15 @@ export default function ParentContactScreen() {
           roleSummary,
         };
       })
+      .filter((t) => {
+        if (!query) return true;
+        return (
+          t.fullName.toLowerCase().includes(query) ||
+          t.roleSummary.toLowerCase().includes(query)
+        );
+      })
       .sort((a, b) => Number(b.isHomeroomForScope) - Number(a.isHomeroomForScope));
-  }, [teachers, selectedChildId]);
+  }, [teachers, selectedChildId, teacherSearch]);
 
   const openChat = async (teacher: ParentTeacherItem) => {
     setActiveTeacher(teacher);
@@ -234,7 +248,7 @@ export default function ParentContactScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -300,6 +314,29 @@ export default function ParentContactScreen() {
 
         {activeTab === 'messages' ? (
           <>
+            {/* Search teacher */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingHorizontal: 14,
+                borderRadius: 14,
+                borderWidth: 1,
+                backgroundColor: p.card,
+                borderColor: p.border,
+              }}
+            >
+              <Ionicons name="search-outline" size={18} color={p.textMuted} />
+              <TextInput
+                style={{ flex: 1, color: p.text, fontSize: 14, paddingVertical: 10 }}
+                placeholder="Tìm tên giáo viên, môn học..."
+                placeholderTextColor={p.textMuted}
+                value={teacherSearch}
+                onChangeText={setTeacherSearch}
+              />
+            </View>
+
             {/* Per-Child Filter */}
             {children.length > 1 ? (
               <ScrollView
@@ -371,26 +408,13 @@ export default function ParentContactScreen() {
                     onPress={() => void openChat(t)}
                   >
                     <Card style={styles.teacherCard}>
-                      <View
-                        style={[
-                          styles.avatar,
-                          {
-                            backgroundColor: t.isHomeroomForScope
-                              ? p.indigoSoft
-                              : p.primarySoft,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: t.isHomeroomForScope ? p.indigo : p.primary,
-                            fontSize: 18,
-                            fontWeight: '800',
-                          }}
-                        >
-                          {t.fullName.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
+                      <UserAvatar
+                        uri={t.avatarUrl}
+                        name={t.fullName}
+                        size={46}
+                        bgColor={t.isHomeroomForScope ? p.indigoSoft : p.primarySoft}
+                        textColor={t.isHomeroomForScope ? p.indigo : p.primary}
+                      />
                       <View style={{ flex: 1, gap: 4 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>

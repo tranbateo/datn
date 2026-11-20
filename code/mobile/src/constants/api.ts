@@ -26,6 +26,7 @@ export function setApiBaseUrl(url: string): void {
 export const API_ENDPOINTS = {
   AUTH: {
     LOGIN: '/auth/login',
+    VERIFY_LOGIN_OTP: '/auth/verify-login-otp',
     REFRESH: '/auth/refresh',
     LOGOUT: '/auth/logout',
     FIRST_TIME_CHANGE_PASSWORD: '/auth/first-time-change-password',
@@ -33,6 +34,7 @@ export const API_ENDPOINTS = {
   },
   USERS: {
     PROFILE: '/users/profile',
+    AVATAR: '/users/profile/avatar',
     FEEDBACK: '/users/feedback',
   },
   CURRICULUM: {
@@ -41,6 +43,9 @@ export const API_ENDPOINTS = {
   COURSES: {
     LIST: '/courses',
     DETAIL: (id: string) => `/courses/${id}`,
+    CREATE_LESSON: (courseId: string) => `/courses/${courseId}/lessons`,
+    DELETE_LESSON: (courseId: string, lessonId: string) =>
+      `/courses/${courseId}/lessons/${lessonId}`,
   },
   DOCUMENTS: {
     BY_COURSE: (courseId: string) => `/documents/course/${courseId}`,
@@ -90,6 +95,28 @@ export const API_ENDPOINTS = {
   },
   PROPOSALS: {
     LIST_PARENT: '/proposals/parent',
+    LIST_TEACHER: '/proposals/teacher',
     CREATE: '/proposals',
+    UPDATE_STATUS: (id: string) => `/proposals/${id}/status`,
+  },
+  TEACHER: {
+    DASHBOARD_STATS: '/teacher/dashboard/stats',
+    CLASSES: '/teacher/classes',
+    STUDENTS: '/teacher/students',
+    STUDENT_ATTEMPTS: (studentId: string) => `/teacher/students/${studentId}/attempts`,
+    RESET_STUDENT_PASSWORD: (studentId: string) =>
+      `/teacher/students/${studentId}/reset-password`,
+    PASSWORD_RESET_REQUESTS: '/teacher/password-reset-requests',
+    PARENTS: '/teacher/parents',
+    SEND_NOTIFICATION: '/teacher/notifications/send',
+    QUIZZES: '/teacher/quizzes',
+    QUIZZES_AI_BUILD: '/teacher/quizzes/ai-build',
+    QUIZ_DETAILS: (quizId: string) => `/teacher/quizzes/${quizId}/details`,
+    QUIZ_STATUS: (quizId: string) => `/teacher/quizzes/${quizId}/status`,
+    OVERRIDE_SCORE: (attemptId: string) => `/teacher/attempts/${attemptId}/score`,
+    COURSES: '/teacher/courses',
+    DOCUMENTS: '/teacher/documents',
+    DOCUMENT_STATUS: (docId: string) => `/teacher/documents/${docId}/status`,
+    DOCUMENT_DELETE: (docId: string) => `/teacher/documents/${docId}`,
   },
 } as const;

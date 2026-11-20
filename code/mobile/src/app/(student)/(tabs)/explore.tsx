@@ -25,14 +25,25 @@ import {
   usersApi,
   type ChatMessageItem,
   type ChatSessionItem,
+  type RagCitation,
   type Subject,
 } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
-import { Badge, Card, EmptyView, PrimaryButton, usePalette } from '@/components/ui/mobile-ui';
+import {
+  Card,
+  EmptyView,
+  PrimaryButton,
+  RichText,
+  usePalette,
+} from '@/components/ui/mobile-ui';
 
 export default function StudentAiTutorScreen() {
   const p = usePalette();
-  const params = useLocalSearchParams<{ subjectId?: string; subjectName?: string }>();
+  const params = useLocalSearchParams<{
+    subjectId?: string;
+    subjectName?: string;
+    prefill?: string;
+  }>();
   const { user } = useAuthStore();
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -42,7 +53,7 @@ export default function StudentAiTutorScreen() {
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState(params.prefill || '');
   const [pickedImage, setPickedImage] = useState<{
     uri: string;
     name?: string;
@@ -52,6 +63,7 @@ export default function StudentAiTutorScreen() {
   const [loadingInit, setLoadingInit] = useState(true);
   const [sending, setSending] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  const [activeCitation, setActiveCitation] = useState<RagCitation | null>(null);
   const [reportMsg, setReportMsg] = useState<ChatMessageItem | null>(null);
   const [reportReason, setReportReason] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
@@ -64,7 +76,10 @@ export default function StudentAiTutorScreen() {
       setActiveSessionId(null);
       setMessages([]);
     }
-  }, [params.subjectId]);
+    if (params.prefill) {
+      setInputText(params.prefill);
+    }
+  }, [params.subjectId, params.prefill]);
 
   const loadInitial = useCallback(async () => {
     setLoadingInit(true);
@@ -342,23 +357,44 @@ export default function StudentAiTutorScreen() {
                         resizeMode="cover"
                       />
                     ) : null}
-                    <Text style={{ color: isUser ? '#FFFFFF' : p.text, fontSize: 14, lineHeight: 21 }}>
-                      {item.content}
-                    </Text>
+                    {isUser ? (
+                      <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 21 }}>
+                        {item.content}
+                      </Text>
+                    ) : (
+                      <RichText content={item.content} color={p.text} boldColor={p.text} />
+                    )}
 
-                    {/* Citations (BR-RAG-001) */}
+                    {/* Citations (BR-RAG-001) - Tappable to inspect source excerpt */}
                     {!isUser && Array.isArray(item.citations) && item.citations.length > 0 ? (
                       <View style={[styles.citationsBox, { borderTopColor: p.border }]}>
                         <Text style={{ fontSize: 11, fontWeight: '800', color: p.primary, marginBottom: 6 }}>
-                          Nguồn tài liệu tham chiếu:
+                          Nguồn trích dẫn (chạm để xem đoạn gốc):
                         </Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                           {item.citations.slice(0, 4).map((c, idx) => (
-                            <Badge
+                            <TouchableOpacity
                               key={`${item.id}-cit-${idx}`}
-                              tone="blue"
-                              label={`${c.fileName || c.title || c.lessonTitle || 'Tài liệu'}${c.page ? ` • Tr.${c.page}` : ''}`}
-                            />
+                              onPress={() => setActiveCitation(c)}
+                              style={{
+                                backgroundColor: p.primarySoft,
+                                paddingHorizontal: 10,
+                                paddingVertical: 5,
+                                borderRadius: 999,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                              }}
+                            >
+                              <Ionicons name="document-text-outline" size={12} color={p.primary} />
+                              <Text
+                                style={{ color: p.primary, fontSize: 11, fontWeight: '700' }}
+                                numberOfLines={1}
+                              >
+                                {c.fileName || c.title || c.lessonTitle || 'Tài liệu'}
+                                {c.page ? ` • Tr.${c.page}` : ''}
+                              </Text>
+                            </TouchableOpacity>
                           ))}
                         </View>
                       </View>
@@ -507,6 +543,41 @@ export default function StudentAiTutorScreen() {
               )}
             </ScrollView>
           </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Citation Snippet Modal */}
+      <Modal
+        visible={Boolean(activeCitation)}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setActiveCitation(null)}
+      >
+        <Pressable style={styles.centerBackdrop} onPress={() => setActiveCitation(null)}>
+          <Card style={{ width: '90%', maxWidth: 520, gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="book-outline" size={20} color={p.primary} />
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '800', color: p.text }}>
+                {activeCitation?.fileName || activeCitation?.title || 'Nguồn tài liệu lớp học'}
+                {activeCitation?.page ? ` (Trang ${activeCitation.page})` : ''}
+              </Text>
+            </View>
+            <ScrollView style={{ maxHeight: 260 }}>
+              <RichText
+                content={
+                  activeCitation?.snippet ||
+                  'Đoạn trích dẫn từ tài liệu chính khóa của lớp đã được giáo viên xuất bản.'
+                }
+                color={p.textMuted}
+                boldColor={p.text}
+                fontSize={13}
+              />
+            </ScrollView>
+            <PrimaryButton
+              title="Đóng"
+              onPress={() => setActiveCitation(null)}
+            />
+          </Card>
         </Pressable>
       </Modal>
 

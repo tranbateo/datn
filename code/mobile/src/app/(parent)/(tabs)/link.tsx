@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Alert,
   RefreshControl,
@@ -11,12 +11,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import {
   formatClassLabel,
   parentApi,
   type ParentDashboardData,
 } from '@/services/mobile.services';
 import {
+  ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
@@ -41,9 +43,14 @@ export default function ParentLinkStudentScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadLinked();
-  }, [loadLinked]);
+  useFocusEffect(
+    useCallback(() => {
+      const run = async () => {
+        await loadLinked();
+      };
+      void run();
+    }, [loadLinked]),
+  );
 
   const handleLink = async () => {
     const clean = code.replace(/\D/g, '');
@@ -103,7 +110,7 @@ export default function ParentLinkStudentScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

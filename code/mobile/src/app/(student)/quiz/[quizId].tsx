@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -14,15 +14,18 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   parseQuestionOptions,
   quizApi,
+  type Question,
   type QuestionResult,
   type Quiz,
 } from '@/services/mobile.services';
 import {
+  ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   ErrorView,
   LoadingView,
   PrimaryButton,
+  RichText,
   usePalette,
 } from '@/components/ui/mobile-ui';
 
@@ -30,6 +33,15 @@ function formatClock(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function isEssayQuestion(q: Question): boolean {
+  const opts = parseQuestionOptions(q.options);
+  return (
+    q.questionType === 'ESSAY' ||
+    opts.length === 0 ||
+    String(q.content || '').includes('[Tự luận')
+  );
 }
 
 export default function QuizExamScreen() {
@@ -43,6 +55,7 @@ export default function QuizExamScreen() {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [timeLeft, setTimeLeft] = useState<number>(1800);
+  const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +68,8 @@ export default function QuizExamScreen() {
     resultsMap: Record<string, QuestionResult>;
   } | null>(null);
 
+  const scrollRef = useRef<ScrollView>(null);
+  const questionOffsets = useRef<Record<string, number>>({});
   const submittedRef = useRef(false);
   const answersRef = useRef<Record<string, string>>({});
 
@@ -110,8 +125,8 @@ export default function QuizExamScreen() {
 
       const questions = quiz.questions || [];
       const payload = questions.map((q) => {
-        const val = answersRef.current[q.id] || '';
-        const isEssay = q.questionType === 'ESSAY';
+        const val = (answersRef.current[q.id] || '').trim();
+        const isEssay = isEssayQuestion(q);
         return {
           questionId: q.id,
           selectedOption: isEssay ? undefined : val,
@@ -137,6 +152,8 @@ export default function QuizExamScreen() {
           xp: res.xpEarned || 0,
           resultsMap: map,
         });
+        setFilterMode('all');
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
       } catch (err: unknown) {
         submittedRef.current = false;
         Alert.alert(
@@ -171,8 +188,25 @@ export default function QuizExamScreen() {
     }
   }, [timeLeft, loading, result, attemptId, submitExam]);
 
+  const questions = useMemo(() => quiz?.questions || [], [quiz]);
+
+  const displayedQuestions = useMemo(() => {
+    if (filterMode === 'all') {
+      return questions.map((q, idx) => ({ q, idx }));
+    }
+    return questions
+      .map((q, idx) => ({ q, idx }))
+      .filter(({ q }) => {
+        if (result) {
+          const qr = result.resultsMap[q.id];
+          return qr ? !qr.isCorrect : false;
+        }
+        return !(answers[q.id] || '').trim();
+      });
+  }, [questions, filterMode, result, answers]);
+
   const confirmSubmit = () => {
-    const total = quiz?.questions?.length || 0;
+    const total = questions.length;
     const answered = Object.values(answers).filter((v) => v.trim().length > 0).length;
     Alert.alert(
       'Xác nhận nộp bài',
@@ -213,8 +247,12 @@ export default function QuizExamScreen() {
     );
   }
 
-  const questions = quiz.questions || [];
-  const answeredCount = Object.values(answers).filter((v) => v.trim().length > 0).length;
+  const answeredCount = questions.filter((q) => (answers[q.id] || '').trim().length > 0).length;
+  const progressPct =
+    questions.length > 0 ? Math.round((answeredCount / questions.length) * 100) : 0;
+  const wrongCount = result
+    ? questions.filter((q) => result.resultsMap[q.id] && !result.resultsMap[q.id].isCorrect).length
+    : 0;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
@@ -229,8 +267,8 @@ export default function QuizExamScreen() {
           </Text>
           <Text style={{ fontSize: 12, color: p.textMuted }}>
             {result
-              ? `Kết quả: ${result.normalizedScore}/100 điểm`
-              : `Đã làm ${answeredCount}/${questions.length} câu`}
+              ? `Đúng ${result.score}/${result.total} câu • ${result.normalizedScore}/100 điểm`
+              : `Đã làm ${answeredCount}/${questions.length} câu (${progressPct}%)`}
           </Text>
         </View>
         {!result ? (
@@ -263,8 +301,119 @@ export default function QuizExamScreen() {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Score Summary Banner after submission / review */}
+      {/* Progress Bar + Quick Filter + Question Jump Strip */}
+      <View style={[styles.toolbar, { backgroundColor: p.card, borderBottomColor: p.border }]}>
+        {!result ? (
+          <View style={[styles.progressTrack, { backgroundColor: p.cardMuted }]}>
+            <View
+              style={[
+                styles.progressFill,
+                { backgroundColor: p.primary, width: `${progressPct}%` },
+              ]}
+            />
+          </View>
+        ) : null}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => setFilterMode('all')}
+            style={[
+              styles.filterPill,
+              {
+                backgroundColor: filterMode === 'all' ? p.primary : p.cardMuted,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: filterMode === 'all' ? '#FFFFFF' : p.text,
+                fontSize: 11,
+                fontWeight: '700',
+              }}
+            >
+              Tất cả ({questions.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setFilterMode('focus')}
+            style={[
+              styles.filterPill,
+              {
+                backgroundColor:
+                  filterMode === 'focus'
+                    ? result
+                      ? p.rose
+                      : p.amber
+                    : p.cardMuted,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: filterMode === 'focus' ? '#FFFFFF' : p.text,
+                fontSize: 11,
+                fontWeight: '700',
+              }}
+            >
+              {result
+                ? `Chỉ câu sai (${wrongCount})`
+                : `Chưa làm (${questions.length - answeredCount})`}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Question Jump Chips */}
+        {filterMode === 'all' && questions.length > 5 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 6, paddingTop: 2 }}
+          >
+            {questions.map((q, idx) => {
+              const isDone = (answers[q.id] || '').trim().length > 0;
+              const qr = result?.resultsMap[q.id];
+              const bg = result
+                ? qr?.isCorrect
+                  ? p.emeraldSoft
+                  : p.roseSoft
+                : isDone
+                  ? p.primary
+                  : p.cardMuted;
+              const fg = result
+                ? qr?.isCorrect
+                  ? p.emerald
+                  : p.rose
+                : isDone
+                  ? '#FFFFFF'
+                  : p.textMuted;
+
+              return (
+                <TouchableOpacity
+                  key={`nav-${q.id}`}
+                  onPress={() => {
+                    const y = questionOffsets.current[q.id];
+                    if (typeof y === 'number') {
+                      scrollRef.current?.scrollTo({ y: Math.max(0, y - 10), animated: true });
+                    }
+                  }}
+                  style={[styles.numChip, { backgroundColor: bg }]}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: fg }}>
+                    {idx + 1}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : null}
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+      >
+        {/* Score Summary Banner */}
         {result ? (
           <Card
             style={{
@@ -274,10 +423,10 @@ export default function QuizExamScreen() {
               gap: 8,
             }}
           >
-            <Text style={{ fontSize: 20, fontWeight: '800', color: p.text }}>
+            <Text style={{ fontSize: 19, fontWeight: '800', color: p.text }}>
               {attemptId ? 'Xem lại bài làm đã lưu' : 'Đã hoàn thành bài kiểm tra!'}
             </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <Badge
                 label={`Điểm: ${result.normalizedScore}/100`}
                 tone={result.normalizedScore >= 50 ? 'emerald' : 'rose'}
@@ -288,121 +437,136 @@ export default function QuizExamScreen() {
           </Card>
         ) : null}
 
-        {/* Questions */}
-        {questions.map((q, idx) => {
-          const isEssay = q.questionType === 'ESSAY';
-          const options = parseQuestionOptions(q.options);
-          const selected = answers[q.id] || '';
-          const qr = result?.resultsMap[q.id];
+        {displayedQuestions.length === 0 ? (
+          <Card style={{ alignItems: 'center', paddingVertical: 24, gap: 6 }}>
+            <Ionicons name="checkmark-circle" size={32} color={p.emerald} />
+            <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>
+              {result ? 'Tuyệt vời! Em không sai câu nào!' : 'Em đã trả lời hết tất cả các câu hỏi!'}
+            </Text>
+          </Card>
+        ) : (
+          displayedQuestions.map(({ q, idx }) => {
+            const isEssay = isEssayQuestion(q);
+            const options = parseQuestionOptions(q.options);
+            const selected = answers[q.id] || '';
+            const qr = result?.resultsMap[q.id];
 
-          return (
-            <Card key={q.id} style={{ gap: 10 }}>
-              <View style={styles.qHead}>
-                <Badge label={`Câu ${idx + 1}`} tone="indigo" />
-                <Badge
-                  label={isEssay ? 'Tự luận' : 'Trắc nghiệm'}
-                  tone="slate"
-                />
-                {qr ? (
-                  <Badge
-                    label={qr.isCorrect ? 'Đúng' : 'Sai'}
-                    tone={qr.isCorrect ? 'emerald' : 'rose'}
-                  />
-                ) : null}
-              </View>
+            return (
+              <View
+                key={q.id}
+                onLayout={(e) => {
+                  questionOffsets.current[q.id] = e.nativeEvent.layout.y;
+                }}
+              >
+                <Card style={{ gap: 10 }}>
+                  <View style={styles.qHead}>
+                    <Badge label={`Câu ${idx + 1}`} tone="indigo" />
+                    <Badge
+                      label={isEssay ? 'Tự luận' : 'Trắc nghiệm'}
+                      tone="slate"
+                    />
+                    {qr ? (
+                      <Badge
+                        label={qr.isCorrect ? 'Đúng' : 'Sai'}
+                        tone={qr.isCorrect ? 'emerald' : 'rose'}
+                      />
+                    ) : null}
+                  </View>
 
-              <Text style={{ fontSize: 15, fontWeight: '700', color: p.text, lineHeight: 22 }}>
-                {q.content}
-              </Text>
+                  <RichText content={q.content} color={p.text} boldColor={p.text} fontSize={15} />
 
-              {isEssay ? (
-                <TextInput
-                  editable={!result}
-                  style={[
-                    styles.essayInput,
-                    { backgroundColor: p.bg, borderColor: p.border, color: p.text },
-                  ]}
-                  placeholder="Nhập câu trả lời tự luận của em..."
-                  placeholderTextColor={p.textMuted}
-                  value={selected}
-                  onChangeText={(txt) =>
-                    setAnswers((prev) => ({ ...prev, [q.id]: txt }))
-                  }
-                  multiline
-                />
-              ) : (
-                <View style={{ gap: 8 }}>
-                  {options.map((opt, optIdx) => {
-                    const letter = String.fromCharCode(65 + optIdx);
-                    const isPicked = selected === opt || selected === letter;
-                    const isCorrectOpt =
-                      qr && (qr.correctOption === opt || qr.correctOption === letter);
-                    let borderColor = p.border;
-                    let bg = p.bg;
-                    if (result) {
-                      if (isCorrectOpt) {
-                        borderColor = p.emerald;
-                        bg = p.emeraldSoft;
-                      } else if (isPicked && !qr?.isCorrect) {
-                        borderColor = p.rose;
-                        bg = p.roseSoft;
+                  {isEssay ? (
+                    <TextInput
+                      editable={!result}
+                      style={[
+                        styles.essayInput,
+                        { backgroundColor: p.bg, borderColor: p.border, color: p.text },
+                      ]}
+                      placeholder="Nhập câu trả lời tự luận của em..."
+                      placeholderTextColor={p.textMuted}
+                      value={selected}
+                      onChangeText={(txt) =>
+                        setAnswers((prev) => ({ ...prev, [q.id]: txt }))
                       }
-                    } else if (isPicked) {
-                      borderColor = p.primary;
-                      bg = p.primarySoft;
-                    }
-
-                    return (
-                      <TouchableOpacity
-                        key={`${q.id}-opt-${optIdx}`}
-                        disabled={Boolean(result)}
-                        onPress={() =>
-                          setAnswers((prev) => ({ ...prev, [q.id]: opt }))
+                      multiline
+                    />
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {options.map((opt, optIdx) => {
+                        const letter = String.fromCharCode(65 + optIdx);
+                        const isPicked = selected === opt || selected === letter;
+                        const isCorrectOpt =
+                          qr && (qr.correctOption === opt || qr.correctOption === letter);
+                        let borderColor = p.border;
+                        let bg = p.bg;
+                        if (result) {
+                          if (isCorrectOpt) {
+                            borderColor = p.emerald;
+                            bg = p.emeraldSoft;
+                          } else if (isPicked && !qr?.isCorrect) {
+                            borderColor = p.rose;
+                            bg = p.roseSoft;
+                          }
+                        } else if (isPicked) {
+                          borderColor = p.primary;
+                          bg = p.primarySoft;
                         }
-                        style={[
-                          styles.optionBtn,
-                          { borderColor, backgroundColor: bg },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            fontWeight: '800',
-                            color: isPicked ? p.primary : p.textMuted,
-                            width: 22,
-                          }}
-                        >
-                          {letter}.
-                        </Text>
-                        <Text style={{ flex: 1, color: p.text, fontSize: 14, lineHeight: 20 }}>
-                          {opt}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
 
-              {/* Explanation & Error analysis after grading */}
-              {qr ? (
-                <View style={[styles.explainBox, { backgroundColor: p.cardMuted }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: p.emerald }}>
-                    Đáp án đúng: {qr.correctOption}
-                  </Text>
-                  {qr.errorAnalysis ? (
-                    <Text style={{ fontSize: 12, color: p.rose, marginTop: 4 }}>
-                      Phân tích lỗi: {qr.errorAnalysis}
-                    </Text>
+                        return (
+                          <TouchableOpacity
+                            key={`${q.id}-opt-${optIdx}`}
+                            disabled={Boolean(result)}
+                            onPress={() =>
+                              setAnswers((prev) => ({ ...prev, [q.id]: opt }))
+                            }
+                            style={[
+                              styles.optionBtn,
+                              { borderColor, backgroundColor: bg },
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                fontWeight: '800',
+                                color: isPicked ? p.primary : p.textMuted,
+                                width: 22,
+                              }}
+                            >
+                              {letter}.
+                            </Text>
+                            <Text style={{ flex: 1, color: p.text, fontSize: 14, lineHeight: 20 }}>
+                              {opt}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {qr ? (
+                    <View style={[styles.explainBox, { backgroundColor: p.cardMuted, gap: 6 }]}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: p.emerald }}>
+                        Đáp án đúng: {qr.correctOption}
+                      </Text>
+                      {qr.errorAnalysis ? (
+                        <Text style={{ fontSize: 12, color: p.rose, lineHeight: 18 }}>
+                          Phân tích lỗi: {qr.errorAnalysis}
+                        </Text>
+                      ) : null}
+                      {qr.correction || qr.explanation ? (
+                        <RichText
+                          content={`**Giải thích:** ${qr.correction || qr.explanation}`}
+                          color={p.text}
+                          boldColor={p.text}
+                          fontSize={12}
+                        />
+                      ) : null}
+                    </View>
                   ) : null}
-                  {qr.correction || qr.explanation ? (
-                    <Text style={{ fontSize: 12, color: p.text, marginTop: 4, lineHeight: 18 }}>
-                      Giải thích: {qr.correction || qr.explanation}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
-            </Card>
-          );
-        })}
+                </Card>
+              </View>
+            );
+          })
+        )}
 
         {!result ? (
           <PrimaryButton
@@ -433,6 +597,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
+  },
+  toolbar: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 99,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 99,
+  },
+  filterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  numChip: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   timerBadge: {
     flexDirection: 'row',

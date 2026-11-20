@@ -19,4 +19,9 @@ export const APP_ROUTES = {
   PARENT_CONTACT: '/(parent)/(tabs)/contact',
   PARENT_LINK: '/(parent)/(tabs)/link',
   PARENT_SETTINGS: '/(parent)/(tabs)/settings',
+  TEACHER_HOME: '/(teacher)/(tabs)',
+  TEACHER_STUDENTS: '/(teacher)/(tabs)/students',
+  TEACHER_COMMUNICATIONS: '/(teacher)/(tabs)/communications',
+  TEACHER_CONTENT: '/(teacher)/(tabs)/content',
+  TEACHER_SETTINGS: '/(teacher)/(tabs)/settings',
 } as const;

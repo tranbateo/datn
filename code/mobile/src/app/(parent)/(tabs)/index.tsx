@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   RefreshControl,
   ScrollView,
@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   formatClassLabel,
   notificationsApi,
@@ -20,12 +20,14 @@ import {
 } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
 import {
+  ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
   LoadingView,
   NotificationSheet,
+  UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
 
@@ -75,12 +77,14 @@ export default function ParentDashboardScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    const run = async () => {
-      await loadData();
-    };
-    void run();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      const run = async () => {
+        await loadData();
+      };
+      void run();
+    }, [loadData]),
+  );
 
   const handleMarkRead = async (id: string) => {
     setNotifications((prev) =>
@@ -124,7 +128,7 @@ export default function ParentDashboardScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -138,6 +142,14 @@ export default function ParentDashboardScreen() {
       >
         {/* Top Bar */}
         <View style={styles.topRow}>
+          <TouchableOpacity onPress={() => router.push('/(parent)/(tabs)/settings')}>
+            <UserAvatar
+              uri={user?.avatarUrl}
+              name={user?.fullName}
+              size={44}
+              bgColor={p.indigo}
+            />
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 12, fontWeight: '600', color: p.textMuted }}>
               Cổng Phụ huynh
@@ -376,6 +388,30 @@ export default function ParentDashboardScreen() {
                     ))}
                   </View>
                 )}
+                {/* Child Recent Notifications */}
+                {activeEntry.recentNotifications &&
+                activeEntry.recentNotifications.length > 0 ? (
+                  <>
+                    <Text style={[styles.secTitle, { color: p.text }]}>
+                      Thông báo gần đây của con
+                    </Text>
+                    <View style={{ gap: 8 }}>
+                      {activeEntry.recentNotifications.slice(0, 4).map((n) => (
+                        <Card key={n.id} style={{ gap: 4 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: p.text }}>
+                            {n.title}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: p.textMuted, lineHeight: 18 }}>
+                            {n.body}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: p.indigo, fontWeight: '600' }}>
+                            {new Date(n.createdAt).toLocaleString('vi-VN')}
+                          </Text>
+                        </Card>
+                      ))}
+                    </View>
+                  </>
+                ) : null}
               </>
             ) : null}
           </>

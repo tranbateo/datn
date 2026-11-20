@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +16,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { NotificationItem } from '@/services/mobile.services';
+
+export const ADAPTIVE_CONTENT_STYLE: ViewStyle = {
+  width: '100%',
+  maxWidth: 720,
+  alignSelf: 'center',
+};
 
 export function usePalette() {
   const scheme = useColorScheme();
@@ -55,11 +63,200 @@ export function Card({
     <View
       style={[
         styles.card,
-        { backgroundColor: p.card, borderColor: p.border },
+        {
+          backgroundColor: p.card,
+          borderColor: p.border,
+          shadowColor: p.isDark ? '#000000' : '#0F172A',
+        },
         style,
       ]}
     >
       {children}
+    </View>
+  );
+}
+
+export function UserAvatar({
+  uri,
+  name,
+  size = 46,
+  bgColor,
+  textColor = '#FFFFFF',
+}: {
+  uri?: string | null;
+  name?: string | null;
+  size?: number;
+  bgColor?: string;
+  textColor?: string;
+}) {
+  const p = usePalette();
+  const initial = (name || 'U').trim().charAt(0).toUpperCase();
+  const radius = size / 2;
+
+  if (uri && (uri.startsWith('http') || uri.startsWith('data:image/'))) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius,
+          backgroundColor: p.cardMuted,
+        }}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        backgroundColor: bgColor || p.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        style={{
+          color: textColor,
+          fontWeight: '800',
+          fontSize: Math.max(14, Math.round(size * 0.4)),
+        }}
+      >
+        {initial}
+      </Text>
+    </View>
+  );
+}
+
+export function formatReadableMath(raw: string): string {
+  return raw
+    .replace(/<=>/g, '⇔')
+    .replace(/=>/g, '⇒')
+    .replace(/->/g, '→')
+    .replace(/>=/g, '≥')
+    .replace(/<=/g, '≤')
+    .replace(/\^2\b/g, '²')
+    .replace(/\^3\b/g, '³');
+}
+
+function renderInlineBold(text: string, color: string, boldColor: string) {
+  const formatted = formatReadableMath(text);
+  const parts = formatted.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return parts.map((part, idx) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return (
+        <Text key={idx} style={{ fontWeight: '800', color: boldColor }}>
+          {part.slice(2, -2)}
+        </Text>
+      );
+    }
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return (
+        <Text
+          key={idx}
+          style={{
+            fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+            fontWeight: '700',
+            color: boldColor,
+          }}
+        >
+          {part.slice(1, -1)}
+        </Text>
+      );
+    }
+    return (
+      <Text key={idx} style={{ color }}>
+        {part}
+      </Text>
+    );
+  });
+}
+
+/**
+ * Lightweight native Markdown & Math renderer for AI Tutor responses and lesson/PDF readers.
+ */
+export function RichText({
+  content,
+  color,
+  boldColor,
+  fontSize = 14,
+}: {
+  content: string;
+  color?: string;
+  boldColor?: string;
+  fontSize?: number;
+}) {
+  const p = usePalette();
+  const textColor = color || p.text;
+  const strongColor = boldColor || textColor;
+  const lines = (content || '').replace(/\r\n/g, '\n').split('\n');
+
+  return (
+    <View style={{ gap: 5 }}>
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <View key={idx} style={{ height: 4 }} />;
+
+        // Headings (### / ## / #)
+        const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+        if (headingMatch) {
+          const level = headingMatch[1].length;
+          return (
+            <Text
+              key={idx}
+              style={{
+                color: strongColor,
+                fontWeight: '800',
+                fontSize: level === 1 ? fontSize + 3 : level === 2 ? fontSize + 2 : fontSize + 1,
+                lineHeight: fontSize + 9,
+                marginTop: idx > 0 ? 4 : 0,
+              }}
+            >
+              {renderInlineBold(headingMatch[2], strongColor, strongColor)}
+            </Text>
+          );
+        }
+
+        // Bullet items (- / * / •)
+        const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
+        if (bulletMatch) {
+          return (
+            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 7, paddingLeft: 4 }}>
+              <Text style={{ color: strongColor, fontWeight: '800', fontSize, lineHeight: fontSize + 7 }}>
+                •
+              </Text>
+              <Text style={{ flex: 1, fontSize, lineHeight: fontSize + 7, color: textColor }}>
+                {renderInlineBold(bulletMatch[1], textColor, strongColor)}
+              </Text>
+            </View>
+          );
+        }
+
+        // Numbered list items (1. ...)
+        const numMatch = trimmed.match(/^(\d+[.)])\s+(.+)$/);
+        if (numMatch) {
+          return (
+            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, paddingLeft: 2 }}>
+              <Text style={{ color: strongColor, fontWeight: '800', fontSize, lineHeight: fontSize + 7 }}>
+                {numMatch[1]}
+              </Text>
+              <Text style={{ flex: 1, fontSize, lineHeight: fontSize + 7, color: textColor }}>
+                {renderInlineBold(numMatch[2], textColor, strongColor)}
+              </Text>
+            </View>
+          );
+        }
+
+        return (
+          <Text key={idx} style={{ fontSize, lineHeight: fontSize + 7, color: textColor }}>
+            {renderInlineBold(trimmed, textColor, strongColor)}
+          </Text>
+        );
+      })}
     </View>
   );
 }
@@ -273,25 +470,16 @@ export function NotificationSheet({
                   ]}
                 >
                   <View style={styles.notifTopRow}>
-                    <Text
-                      style={[
-                        styles.notifTitle,
-                        { color: p.text, flex: 1 },
-                      ]}
-                    >
+                    <Text style={[styles.notifTitle, { color: p.text, flex: 1 }]}>
                       {n.title}
                     </Text>
                     {!n.isRead ? (
                       <View style={[styles.unreadDot, { backgroundColor: p.primary }]} />
                     ) : null}
                   </View>
-                  <Text style={[styles.notifBody, { color: p.textMuted }]}>
-                    {n.body}
-                  </Text>
+                  <Text style={[styles.notifBody, { color: p.textMuted }]}>{n.body}</Text>
                   <Text style={[styles.notifTime, { color: p.primary }]}>
-                    {n.createdAt
-                      ? new Date(n.createdAt).toLocaleString('vi-VN')
-                      : ''}
+                    {n.createdAt ? new Date(n.createdAt).toLocaleString('vi-VN') : ''}
                   </Text>
                 </TouchableOpacity>
               ))
@@ -308,6 +496,10 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     padding: 16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   badge: {
     paddingHorizontal: 10,
@@ -389,11 +581,14 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheetContainer: {
-    maxHeight: '80%',
+    maxHeight: '82%',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
     paddingBottom: 24,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
   },
   sheetHeader: {
     flexDirection: 'row',

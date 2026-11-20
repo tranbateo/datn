@@ -33,16 +33,21 @@ export interface CourseItem {
     content?: string | null;
     order?: number;
     videoUrl?: string | null;
+    relatedExcerpts?: { fileName: string; page: number; content: string }[];
   }[];
+  documents?: CourseDocument[];
 }
 
 export interface CourseDocument {
   id: string;
   fileName: string;
   fileSize?: string | null;
+  size?: string | null;
   status?: string;
   createdAt?: string;
+  uploadedAt?: string;
   hasFile?: boolean;
+  chunks?: { page: number; content: string }[];
 }
 
 export interface RagCitation {
@@ -344,6 +349,13 @@ export const authApi = {
       body: JSON.stringify({ identifier, email: identifier, password }),
     }),
 
+  verifyLoginOtp: (email: string, otp: string) =>
+    fetchApi<LoginResponse>(API_ENDPOINTS.AUTH.VERIFY_LOGIN_OTP, {
+      method: 'POST',
+      skipAuth: true,
+      body: JSON.stringify({ email, otp }),
+    }),
+
   firstTimeChangePassword: (currentPassword: string, newPassword: string) =>
     fetchApi<LoginResponse>(API_ENDPOINTS.AUTH.FIRST_TIME_CHANGE_PASSWORD, {
       method: 'POST',
@@ -351,7 +363,7 @@ export const authApi = {
     }),
 
   requestPasswordReset: (payload: {
-    role: 'STUDENT' | 'PARENT';
+    role: 'STUDENT' | 'TEACHER' | 'PARENT';
     identifier: string;
     reason?: string;
   }) =>
@@ -380,6 +392,20 @@ export const usersApi = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
+
+  uploadAvatar: (uri: string, fileName?: string, mimeType?: string) => {
+    const formData = new FormData();
+    formData.append('file', {
+      uri,
+      name: fileName || 'avatar.jpg',
+      type: mimeType || 'image/jpeg',
+    } as unknown as Blob);
+    return fetchApi<MobileUser>(API_ENDPOINTS.USERS.AVATAR, {
+      method: 'POST',
+      body: formData,
+      timeoutMs: 30_000,
+    });
+  },
 
   submitFeedback: (category: string, content: string) =>
     fetchApi<{ success?: boolean }>(API_ENDPOINTS.USERS.FEEDBACK, {
@@ -590,5 +616,313 @@ export const parentApi = {
   markNotificationRead: (id: string) =>
     fetchApi<{ success: boolean }>(API_ENDPOINTS.PARENTS.MARK_NOTIFICATION_READ(id), {
       method: 'PATCH',
+    }),
+};
+
+// ===== TEACHER PORTAL TYPES & API =====
+
+export interface TeacherDashboardStats {
+  teacherProfile?: {
+    fullName: string;
+    studentCode?: string | null;
+    email?: string | null;
+    primarySubjects: string[];
+  };
+  totalStudents: number;
+  totalCourses: number;
+  totalQuizzes: number;
+  averageScore: number;
+  pendingPasswordResetCount?: number;
+  pendingProposalsCount?: number;
+  homeroomClasses?: {
+    id: string;
+    name: string;
+    grade: number;
+    studentsCount: number;
+  }[];
+  subjectClasses?: {
+    id: string;
+    classId: string;
+    className: string;
+    grade: number;
+    subjectId: string;
+    subjectName: string;
+    studentsCount: number;
+  }[];
+  needsAttention: { name: string; issues: string; average?: number }[];
+}
+
+export interface TeacherClassOption {
+  id: string;
+  name: string;
+  grade: number;
+  role: 'GVCN' | 'GVBM';
+  subjectName?: string;
+  studentsCount: number;
+}
+
+export interface TeacherStudentItem {
+  id: string;
+  studentCode: string;
+  name: string;
+  email: string;
+  className: string;
+  classId?: string;
+  isHomeroomTeacher: boolean;
+  subjects?: string[];
+  teacherRole: 'GVCN' | 'GVBM' | string;
+  grade: string;
+  level: number;
+  streak: number;
+  xp: number;
+  avgScore: number;
+  status: string;
+  latestQuizTitle?: string | null;
+  latestScore?: number | null;
+}
+
+export interface TeacherStudentAttemptsResponse {
+  student: {
+    id: string;
+    fullName: string;
+    studentCode?: string | null;
+    className?: string | null;
+  };
+  attempts: {
+    id: string;
+    quizId: string;
+    quizTitle: string;
+    subjectName: string;
+    score: number;
+    totalQuestions: number;
+    completedAt: string;
+  }[];
+}
+
+export interface TeacherResetRequestItem {
+  id: string;
+  userId: string;
+  fullName: string;
+  studentCode?: string | null;
+  email?: string | null;
+  className?: string | null;
+  reason?: string | null;
+  createdAt: string;
+}
+
+export interface TeacherScopedParent {
+  id: string;
+  fullName: string;
+  phone?: string | null;
+  email?: string | null;
+  students: {
+    id: string;
+    fullName: string;
+    studentCode?: string | null;
+    className: string;
+    teacherRole: 'GVCN' | 'GVBM' | string;
+  }[];
+}
+
+export interface TeacherProposalItem {
+  id: string;
+  title: string;
+  content: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | string;
+  createdAt: string;
+  parent?: { id: string; fullName?: string | null; phone?: string | null } | null;
+  student?: { id: string; fullName?: string | null; studentCode?: string | null } | null;
+}
+
+export interface TeacherQuizItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  grade: number;
+  status: 'DRAFT' | 'PUBLISHED' | 'ASSIGNED' | 'CLOSED' | string;
+  subject: string;
+  subjectId: string;
+  questionsCount: number;
+  attemptsCount: number;
+  duration: number;
+  createdAt: string;
+}
+
+export interface TeacherQuizDetail {
+  id: string;
+  title: string;
+  description?: string | null;
+  grade: number;
+  status: string;
+  duration: number;
+  subject?: { id: string; name: string } | null;
+  questions: {
+    id: string;
+    content: string;
+    options: string[];
+    correctOption?: string;
+    explanation?: string | null;
+  }[];
+  attempts: {
+    id: string;
+    studentName: string;
+    studentCode?: string | null;
+    score: number;
+    totalQuestions: number;
+    completedAt: string;
+  }[];
+}
+
+export interface TeacherDocumentItem {
+  id: string;
+  name: string;
+  courseId: string;
+  courseTitle: string;
+  grade?: number | null;
+  size: string;
+  hasFile: boolean;
+  chunksCount: number;
+  rawStatus: string;
+  status: 'ready' | 'processing' | 'unpublished' | 'failed' | string;
+  date: string;
+}
+
+export interface TeacherCourseItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  subject?: string;
+  grade?: string;
+  gradeNum?: number;
+  lessonsCount?: number;
+  documentsCount?: number;
+}
+
+export const teacherApi = {
+  getDashboardStats: () =>
+    fetchApi<TeacherDashboardStats>(API_ENDPOINTS.TEACHER.DASHBOARD_STATS),
+  getClasses: () => fetchApi<TeacherClassOption[]>(API_ENDPOINTS.TEACHER.CLASSES),
+  getCourses: () => fetchApi<TeacherCourseItem[]>(API_ENDPOINTS.TEACHER.COURSES),
+  getCourseDetail: (courseId: string) =>
+    fetchApi<CourseItem>(API_ENDPOINTS.COURSES.DETAIL(courseId)),
+  createLesson: (
+    courseId: string,
+    payload: { title: string; content?: string; order?: number },
+  ) =>
+    fetchApi<{ id: string; title: string; content?: string }>(
+      API_ENDPOINTS.COURSES.CREATE_LESSON(courseId),
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
+  deleteLesson: (courseId: string, lessonId: string) =>
+    fetchApi<{ success?: boolean }>(
+      API_ENDPOINTS.COURSES.DELETE_LESSON(courseId, lessonId),
+      { method: 'DELETE' },
+    ),
+  aiBuildQuiz: (payload: {
+    title: string;
+    courseId: string;
+    topic?: string;
+    numQuestions: number;
+    duration: number;
+  }) =>
+    fetchApi<TeacherQuizItem>(API_ENDPOINTS.TEACHER.QUIZZES_AI_BUILD, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      timeoutMs: 120_000,
+    }),
+  getStudents: () => fetchApi<TeacherStudentItem[]>(API_ENDPOINTS.TEACHER.STUDENTS),
+  getStudentAttempts: (studentId: string) =>
+    fetchApi<TeacherStudentAttemptsResponse>(
+      API_ENDPOINTS.TEACHER.STUDENT_ATTEMPTS(studentId),
+    ),
+  overrideAttemptScore: (attemptId: string, score: number, reason: string) =>
+    fetchApi<{ id: string; score: number }>(
+      API_ENDPOINTS.TEACHER.OVERRIDE_SCORE(attemptId),
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ score, reason }),
+      },
+    ),
+  getPasswordResetRequests: () =>
+    fetchApi<TeacherResetRequestItem[]>(
+      API_ENDPOINTS.TEACHER.PASSWORD_RESET_REQUESTS,
+    ),
+  resetStudentPassword: (studentId: string) =>
+    fetchApi<{
+      success?: boolean;
+      temporaryPassword?: string;
+      tempPassword?: string;
+      studentName?: string;
+      studentCode?: string;
+      message?: string;
+    }>(API_ENDPOINTS.TEACHER.RESET_STUDENT_PASSWORD(studentId), {
+      method: 'POST',
+    }),
+  getParents: () => fetchApi<TeacherScopedParent[]>(API_ENDPOINTS.TEACHER.PARENTS),
+  sendNotification: (payload: {
+    targetType: 'CLASS' | 'STUDENT';
+    classId?: string;
+    studentId?: string;
+    audience: 'PARENTS' | 'STUDENTS' | 'BOTH';
+    title: string;
+    body: string;
+  }) =>
+    fetchApi<{
+      success: boolean;
+      sentCount: number;
+      studentRecipientsCount: number;
+      parentRecipientsCount: number;
+      message: string;
+    }>(API_ENDPOINTS.TEACHER.SEND_NOTIFICATION, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getProposals: () =>
+    fetchApi<TeacherProposalItem[]>(API_ENDPOINTS.PROPOSALS.LIST_TEACHER),
+  updateProposalStatus: (id: string, status: 'APPROVED' | 'REJECTED') =>
+    fetchApi<TeacherProposalItem>(API_ENDPOINTS.PROPOSALS.UPDATE_STATUS(id), {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+  getMessages: (parentId: string) =>
+    fetchApi<DirectMessageItem[]>(API_ENDPOINTS.MESSAGES.THREAD(parentId)),
+  sendMessage: (parentId: string, content: string) =>
+    fetchApi<DirectMessageItem>(API_ENDPOINTS.MESSAGES.THREAD(parentId), {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+  getQuizzes: () => fetchApi<TeacherQuizItem[]>(API_ENDPOINTS.TEACHER.QUIZZES),
+  getQuizDetails: (quizId: string) =>
+    fetchApi<TeacherQuizDetail>(API_ENDPOINTS.TEACHER.QUIZ_DETAILS(quizId)),
+  updateQuizStatus: (
+    quizId: string,
+    status: 'DRAFT' | 'PUBLISHED' | 'ASSIGNED' | 'CLOSED',
+  ) =>
+    fetchApi<{ id: string; status: string }>(
+      API_ENDPOINTS.TEACHER.QUIZ_STATUS(quizId),
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      },
+    ),
+  getDocuments: () =>
+    fetchApi<TeacherDocumentItem[]>(API_ENDPOINTS.TEACHER.DOCUMENTS),
+  updateDocumentStatus: (
+    docId: string,
+    status: 'Embedded' | 'UNPUBLISHED',
+  ) =>
+    fetchApi<{ id: string; status: string }>(
+      API_ENDPOINTS.TEACHER.DOCUMENT_STATUS(docId),
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      },
+    ),
+  deleteDocument: (docId: string) =>
+    fetchApi<{ success: boolean }>(API_ENDPOINTS.TEACHER.DOCUMENT_DELETE(docId), {
+      method: 'DELETE',
     }),
 };

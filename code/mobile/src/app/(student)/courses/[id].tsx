@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,12 +16,14 @@ import {
   type CourseItem,
 } from '@/services/mobile.services';
 import {
+  ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
   LoadingView,
   PrimaryButton,
+  RichText,
   usePalette,
 } from '@/components/ui/mobile-ui';
 
@@ -32,6 +35,7 @@ export default function StudentCourseDetailScreen() {
   const [course, setCourse] = useState<CourseItem | null>(null);
   const [docs, setDocs] = useState<CourseDocument[]>([]);
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
+  const [readingDoc, setReadingDoc] = useState<CourseDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +47,14 @@ export default function StudentCourseDetailScreen() {
         coursesApi.documents(id).catch(() => []),
       ]);
       setCourse(cData);
-      setDocs(Array.isArray(dData) ? dData : []);
+      // Prefer course.documents (includes extracted chunks for in-app reader)
+      const mergedDocs =
+        Array.isArray(cData.documents) && cData.documents.length > 0
+          ? cData.documents
+          : Array.isArray(dData)
+            ? dData
+            : [];
+      setDocs(mergedDocs);
       if (cData.lessons?.[0]?.id) {
         setExpandedLessonId(cData.lessons[0].id);
       }
@@ -77,6 +88,18 @@ export default function StudentCourseDetailScreen() {
 
   const lessons = course.lessons || [];
 
+  const askAiAbout = (topicLabel: string) => {
+    setReadingDoc(null);
+    router.push({
+      pathname: '/(student)/(tabs)/explore',
+      params: {
+        subjectId: course.subject?.id || '',
+        subjectName: course.subject?.name || '',
+        prefill: `Em hãy tóm tắt và giải thích những ý chính trong "${topicLabel}" giúp em nhé!`,
+      },
+    });
+  };
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: p.card, borderBottomColor: p.border }]}>
@@ -93,7 +116,7 @@ export default function StudentCourseDetailScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}>
         {course.description ? (
           <Card>
             <Text style={{ fontSize: 14, color: p.textMuted, lineHeight: 20 }}>
@@ -145,9 +168,31 @@ export default function StudentCourseDetailScreen() {
                     />
                   </TouchableOpacity>
                   {open ? (
-                    <Text style={{ fontSize: 14, color: p.text, lineHeight: 22 }}>
-                      {lesson.content || 'Nội dung tóm tắt bài học đang được cập nhật.'}
-                    </Text>
+                    <View style={{ gap: 10 }}>
+                      <RichText
+                        content={
+                          lesson.content || 'Nội dung tóm tắt bài học đang được cập nhật.'
+                        }
+                        color={p.text}
+                        boldColor={p.text}
+                      />
+                      {Array.isArray(lesson.relatedExcerpts) &&
+                      lesson.relatedExcerpts.length > 0 ? (
+                        <View style={[styles.excerptBox, { backgroundColor: p.primarySoft }]}>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: p.primary }}>
+                            Trích dẫn từ sách / tài liệu lớp:
+                          </Text>
+                          {lesson.relatedExcerpts.slice(0, 2).map((ex, eIdx) => (
+                            <Text
+                              key={`${lesson.id}-ex-${eIdx}`}
+                              style={{ fontSize: 12, color: p.text, lineHeight: 18, marginTop: 4 }}
+                            >
+                              • {ex.fileName} (Tr.{ex.page}): {ex.content.slice(0, 180)}...
+                            </Text>
+                          ))}
+                        </View>
+                      ) : null}
+                    </View>
                   ) : null}
                 </Card>
               );
@@ -155,7 +200,7 @@ export default function StudentCourseDetailScreen() {
           </View>
         )}
 
-        {/* Published PDF Documents */}
+        {/* Published PDF Documents (Tappable to open in-app reader!) */}
         <Text style={[styles.secTitle, { color: p.text }]}>
           Tài liệu PDF đã xuất bản ({docs.length})
         </Text>
@@ -167,24 +212,81 @@ export default function StudentCourseDetailScreen() {
         ) : (
           <View style={{ gap: 10 }}>
             {docs.map((doc) => (
-              <Card key={doc.id} style={styles.docRow}>
-                <View style={[styles.docIcon, { backgroundColor: p.roseSoft }]}>
-                  <Ionicons name="document-text-outline" size={20} color={p.rose} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: p.text }} numberOfLines={2}>
-                    {doc.fileName}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: p.textMuted, marginTop: 2 }}>
-                    {doc.fileSize || 'PDF'} • Đã đồng bộ vào Gia sư AI
-                  </Text>
-                </View>
-                <Badge label="Sẵn sàng" tone="emerald" />
-              </Card>
+              <TouchableOpacity
+                key={doc.id}
+                activeOpacity={0.85}
+                onPress={() => setReadingDoc(doc)}
+              >
+                <Card style={styles.docRow}>
+                  <View style={[styles.docIcon, { backgroundColor: p.roseSoft }]}>
+                    <Ionicons name="document-text-outline" size={20} color={p.rose} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: p.text }} numberOfLines={2}>
+                      {doc.fileName}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: p.textMuted, marginTop: 2 }}>
+                      {doc.size || doc.fileSize || 'PDF'} •{' '}
+                      {doc.chunks?.length
+                        ? `${doc.chunks.length} phần nội dung • Chạm để đọc`
+                        : 'Chạm để xem & hỏi Gia sư AI'}
+                    </Text>
+                  </View>
+                  <Ionicons name="book-outline" size={20} color={p.primary} />
+                </Card>
+              </TouchableOpacity>
             ))}
           </View>
         )}
       </ScrollView>
+
+      {/* In-App Document Reader Modal */}
+      <Modal
+        visible={Boolean(readingDoc)}
+        animationType="slide"
+        onRequestClose={() => setReadingDoc(null)}
+      >
+        <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]}>
+          <View style={[styles.header, { backgroundColor: p.card, borderBottomColor: p.border }]}>
+            <TouchableOpacity onPress={() => setReadingDoc(null)} hitSlop={10}>
+              <Ionicons name="close" size={24} color={p.text} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }} numberOfLines={1}>
+                {readingDoc?.fileName}
+              </Text>
+              <Text style={{ fontSize: 11, color: p.textMuted }}>
+                Trình đọc tài liệu lớp học (đã trích xuất văn bản)
+              </Text>
+            </View>
+          </View>
+
+          <ScrollView contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}>
+            {readingDoc ? (
+              <PrimaryButton
+                title="Hỏi Gia sư AI về tài liệu này"
+                icon="sparkles-outline"
+                onPress={() => askAiAbout(readingDoc.fileName)}
+              />
+            ) : null}
+
+            {readingDoc?.chunks && readingDoc.chunks.length > 0 ? (
+              readingDoc.chunks.map((chunk, idx) => (
+                <Card key={`chunk-${idx}`} style={{ gap: 8 }}>
+                  <Badge label={`Trang ${chunk.page || idx + 1}`} tone="blue" />
+                  <RichText content={chunk.content} color={p.text} boldColor={p.text} />
+                </Card>
+              ))
+            ) : (
+              <EmptyView
+                icon="document-text-outline"
+                title="Tài liệu dạng ảnh scan hoặc chưa có bản trích xuất chữ"
+                description="Em vẫn có thể bấm nút phía trên để hỏi Gia sư AI hoặc xem bản PDF gốc đầy đủ trên Cổng Web."
+              />
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -202,6 +304,7 @@ const styles = StyleSheet.create({
   scroll: { padding: 16, gap: 14, paddingBottom: 32 },
   secTitle: { fontSize: 16, fontWeight: '800', marginTop: 4 },
   lessonHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  excerptBox: { padding: 12, borderRadius: 12 },
   docRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   docIcon: {
     width: 40,

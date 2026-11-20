@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   RefreshControl,
   ScrollView,
@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   calendarApi,
   curriculumApi,
@@ -24,12 +24,14 @@ import {
 } from '@/services/mobile.services';
 import { useAuthStore, type MobileUser } from '@/store/authStore';
 import {
+  ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
   LoadingView,
   NotificationSheet,
+  UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
 
@@ -90,12 +92,14 @@ export default function StudentHomeScreen() {
     }
   }, [updateUser]);
 
-  useEffect(() => {
-    const run = async () => {
-      await loadData();
-    };
-    void run();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      const run = async () => {
+        await loadData();
+      };
+      void run();
+    }, [loadData]),
+  );
 
   const handleMarkRead = async (id: string) => {
     setNotifications((prev) =>
@@ -142,7 +146,7 @@ export default function StudentHomeScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -156,6 +160,14 @@ export default function StudentHomeScreen() {
       >
         {/* Top Bar */}
         <View style={styles.topRow}>
+          <TouchableOpacity onPress={() => router.push('/(student)/(tabs)/profile')}>
+            <UserAvatar
+              uri={profile?.avatarUrl}
+              name={profile?.fullName}
+              size={44}
+              bgColor={p.primary}
+            />
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={[styles.schoolText, { color: p.textMuted }]} numberOfLines={1}>
               {profile?.school?.name || 'AI Tutor Education'}

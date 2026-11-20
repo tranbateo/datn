@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   RefreshControl,
   ScrollView,
@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   gamificationApi,
   type GamificationProfile,
@@ -61,12 +61,14 @@ export default function StudentProgressScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    const run = async () => {
-      await loadData();
-    };
-    void run();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      const run = async () => {
+        await loadData();
+      };
+      void run();
+    }, [loadData]),
+  );
 
   if (loading) return <LoadingView label="Đang tổng hợp tiến độ học tập..." />;
   if (error) {
