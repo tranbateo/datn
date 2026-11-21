@@ -414,7 +414,10 @@
       "askQuestion": "Hỏi câu hỏi...",
       "videoTitle": "Video: Ôn tập Đại số lớp 9",
       "videoLength": "Bài giảng 15 phút",
-      "newChat": "Cuộc trò chuyện mới"
+      "newChat": "Cuộc trò chuyện mới",
+      "closeSidebar": "Đóng thanh bên",
+      "openSidebar": "Mở thanh bên",
+      "searchChats": "Tìm kiếm hội thoại"
     },
     "Schedule": {
       "title": "Lịch học",

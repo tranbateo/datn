@@ -26,6 +26,71 @@ export interface RagCitation {
   snippet: string;
 }
 
+const VIETNAMESE_QUERY_STOPWORDS = new Set([
+  'em',
+  'anh',
+  'chị',
+  'tôi',
+  'mình',
+  'bạn',
+  'thầy',
+  'cô',
+  'chào',
+  'muốn',
+  'cần',
+  'giúp',
+  'hỏi',
+  'cho',
+  'với',
+  'của',
+  'và',
+  'là',
+  'có',
+  'được',
+  'không',
+  'này',
+  'kia',
+  'nào',
+  'gì',
+  'sao',
+  'như',
+  'thế',
+  'để',
+  'về',
+  'trong',
+  'trên',
+  'dưới',
+  'học',
+  'môn',
+  'bài',
+  'lớp',
+  'từ',
+  'đi',
+  'nhé',
+  'nha',
+  'ơi',
+  'ạ',
+  'vui',
+  'lòng',
+  'chỉ',
+  'dạy',
+  'hướng',
+  'dẫn',
+  'giải',
+  'thích',
+  'bắt',
+  'đầu',
+  'tóm',
+  'tắt',
+  'ôn',
+  'tập',
+  'các',
+  'những',
+  'một',
+  'hai',
+  'ba',
+]);
+
 @Injectable()
 export class ChatRagService {
   private vectorStore: SupabaseVectorStore;
@@ -108,7 +173,9 @@ export class ChatRagService {
       name: 'Ngữ văn',
       keywords: [
         'ngữ văn',
+        'môn ngữ văn',
         'môn văn',
+        'học văn',
         'văn học',
         'soạn văn',
         'bài văn',
@@ -140,6 +207,14 @@ export class ChatRagService {
         'vũ nương',
         'truyện kiều',
         'đồng thoại',
+        'thực hành tiếng việt',
+        'chính tả',
+        'từ láy',
+        'từ ghép',
+        'cụm danh từ',
+        'trạng ngữ',
+        'chủ ngữ',
+        'vị ngữ',
       ],
     },
     {
@@ -313,6 +388,17 @@ export class ChatRagService {
       }
     }
 
+    // Nếu câu hỏi nhắc "tiếng Việt" như một môn học (không phải yêu cầu dịch sang tiếng Việt trong môn Tiếng Anh)
+    const isVietnameseSubjectIntent =
+      /\btiếng việt\b/i.test(q) &&
+      !/dịch.*tiếng việt|sang tiếng việt|nghĩa tiếng việt|bằng tiếng việt|tiếng anh/i.test(
+        q,
+      ) &&
+      lockedSubjectName !== 'Tiếng Anh';
+    if (isVietnameseSubjectIntent && !matched.includes('Ngữ văn')) {
+      matched.push('Ngữ văn');
+    }
+
     // Nếu câu hỏi chứa câu/cụm từ tiếng Anh rõ ràng (và không phải đang ở phiên Tin học viết code)
     if (
       !matched.includes('Tiếng Anh') &&
@@ -448,7 +534,11 @@ export class ChatRagService {
       }
     }
 
-    if (bestHigherGrade && bestHigherScore >= 9 && bestHigherScore > ownGradeBestScore * 2) {
+    if (
+      bestHigherGrade &&
+      bestHigherScore >= 9 &&
+      bestHigherScore > ownGradeBestScore * 2
+    ) {
       return [
         `Chuyên đề **${bestHigherTitle}** thuộc chương trình **${subjectName} Lớp ${bestHigherGrade}**, vượt quá chương trình **Lớp ${studentGrade}** của em.`,
         ``,
@@ -480,12 +570,26 @@ export class ChatRagService {
       };
     }
 
-    const matchedSubject = await this.prisma.subject.findFirst({
-      where: {
-        name: { contains: detectedName, mode: 'insensitive' },
-        ...(typeof userGrade === 'number' ? { grade: userGrade } : {}),
-      },
-    });
+    const candidateNames =
+      detectedName === 'Ngữ văn' &&
+      typeof userGrade === 'number' &&
+      userGrade <= 5
+        ? ['Tiếng Việt', 'Ngữ văn']
+        : detectedName === 'Ngữ văn'
+          ? ['Ngữ văn', 'Tiếng Việt']
+          : [detectedName];
+
+    let matchedSubject: { id: string; name: string } | null = null;
+    for (const candidateName of candidateNames) {
+      matchedSubject = await this.prisma.subject.findFirst({
+        where: {
+          name: { contains: candidateName, mode: 'insensitive' },
+          ...(typeof userGrade === 'number' ? { grade: userGrade } : {}),
+        },
+        select: { id: true, name: true },
+      });
+      if (matchedSubject) break;
+    }
 
     if (matchedSubject) {
       await this.prisma.chatSession
@@ -512,11 +616,25 @@ export class ChatRagService {
     userGrade: string | number,
     isFollowUp = false,
   ): string {
+    const isGeneralSession = !subjectName || subjectName === 'Tổng hợp';
+    if (isGeneralSession) {
+      return [
+        `Bạn là Gia sư AI hỗ trợ học tập các môn thuộc chương trình Lớp ${userGrade} theo GDPT 2018 (bộ sách Kết nối tri thức với cuộc sống). Xưng "Thầy/Cô", gọi học sinh là "em".`,
+        `Quy tắc bắt buộc:`,
+        `1. Ngôn ngữ: Viết 100% bằng tiếng Việt chuẩn (kèm từ vựng/ví dụ tiếng Anh khi hỗ trợ môn Tiếng Anh). Không sử dụng chữ tiếng Trung.`,
+        `2. Không từ chối lệch môn: Đây là phiên trò chuyện mở hỗ trợ chung các môn Lớp ${userGrade}; TUYỆT ĐỐI KHÔNG nói "chỉ hỗ trợ môn Tổng hợp" hay yêu cầu em chuyển phiên sang môn khác nếu em hỏi môn thuộc Lớp ${userGrade}.`,
+        `3. Nếu em hỏi chào hỏi hoặc chưa nêu rõ môn học: chào thân thiện, liệt kê ngắn gọn các môn có trong <context> của Lớp ${userGrade} và hỏi em muốn học môn/bài nào.`,
+        `4. Nếu em ở cấp THCS/THPT (Lớp 6–12) và nói muốn học "Tiếng Việt": giải thích nhẹ nhàng rằng từ Lớp 6 môn Tiếng Việt tiếp nối thành môn **Ngữ văn** (gồm Đọc hiểu, Thực hành tiếng Việt và Viết) rồi gợi ý lộ trình học ngay.`,
+        `5. Phạm vi khối lớp: Chỉ giải đáp kiến thức đúng chương trình Lớp ${userGrade}, không giải vượt cấp lên lớp cao hơn.`,
+        `6. Định dạng Markdown rõ ràng, sạch sẽ, dễ đọc với học sinh.`,
+      ].join('\n');
+    }
+
     return [
       `Bạn là Gia sư AI dạy môn ${subjectName} lớp ${userGrade} theo chương trình GDPT 2018 (bộ sách Kết nối tri thức với cuộc sống). Xưng "Thầy/Cô", gọi học sinh là "em".`,
       `Quy tắc bắt buộc:`,
       `1. Ngôn ngữ: Viết 100% bằng tiếng Việt chuẩn (kèm từ vựng/ví dụ tiếng Anh khi dạy môn Tiếng Anh). Không sử dụng chữ tiếng Trung.`,
-      `2. Trọng tâm: Luôn trả lời trực tiếp, đầy đủ và chính xác câu hỏi của học sinh dựa trên tài liệu trong thẻ <context>.`,
+      `2. Trọng tâm: Luôn trả lời trực tiếp, đầy đủ và chính xác câu hỏi của học sinh dựa trên tài liệu trong thẻ <context>. (Lưu ý: với môn Ngữ văn THCS/THPT, nếu học sinh gọi là "Tiếng Việt" thì giải thích nhẹ nhàng rằng ở lớp ${userGrade} nội dung Tiếng Việt nằm trong phân môn Thực hành tiếng Việt của môn Ngữ văn ${userGrade}, rồi giảng ngay không từ chối).`,
       isFollowUp
         ? `3. Mạch hội thoại: Đây là câu hỏi nối tiếp trong bài học môn ${subjectName}, hãy đi thẳng ngay vào nội dung giải đáp ngắn gọn, rõ ràng.`
         : `3. Mở đầu: Bắt đầu tự nhiên 1 câu khích lệ ngắn gọn, sau đó đi thẳng vào kiến thức chính.`,
@@ -549,7 +667,11 @@ export class ChatRagService {
     schoolId: string | null,
     subjectId: string | null,
     query: string,
-  ): Promise<{ contextDocs: string; citations: RagCitation[]; bestLessonScore: number }> {
+  ): Promise<{
+    contextDocs: string;
+    citations: RagCitation[];
+    bestLessonScore: number;
+  }> {
     // 1. Courses student is directly enrolled in (combine subjectId + schoolId inside one course filter!)
     const courseFilter: Record<string, string> = {};
     if (subjectId) courseFilter.subjectId = subjectId;
@@ -677,22 +799,28 @@ export class ChatRagService {
       return { contextDocs: '', citations: [], bestLessonScore: 0 };
     }
 
-    const queryTokens = query
-      .toLowerCase()
+    const normalizedQuery = query.toLowerCase();
+    const queryTokens = normalizedQuery
       .replace(/[^\p{L}\p{N}\s]/gu, ' ')
       .split(/\s+/)
-      .filter((w) => w.length >= 2);
+      .filter((w) => w.length >= 2 && !VIETNAMESE_QUERY_STOPWORDS.has(w));
 
     // Score courses so if subjectId was not set, we prioritize the most relevant course(s)
+    // without letting generic stopwords like "học" falsely match "Tin học" / "Khoa học tự nhiên".
     const scoredCourses = courses
       .map((course) => {
+        const subjectLower = (course.subject?.name || '').toLowerCase();
+        const titleLower = course.title.toLowerCase();
         const haystack =
           `${course.title} ${course.description || ''} ${course.subject?.name || ''} ${course.lessons.map((l) => `${l.title} ${l.content || ''}`).join(' ')}`.toLowerCase();
         let score = 0;
+        if (subjectLower && normalizedQuery.includes(subjectLower)) {
+          score += 20;
+        }
         for (const token of queryTokens) {
           if (haystack.includes(token)) score += 1;
-          if (course.subject?.name?.toLowerCase().includes(token)) score += 5;
-          if (course.title.toLowerCase().includes(token)) score += 3;
+          if (subjectLower.includes(token)) score += 5;
+          if (titleLower.includes(token)) score += 3;
         }
         return { course, score };
       })
@@ -700,12 +828,25 @@ export class ChatRagService {
 
     const selectedCourses = subjectId
       ? scoredCourses.map((sc) => sc.course)
-      : scoredCourses[0]?.score > 0
+      : (scoredCourses[0]?.score ?? 0) > 0
         ? scoredCourses
-          .filter((sc) => sc.score > 0)
-          .slice(0, 1)
-          .map((sc) => sc.course)
-        : scoredCourses.slice(0, 2).map((sc) => sc.course);
+            .filter((sc) => sc.score > 0)
+            .slice(0, 1)
+            .map((sc) => sc.course)
+        : [];
+
+    if (selectedCourses.length === 0) {
+      const availableList = courses
+        .map((c) => `- ${c.subject?.name || c.title} (${c.title})`)
+        .join('\n');
+      return {
+        contextDocs: availableList
+          ? `Danh sách các môn học trong chương trình hiện tại của học sinh:\n${availableList}`
+          : '',
+        citations: [],
+        bestLessonScore: 0,
+      };
+    }
 
     const contextBlocks: string[] = [];
     const approxPages = [6, 30, 61, 85, 110];
@@ -756,7 +897,6 @@ export class ChatRagService {
             publishedDocNames,
           );
 
-          const normalizedQuery = query.toLowerCase();
           const scoredChunks = rawChunks
             .map((ch) => {
               const fileName = ch.metadata?.fileName || primarySgkDoc;
@@ -808,7 +948,7 @@ export class ChatRagService {
               b.score !== a.score
                 ? b.score - a.score
                 : Number(b.isTeacherUpload) - Number(a.isTeacherUpload) ||
-                a.pageNum - b.pageNum,
+                  a.pageNum - b.pageNum,
             );
 
           const matchedUploadedOrSgkChunks = scoredChunks
@@ -1025,9 +1165,7 @@ export class ChatRagService {
 
       const lessonBullets =
         matchingCourse && matchingCourse.lessons.length > 0
-          ? matchingCourse.lessons
-            .map((l) => `- **${l.title}**`)
-            .join('\n')
+          ? matchingCourse.lessons.map((l) => `- **${l.title}**`).join('\n')
           : `- Các chuyên đề và bài tập chuẩn chương trình **${resolvedSubject.name} Lớp ${resolvedSubject.grade}**.`;
 
       const welcomeContent = [
@@ -1264,7 +1402,7 @@ export class ChatRagService {
           }
 
           if (
-            /vượt quá chương trình|không nằm trong chương trình/i.test(
+            /vượt quá chương trình|không nằm trong chương trình|chuyển sang phiên học môn|chỉ hỗ trợ giải đáp kiến thức thuộc môn/i.test(
               aiResponseText,
             )
           ) {
@@ -1473,7 +1611,7 @@ export class ChatRagService {
           }
 
           if (
-            /vượt quá chương trình|không nằm trong chương trình/i.test(
+            /vượt quá chương trình|không nằm trong chương trình|chuyển sang phiên học môn|chỉ hỗ trợ giải đáp kiến thức thuộc môn/i.test(
               aiResponseText,
             )
           ) {

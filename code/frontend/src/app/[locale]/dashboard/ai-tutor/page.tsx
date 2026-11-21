@@ -2,7 +2,7 @@
 import { notify } from "@/lib/toast";
 
 import { API_ENDPOINTS } from "@/constants/api";
-import { Suspense, useState, useRef, useEffect } from "react";
+import { Suspense, useState, useRef, useEffect, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "@/i18n/routing";
 import {
@@ -18,6 +18,8 @@ import {
   MessageSquare,
   Copy,
   Check,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { fetchApi, fetchApiStream } from "@/lib/api-client";
@@ -238,6 +240,44 @@ const markdownComponents: Components = {
   ),
 };
 
+const SIDEBAR_STORAGE_KEY = "eduai_ai_tutor_sidebar_collapsed";
+const SIDEBAR_CHANGE_EVENT = "eduai-ai-tutor-sidebar-change";
+let memorySidebarCollapsed = false;
+
+function subscribeSidebarCollapsed(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener(SIDEBAR_CHANGE_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(SIDEBAR_CHANGE_EVENT, callback);
+  };
+}
+
+function getSidebarCollapsedSnapshot(): boolean {
+  try {
+    const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (stored === "1") return true;
+    if (stored === "0") return false;
+  } catch {
+    // Fallback to in-memory state when storage is unavailable
+  }
+  return memorySidebarCollapsed;
+}
+
+function getSidebarCollapsedServerSnapshot(): boolean {
+  return false;
+}
+
+function setHistoryCollapsed(collapsed: boolean) {
+  memorySidebarCollapsed = collapsed;
+  try {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? "1" : "0");
+  } catch {
+    // Ignore storage quota or privacy mode errors
+  }
+  window.dispatchEvent(new Event(SIDEBAR_CHANGE_EVENT));
+}
+
 function AITutorContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -246,8 +286,14 @@ function AITutorContent() {
   const initialGrade = searchParams.get("grade");
   const initialDocName = searchParams.get("docName");
   const initializedSubjectKeyRef = useRef<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [showHistory, setShowHistory] = useState(false);
+  const isHistoryCollapsed = useSyncExternalStore(
+    subscribeSidebarCollapsed,
+    getSidebarCollapsedSnapshot,
+    getSidebarCollapsedServerSnapshot,
+  );
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [historySearch, setHistorySearch] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -615,6 +661,16 @@ function AITutorContent() {
     }
   };
 
+  const handleOpenAndFocusSearch = () => {
+    setHistoryCollapsed(false);
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 120);
+  };
+
+  const sidebarTooltipClass =
+    "pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2.5 px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium whitespace-nowrap shadow-lg opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 group-focus-visible:opacity-100 group-focus-visible:scale-100 transition-all duration-150 z-50";
+
   const filteredSessions = sessions.filter(
     (s) => !historySearch || s.title?.toLowerCase().includes(historySearch.toLowerCase()),
   );
@@ -624,6 +680,7 @@ function AITutorContent() {
       {/* Mobile Header for switching views */}
       <div className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-card-bg border-b border-gray-100 dark:border-gray-800">
         <button
+          type="button"
           onClick={() => setShowHistory(!showHistory)}
           className="flex items-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-300"
         >
@@ -633,59 +690,137 @@ function AITutorContent() {
       </div>
 
       <div className="flex w-full h-full overflow-hidden">
-        {/* --- LEFT COLUMN: HISTORY SIDEBAR --- */}
-        <div
-          className={`${showHistory ? "flex" : "hidden"} md:flex flex-col w-full md:w-72 lg:w-80 flex-shrink-0 bg-slate-50/70 dark:bg-card-bg border-r border-slate-200/80 dark:border-gray-800 transition-all z-20`}
+        {/* --- LEFT COLUMN: COLLAPSIBLE HISTORY SIDEBAR (Gemini-style) --- */}
+        <aside
+          aria-label={t("chatHistory")}
+          className={`${
+            showHistory ? "flex w-full" : "hidden"
+          } md:flex flex-col shrink-0 relative z-30 bg-slate-50/70 dark:bg-card-bg border-r border-slate-200/80 dark:border-gray-800 transition-[width] duration-300 ease-in-out ${
+            isHistoryCollapsed ? "md:w-[68px]" : "md:w-72 lg:w-80"
+          }`}
         >
-          <div className="p-4 flex justify-between items-center">
+          {/* Desktop Collapsed Slim Rail */}
+          <div
+            className={`hidden ${
+              isHistoryCollapsed ? "md:flex" : ""
+            } flex-col items-center py-3.5 px-2 gap-2.5 h-full`}
+          >
             <button
-              onClick={handleResetToNewChat}
-              className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-colors shadow-xs"
+              type="button"
+              onClick={() => setHistoryCollapsed(false)}
+              aria-label={t("openSidebar")}
+              aria-expanded={false}
+              className="relative group w-10 h-10 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              <Edit className="w-4 h-4" /> {t("newChat", { fallback: "Cuộc trò chuyện mới" })}
+              <PanelLeftOpen className="w-[18px] h-[18px]" />
+              <span role="tooltip" className={sidebarTooltipClass}>
+                {t("openSidebar")}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetToNewChat}
+              aria-label={t("newChat")}
+              className="relative group w-10 h-10 rounded-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <Edit className="w-[18px] h-[18px]" />
+              <span role="tooltip" className={sidebarTooltipClass}>
+                {t("newChat")}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenAndFocusSearch}
+              aria-label={t("searchChats")}
+              className="relative group w-10 h-10 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <Search className="w-[18px] h-[18px]" />
+              <span role="tooltip" className={sidebarTooltipClass}>
+                {t("searchChats")}
+              </span>
             </button>
           </div>
 
-          <div className="px-4 pb-2">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
-                placeholder={t("searchHistory")}
-                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800/50 border border-slate-200/80 dark:border-gray-700 focus:border-blue-500 rounded-lg text-sm outline-none transition-colors dark:text-white"
-              />
+          {/* Expanded Sidebar Content (always shown on mobile drawer) */}
+          <div
+            className={`${
+              isHistoryCollapsed ? "flex md:hidden" : "flex"
+            } flex-col flex-1 min-h-0 w-full`}
+          >
+            <div className="px-4 pt-3.5 pb-2 flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">
+                {t("chatHistory")}
+              </span>
+              <button
+                type="button"
+                onClick={() => setHistoryCollapsed(true)}
+                aria-label={t("closeSidebar")}
+                aria-expanded={true}
+                className="hidden md:flex relative group w-9 h-9 rounded-full items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <PanelLeftClose className="w-[18px] h-[18px]" />
+                <span role="tooltip" className={sidebarTooltipClass}>
+                  {t("closeSidebar")}
+                </span>
+              </button>
+            </div>
+
+            <div className="px-4 pb-3 flex justify-between items-center">
+              <button
+                type="button"
+                onClick={handleResetToNewChat}
+                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-colors shadow-xs whitespace-nowrap"
+              >
+                <Edit className="w-4 h-4 shrink-0" />{" "}
+                {t("newChat", { fallback: "Cuộc trò chuyện mới" })}
+              </button>
+            </div>
+
+            <div className="px-4 pb-2">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder={t("searchHistory")}
+                  className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800/50 border border-slate-200/80 dark:border-gray-700 focus:border-blue-500 rounded-lg text-sm outline-none transition-colors dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-1">
+              {filteredSessions.length === 0 ? (
+                <div className="p-4 text-center text-xs text-gray-400">
+                  Chưa có lịch sử trò chuyện
+                </div>
+              ) : (
+                filteredSessions.map((sess) => (
+                  <div
+                    key={sess.id}
+                    onClick={() => handleSelectSession(sess.id)}
+                    title={sess.title}
+                    className={`p-3 rounded-lg cursor-pointer text-sm flex items-center gap-2.5 transition-colors truncate ${
+                      sessionId === sess.id
+                        ? "bg-blue-50 dark:bg-blue-900/30 font-semibold text-blue-700 dark:text-blue-300"
+                        : "hover:bg-slate-100/80 dark:hover:bg-gray-800/50 text-slate-600 dark:text-gray-400"
+                    }`}
+                  >
+                    <MessageSquare className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{sess.title}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
-
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {filteredSessions.length === 0 ? (
-              <div className="p-4 text-center text-xs text-gray-400">
-                Chưa có lịch sử trò chuyện
-              </div>
-            ) : (
-              filteredSessions.map((sess) => (
-                <div
-                  key={sess.id}
-                  onClick={() => handleSelectSession(sess.id)}
-                  className={`p-3 rounded-lg cursor-pointer text-sm flex items-center gap-2.5 transition-colors truncate ${
-                    sessionId === sess.id
-                      ? "bg-blue-50 dark:bg-blue-900/30 font-semibold text-blue-700 dark:text-blue-300"
-                      : "hover:bg-slate-100/80 dark:hover:bg-gray-800/50 text-slate-600 dark:text-gray-400"
-                  }`}
-                >
-                  <MessageSquare className="w-4 h-4 shrink-0" />
-                  <span className="truncate">{sess.title}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        </aside>
 
         {/* --- MAIN CHAT AREA (Modern Editorial Canvas) --- */}
         <div
-          className={`${showHistory ? "hidden" : "flex"} md:flex flex-col flex-1 bg-white dark:bg-[#0f111a]`}
+          className={`${showHistory ? "hidden" : "flex"} md:flex flex-col flex-1 min-w-0 bg-white dark:bg-[#0f111a]`}
         >
           {/* Active Subject Context Bar */}
           {activeSubject && (
@@ -712,7 +847,11 @@ function AITutorContent() {
 
           {/* Chat Messages */}
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-8">
+            <div
+              className={`${
+                isHistoryCollapsed ? "max-w-4xl" : "max-w-3xl"
+              } mx-auto px-4 sm:px-8 py-6 sm:py-8 transition-[max-width] duration-300`}
+            >
               {messages.length === 0 && loading ? (
                 <div className="flex flex-col items-center justify-center h-full mt-24 text-center px-4">
                   <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mb-4 shadow-md text-white animate-pulse">
@@ -877,7 +1016,11 @@ function AITutorContent() {
 
           {/* Fixed Input Area */}
           <div className="w-full bg-white dark:bg-[#0f111a] pt-2 pb-4 px-4 flex-shrink-0">
-            <div className="max-w-3xl mx-auto">
+            <div
+              className={`${
+                isHistoryCollapsed ? "max-w-4xl" : "max-w-3xl"
+              } mx-auto transition-[max-width] duration-300`}
+            >
               <div className="flex items-end gap-2 bg-slate-50 dark:bg-[#1a1d2d] border border-slate-200 dark:border-slate-700 rounded-3xl p-2 shadow-xs focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
                 <button
                   onClick={toggleRecording}

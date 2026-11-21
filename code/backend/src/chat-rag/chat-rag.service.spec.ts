@@ -199,4 +199,137 @@ describe('ChatRagService — Guardrails, Subject & Grade Scope (BR-RAG-001 / BR-
     expect(msg).not.toBeNull();
     expect(msg).toContain('Toán');
   });
+
+  it('detects "em muốn học tiếng Việt" as Ngữ văn without breaking English translation queries', () => {
+    const detect = (
+      query: string,
+      lockedSubjectName?: string | null,
+    ): string[] =>
+      (
+        service as unknown as {
+          detectMentionedSubjects(q: string, locked?: string | null): string[];
+        }
+      ).detectMentionedSubjects(query, lockedSubjectName);
+
+    expect(detect('em muốn học tiếng Việt')).toContain('Ngữ văn');
+    expect(detect('em muốn học tiếng Việt', 'Toán')).toContain('Ngữ văn');
+    // Asking to translate into Vietnamese inside English must NOT be misclassified as Ngữ văn
+    expect(
+      detect('dịch câu này sang tiếng Việt giúp em', 'Tiếng Anh'),
+    ).not.toContain('Ngữ văn');
+    expect(
+      checkGuardrail(
+        'Tiếng Anh',
+        6,
+        'dịch câu I go to school sang tiếng Việt giúp em',
+      ),
+    ).toBeNull();
+  });
+
+  it('resolves "em muốn học tiếng Việt" to Ngữ văn for Grade 6 and Tiếng Việt for Grade 3', async () => {
+    const findFirstMock = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 'sub-nguvan-6', name: 'Ngữ văn' })
+      .mockResolvedValueOnce({ id: 'sub-tiengviet-3', name: 'Tiếng Việt' });
+    const updateMock = jest.fn().mockResolvedValue({});
+
+    const serviceWithMock = new ChatRagService(
+      {
+        subject: { findFirst: findFirstMock },
+        chatSession: { update: updateMock },
+      } as unknown as PrismaService,
+      {} as GamificationService,
+    );
+
+    const resolveSubject = (sessionId: string, grade: number, query: string) =>
+      (
+        serviceWithMock as unknown as {
+          resolveSessionSubject(
+            sid: string,
+            curSubId: string | null,
+            curSubName: string | null,
+            userGrade: number,
+            q: string,
+          ): Promise<{ subjectId: string | null; subjectName: string }>;
+        }
+      ).resolveSessionSubject(sessionId, null, null, grade, query);
+
+    const g6 = await resolveSubject('sess-1', 6, 'em muốn học tiếng Việt');
+    expect(g6).toEqual({ subjectId: 'sub-nguvan-6', subjectName: 'Ngữ văn' });
+
+    const g3 = await resolveSubject('sess-2', 3, 'em muốn học tiếng Việt');
+    expect(g3).toEqual({
+      subjectId: 'sub-tiengviet-3',
+      subjectName: 'Tiếng Việt',
+    });
+  });
+
+  it('does not falsely match Tin học via stopword "học" when no subject keyword is present', async () => {
+    const serviceWithMock = new ChatRagService(
+      {
+        enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+        classEnrollment: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ class: { schoolId: 'school-1', grade: 6 } }]),
+        },
+        course: {
+          findMany: jest
+            .fn()
+            .mockResolvedValueOnce([{ id: 'c-tin6' }, { id: 'c-van6' }])
+            .mockResolvedValueOnce([
+              {
+                id: 'c-tin6',
+                title: 'Tin học 6 - Kết nối tri thức',
+                description: 'Tin học cơ bản',
+                grade: 6,
+                subject: { id: 's-tin6', name: 'Tin học' },
+                lessons: [],
+                documents: [
+                  {
+                    id: 'd-tin6',
+                    fileName: 'SGK_Tin_Hoc_6_Ket_Noi_Tri_Thuc.pdf',
+                  },
+                ],
+              },
+              {
+                id: 'c-van6',
+                title: 'Ngữ văn 6 - Kết nối tri thức',
+                description: 'Ngữ văn cơ bản',
+                grade: 6,
+                subject: { id: 's-van6', name: 'Ngữ văn' },
+                lessons: [],
+                documents: [
+                  {
+                    id: 'd-van6',
+                    fileName: 'SGK_Ngu_Van_6_Ket_Noi_Tri_Thuc.pdf',
+                  },
+                ],
+              },
+            ]),
+        },
+      } as unknown as PrismaService,
+      {} as GamificationService,
+    );
+
+    const scoped = await (
+      serviceWithMock as unknown as {
+        retrieveScopedContext(
+          userId: string,
+          schoolId: string | null,
+          subjectId: string | null,
+          query: string,
+        ): Promise<{ contextDocs: string; citations: unknown[] }>;
+      }
+    ).retrieveScopedContext(
+      'user-1',
+      'school-1',
+      null,
+      'chào thầy em muốn học',
+    );
+
+    expect(scoped.citations).toEqual([]);
+    expect(scoped.contextDocs).toContain('Ngữ văn');
+    expect(scoped.contextDocs).toContain('Tin học');
+  });
 });
