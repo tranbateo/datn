@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
   Modal,
   Platform,
@@ -15,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import type { NotificationItem } from '@/services/mobile.services';
+import type { NotificationItem, QuizAttemptDetail } from '@/services/mobile.services';
 
 export const ADAPTIVE_CONTENT_STYLE: ViewStyle = {
   width: '100%',
@@ -132,20 +133,116 @@ export function UserAvatar({
   );
 }
 
+const SUPERSCRIPT_MAP: Record<string, string> = {
+  '0': '⁰',
+  '1': '¹',
+  '2': '²',
+  '3': '³',
+  '4': '⁴',
+  '5': '⁵',
+  '6': '⁶',
+  '7': '⁷',
+  '8': '⁸',
+  '9': '⁹',
+  '+': '⁺',
+  '-': '⁻',
+  n: 'ⁿ',
+};
+
+const SUBSCRIPT_MAP: Record<string, string> = {
+  '0': '₀',
+  '1': '₁',
+  '2': '₂',
+  '3': '₃',
+  '4': '₄',
+  '5': '₅',
+  '6': '₆',
+  '7': '₇',
+  '8': '₈',
+  '9': '₉',
+};
+
+function toSuperscript(str: string): string {
+  return str
+    .split('')
+    .map((ch) => SUPERSCRIPT_MAP[ch] ?? ch)
+    .join('');
+}
+
+function toSubscript(str: string): string {
+  return str
+    .split('')
+    .map((ch) => SUBSCRIPT_MAP[ch] ?? ch)
+    .join('');
+}
+
 export function formatReadableMath(raw: string): string {
-  return raw
+  if (!raw) return '';
+  let text = raw;
+
+  // Strip LaTeX math delimiters cleanly: $$...$$, $...$, \[...\], \(...\)
+  text = text
+    .replace(/\$\$([\s\S]*?)\$\$/g, '$1')
+    .replace(/\\\[([\s\S]*?)\\\]/g, '$1')
+    .replace(/\\\(([\s\S]*?)\\\)/g, '$1')
+    .replace(/\$([^$\n]+?)\$/g, '$1');
+
+  // Common LaTeX commands -> crisp Unicode math
+  text = text
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)')
+    .replace(/\\sqrt\{([^{}]+)\}/g, '√($1)')
+    .replace(/\\text\{([^{}]+)\}/g, '$1')
+    .replace(/\\mathrm\{([^{}]+)\}/g, '$1')
+    .replace(/\\mathbf\{([^{}]+)\}/g, '$1')
+    .replace(/\\left|\\right/g, '')
+    .replace(/\\times/g, '×')
+    .replace(/\\cdot/g, '·')
+    .replace(/\\div/g, '÷')
+    .replace(/\\pm/g, '±')
+    .replace(/\\neq|\\ne\b/g, '≠')
+    .replace(/\\leq|\\le\b/g, '≤')
+    .replace(/\\geq|\\ge\b/g, '≥')
+    .replace(/\\approx/g, '≈')
+    .replace(/\\infty/g, '∞')
+    .replace(/\\Delta/g, 'Δ')
+    .replace(/\\pi\b/g, 'π')
+    .replace(/\\alpha\b/g, 'α')
+    .replace(/\\beta\b/g, 'β')
+    .replace(/\\gamma\b/g, 'γ')
+    .replace(/\\angle/g, '∠')
+    .replace(/\\perp/g, '⊥')
+    .replace(/\\parallel/g, '∥')
+    .replace(/\\triangle/g, '△')
+    .replace(/\\in\b/g, '∈')
+    .replace(/\\notin\b/g, '∉')
+    .replace(/\\subset\b/g, '⊂')
+    .replace(/\\cup\b/g, '∪')
+    .replace(/\\cap\b/g, '∩')
+    .replace(/\\Leftrightarrow|\\iff/g, '⇔')
+    .replace(/\\Rightarrow|\\implies/g, '⇒')
+    .replace(/\\rightarrow|\\to\b/g, '→')
+    .replace(/\\deg|\\circ/g, '°');
+
+  // Exponents & subscripts: x^{2}, x^2, x_{1}, x_1
+  text = text
+    .replace(/\^\{([0-9+\-n]+)\}/g, (_, g: string) => toSuperscript(g))
+    .replace(/\^([0-9])\b/g, (_, g: string) => toSuperscript(g))
+    .replace(/_\{([0-9]+)\}/g, (_, g: string) => toSubscript(g))
+    .replace(/_([0-9])\b/g, (_, g: string) => toSubscript(g));
+
+  // Plain ASCII arrows & comparisons
+  return text
     .replace(/<=>/g, '⇔')
     .replace(/=>/g, '⇒')
     .replace(/->/g, '→')
     .replace(/>=/g, '≥')
     .replace(/<=/g, '≤')
-    .replace(/\^2\b/g, '²')
-    .replace(/\^3\b/g, '³');
+    .replace(/!=/g, '≠');
 }
 
-function renderInlineBold(text: string, color: string, boldColor: string) {
+function renderInlineStyled(text: string, color: string, boldColor: string) {
   const formatted = formatReadableMath(text);
-  const parts = formatted.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  const parts = formatted.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*\n]+\*)/g);
   return parts.map((part, idx) => {
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return (
@@ -159,11 +256,22 @@ function renderInlineBold(text: string, color: string, boldColor: string) {
         <Text
           key={idx}
           style={{
-            fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+            fontFamily: Platform.select({
+              ios: 'Menlo',
+              android: 'monospace',
+              default: 'monospace',
+            }),
             fontWeight: '700',
             color: boldColor,
           }}
         >
+          {part.slice(1, -1)}
+        </Text>
+      );
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return (
+        <Text key={idx} style={{ fontStyle: 'italic', color }}>
           {part.slice(1, -1)}
         </Text>
       );
@@ -176,8 +284,27 @@ function renderInlineBold(text: string, color: string, boldColor: string) {
   });
 }
 
+function isMarkdownTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.split('|').length >= 3;
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  const trimmed = line.trim();
+  return /^\|[\s:|-]+\|$/.test(trimmed) && trimmed.includes('-');
+}
+
+function parseTableCells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((c) => c.trim());
+}
+
 /**
- * Lightweight native Markdown & Math renderer for AI Tutor responses and lesson/PDF readers.
+ * Lightweight native Markdown, Table & Math renderer for AI Tutor responses and lesson/PDF readers.
  */
 export function RichText({
   content,
@@ -195,69 +322,335 @@ export function RichText({
   const strongColor = boldColor || textColor;
   const lines = (content || '').replace(/\r\n/g, '\n').split('\n');
 
-  return (
-    <View style={{ gap: 5 }}>
-      {lines.map((line, idx) => {
-        const trimmed = line.trim();
-        if (!trimmed) return <View key={idx} style={{ height: 4 }} />;
+  const elements: React.ReactNode[] = [];
+  let i = 0;
 
-        // Headings (### / ## / #)
-        const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
-        if (headingMatch) {
-          const level = headingMatch[1].length;
-          return (
-            <Text
-              key={idx}
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+
+    if (!trimmed) {
+      elements.push(<View key={`sp-${i}`} style={{ height: 4 }} />);
+      i++;
+      continue;
+    }
+
+    // Markdown Table block: header + separator + rows
+    if (
+      isMarkdownTableRow(trimmed) &&
+      i + 1 < lines.length &&
+      isMarkdownTableSeparator(lines[i + 1])
+    ) {
+      const headers = parseTableCells(trimmed);
+      const rows: string[][] = [];
+      let j = i + 2;
+      while (j < lines.length && isMarkdownTableRow(lines[j])) {
+        rows.push(parseTableCells(lines[j]));
+        j++;
+      }
+
+      elements.push(
+        <ScrollView
+          key={`tbl-${i}`}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginVertical: 4 }}
+        >
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: p.border,
+              borderRadius: 12,
+              overflow: 'hidden',
+              backgroundColor: p.bg,
+            }}
+          >
+            {/* Table Header */}
+            <View
               style={{
-                color: strongColor,
-                fontWeight: '800',
-                fontSize: level === 1 ? fontSize + 3 : level === 2 ? fontSize + 2 : fontSize + 1,
-                lineHeight: fontSize + 9,
-                marginTop: idx > 0 ? 4 : 0,
+                flexDirection: 'row',
+                backgroundColor: p.primarySoft,
+                borderBottomWidth: 1,
+                borderBottomColor: p.border,
               }}
             >
-              {renderInlineBold(headingMatch[2], strongColor, strongColor)}
-            </Text>
-          );
-        }
-
-        // Bullet items (- / * / •)
-        const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
-        if (bulletMatch) {
-          return (
-            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 7, paddingLeft: 4 }}>
-              <Text style={{ color: strongColor, fontWeight: '800', fontSize, lineHeight: fontSize + 7 }}>
-                •
-              </Text>
-              <Text style={{ flex: 1, fontSize, lineHeight: fontSize + 7, color: textColor }}>
-                {renderInlineBold(bulletMatch[1], textColor, strongColor)}
-              </Text>
+              {headers.map((h, hIdx) => (
+                <View
+                  key={`th-${hIdx}`}
+                  style={{
+                    minWidth: 112,
+                    maxWidth: 200,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    borderRightWidth: hIdx < headers.length - 1 ? 1 : 0,
+                    borderRightColor: p.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: Math.max(12, fontSize - 1),
+                      fontWeight: '800',
+                      color: p.primary,
+                      lineHeight: fontSize + 5,
+                    }}
+                  >
+                    {renderInlineStyled(h, p.primary, p.primary)}
+                  </Text>
+                </View>
+              ))}
             </View>
-          );
-        }
+            {/* Table Rows */}
+            {rows.map((row, rIdx) => (
+              <View
+                key={`tr-${rIdx}`}
+                style={{
+                  flexDirection: 'row',
+                  backgroundColor: rIdx % 2 === 1 ? p.cardMuted : p.card,
+                  borderBottomWidth: rIdx < rows.length - 1 ? 1 : 0,
+                  borderBottomColor: p.border,
+                }}
+              >
+                {headers.map((_, cIdx) => (
+                  <View
+                    key={`td-${rIdx}-${cIdx}`}
+                    style={{
+                      minWidth: 112,
+                      maxWidth: 200,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      borderRightWidth: cIdx < headers.length - 1 ? 1 : 0,
+                      borderRightColor: p.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: Math.max(12, fontSize - 1),
+                        color: textColor,
+                        lineHeight: fontSize + 5,
+                      }}
+                    >
+                      {renderInlineStyled(row[cIdx] || '', textColor, strongColor)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        </ScrollView>,
+      );
 
-        // Numbered list items (1. ...)
-        const numMatch = trimmed.match(/^(\d+[.)])\s+(.+)$/);
-        if (numMatch) {
-          return (
-            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, paddingLeft: 2 }}>
-              <Text style={{ color: strongColor, fontWeight: '800', fontSize, lineHeight: fontSize + 7 }}>
-                {numMatch[1]}
-              </Text>
-              <Text style={{ flex: 1, fontSize, lineHeight: fontSize + 7, color: textColor }}>
-                {renderInlineBold(numMatch[2], textColor, strongColor)}
-              </Text>
-            </View>
-          );
-        }
+      i = j;
+      continue;
+    }
 
-        return (
-          <Text key={idx} style={{ fontSize, lineHeight: fontSize + 7, color: textColor }}>
-            {renderInlineBold(trimmed, textColor, strongColor)}
+    // Horizontal Rule (--- or ***)
+    if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
+      elements.push(
+        <View
+          key={`hr-${i}`}
+          style={{
+            height: 1,
+            backgroundColor: p.border,
+            marginVertical: 6,
+          }}
+        />,
+      );
+      i++;
+      continue;
+    }
+
+    // Blockquote (> ...)
+    const quoteMatch = trimmed.match(/^>\s*(.+)$/);
+    if (quoteMatch) {
+      elements.push(
+        <View
+          key={`bq-${i}`}
+          style={{
+            borderLeftWidth: 3,
+            borderLeftColor: p.primary,
+            backgroundColor: p.primarySoft,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderRadius: 8,
+            marginVertical: 2,
+          }}
+        >
+          <Text style={{ fontSize, lineHeight: fontSize + 7, color: textColor }}>
+            {renderInlineStyled(quoteMatch[1], textColor, strongColor)}
           </Text>
-        );
-      })}
-    </View>
+        </View>,
+      );
+      i++;
+      continue;
+    }
+
+    // Headings (### / ## / #)
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      elements.push(
+        <Text
+          key={`h-${i}`}
+          style={{
+            color: strongColor,
+            fontWeight: '800',
+            fontSize:
+              level === 1 ? fontSize + 3 : level === 2 ? fontSize + 2 : fontSize + 1,
+            lineHeight: fontSize + 9,
+            marginTop: i > 0 ? 4 : 0,
+          }}
+        >
+          {renderInlineStyled(headingMatch[2], strongColor, strongColor)}
+        </Text>,
+      );
+      i++;
+      continue;
+    }
+
+    // Bullet items (- / * / + / •)
+    const bulletMatch = trimmed.match(/^[-*+•]\s+(.+)$/);
+    if (bulletMatch) {
+      elements.push(
+        <View
+          key={`ul-${i}`}
+          style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 7, paddingLeft: 4 }}
+        >
+          <Text
+            style={{
+              color: strongColor,
+              fontWeight: '800',
+              fontSize,
+              lineHeight: fontSize + 7,
+            }}
+          >
+            •
+          </Text>
+          <Text style={{ flex: 1, fontSize, lineHeight: fontSize + 7, color: textColor }}>
+            {renderInlineStyled(bulletMatch[1], textColor, strongColor)}
+          </Text>
+        </View>,
+      );
+      i++;
+      continue;
+    }
+
+    // Numbered list items (1. ...)
+    const numMatch = trimmed.match(/^(\d+[.)])\s+(.+)$/);
+    if (numMatch) {
+      elements.push(
+        <View
+          key={`ol-${i}`}
+          style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, paddingLeft: 2 }}
+        >
+          <Text
+            style={{
+              color: strongColor,
+              fontWeight: '800',
+              fontSize,
+              lineHeight: fontSize + 7,
+            }}
+          >
+            {numMatch[1]}
+          </Text>
+          <Text style={{ flex: 1, fontSize, lineHeight: fontSize + 7, color: textColor }}>
+            {renderInlineStyled(numMatch[2], textColor, strongColor)}
+          </Text>
+        </View>,
+      );
+      i++;
+      continue;
+    }
+
+    elements.push(
+      <Text key={`p-${i}`} style={{ fontSize, lineHeight: fontSize + 7, color: textColor }}>
+        {renderInlineStyled(trimmed, textColor, strongColor)}
+      </Text>,
+    );
+    i++;
+  }
+
+  return <View style={{ gap: 5 }}>{elements}</View>;
+}
+
+export function SkeletonBox({
+  height = 18,
+  width = '100%',
+  borderRadius = 12,
+  style,
+}: {
+  height?: number;
+  width?: number | `${number}%`;
+  borderRadius?: number;
+  style?: ViewStyle;
+}) {
+  const p = usePalette();
+  const [pulse] = useState(() => new Animated.Value(0.45));
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.9,
+          duration: 750,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 750,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <Animated.View
+      style={[
+        {
+          height,
+          width,
+          borderRadius,
+          backgroundColor: p.cardMuted,
+          opacity: pulse,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+export function SkeletonDashboard({ label }: { label?: string }) {
+  const p = usePalette();
+  return (
+    <SafeAreaView style={[styles.safeFill, { backgroundColor: p.bg }]} edges={['top']}>
+      <ScrollView contentContainerStyle={[{ padding: 16, gap: 16 }, ADAPTIVE_CONTENT_STYLE]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <SkeletonBox width={44} height={44} borderRadius={22} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <SkeletonBox width="45%" height={12} borderRadius={6} />
+            <SkeletonBox width="70%" height={20} borderRadius={8} />
+          </View>
+          <SkeletonBox width={44} height={44} borderRadius={22} />
+        </View>
+        <SkeletonBox height={138} borderRadius={22} />
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <SkeletonBox height={96} borderRadius={18} style={{ flex: 1 }} />
+          <SkeletonBox height={96} borderRadius={18} style={{ flex: 1 }} />
+        </View>
+        <SkeletonBox width="42%" height={16} borderRadius={8} />
+        <View style={{ gap: 10 }}>
+          <SkeletonBox height={78} borderRadius={16} />
+          <SkeletonBox height={78} borderRadius={16} />
+          <SkeletonBox height={78} borderRadius={16} />
+        </View>
+        {label ? (
+          <Text style={{ textAlign: 'center', fontSize: 12, color: p.textMuted }}>
+            {label}
+          </Text>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -491,7 +884,179 @@ export function NotificationSheet({
   );
 }
 
+/**
+ * Shared read-only Attempt Detail Viewer Modal for Parents & Teachers
+ * (backed by GET /quiz/attempts/:attemptId with RBAC ownership check).
+ */
+export function QuizAttemptViewerModal({
+  visible,
+  loading,
+  detail,
+  error,
+  onClose,
+}: {
+  visible: boolean;
+  loading: boolean;
+  detail: QuizAttemptDetail | null;
+  error?: string | null;
+  onClose: () => void;
+}) {
+  const p = usePalette();
+  const [onlyWrong, setOnlyWrong] = useState(false);
+
+  const items = detail?.questionResults || [];
+  const wrongCount = items.filter((q) => !q.isCorrect).length;
+  const visibleItems = onlyWrong ? items.filter((q) => !q.isCorrect) : items;
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={[styles.safeFill, { backgroundColor: p.bg }]}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            backgroundColor: p.card,
+            borderBottomWidth: 1,
+            borderBottomColor: p.border,
+          }}
+        >
+          <TouchableOpacity onPress={onClose} hitSlop={10}>
+            <Ionicons name="close" size={24} color={p.text} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: p.text }} numberOfLines={1}>
+              {detail?.quizTitle || 'Chi tiết bài làm'}
+            </Text>
+            {detail ? (
+              <Text style={{ fontSize: 12, color: p.textMuted }}>
+                {detail.subjectName} • Đúng {detail.score}/{detail.totalQuestions} câu ({detail.normalizedScore}/100)
+              </Text>
+            ) : null}
+          </View>
+          {detail ? (
+            <Badge
+              label={`${detail.normalizedScore}/100`}
+              tone={detail.normalizedScore >= 50 ? 'emerald' : 'rose'}
+            />
+          ) : null}
+        </View>
+
+        {loading ? (
+          <LoadingView label="Đang tải chi tiết bài làm..." />
+        ) : error ? (
+          <ErrorView message={error} onRetry={onClose} />
+        ) : !detail ? (
+          <View style={styles.centerWrap}>
+            <EmptyView icon="document-text-outline" title="Không có dữ liệu bài làm" />
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={[{ padding: 16, gap: 12, paddingBottom: 36 }, ADAPTIVE_CONTENT_STYLE]}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => setOnlyWrong(false)}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  borderRadius: 999,
+                  backgroundColor: !onlyWrong ? p.primary : p.cardMuted,
+                }}
+              >
+                <Text
+                  style={{
+                    color: !onlyWrong ? '#FFFFFF' : p.text,
+                    fontSize: 12,
+                    fontWeight: '700',
+                  }}
+                >
+                  Tất cả ({items.length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setOnlyWrong(true)}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  borderRadius: 999,
+                  backgroundColor: onlyWrong ? p.rose : p.cardMuted,
+                }}
+              >
+                <Text
+                  style={{
+                    color: onlyWrong ? '#FFFFFF' : p.text,
+                    fontSize: 12,
+                    fontWeight: '700',
+                  }}
+                >
+                  Chỉ câu sai ({wrongCount})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {visibleItems.length === 0 ? (
+              <EmptyView
+                icon="checkmark-circle-outline"
+                title="Không có câu làm sai!"
+                description="Học sinh đã trả lời chính xác toàn bộ các câu hỏi trong đề này."
+              />
+            ) : (
+              visibleItems.map((qr, idx) => (
+                <Card key={`${qr.questionId}-${idx}`} style={{ gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Badge label={`Câu ${qr.questionNumber || idx + 1}`} tone="indigo" />
+                    <Badge
+                      label={qr.isCorrect ? 'Đúng' : 'Sai'}
+                      tone={qr.isCorrect ? 'emerald' : 'rose'}
+                    />
+                  </View>
+                  {qr.questionContent ? (
+                    <RichText content={qr.questionContent} color={p.text} boldColor={p.text} fontSize={14} />
+                  ) : null}
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '700',
+                      color: qr.isCorrect ? p.emerald : p.rose,
+                    }}
+                  >
+                    Bài làm: {qr.selectedOption || '(Bỏ trống)'}
+                  </Text>
+                  {!qr.isCorrect ? (
+                    <View style={{ backgroundColor: p.cardMuted, padding: 10, borderRadius: 10, gap: 4 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: p.emerald }}>
+                        Đáp án đúng: {qr.correctOption}
+                      </Text>
+                      {qr.errorAnalysis ? (
+                        <Text style={{ fontSize: 12, color: p.rose, lineHeight: 18 }}>
+                          Phân tích lỗi: {qr.errorAnalysis}
+                        </Text>
+                      ) : null}
+                      {qr.correction || qr.explanation ? (
+                        <RichText
+                          content={`**Giải thích:** ${qr.correction || qr.explanation}`}
+                          color={p.text}
+                          boldColor={p.text}
+                          fontSize={12}
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
+                </Card>
+              ))
+            )}
+          </ScrollView>
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
+  safeFill: {
+    flex: 1,
+  },
   card: {
     borderRadius: 18,
     borderWidth: 1,

@@ -39,6 +39,7 @@ export default function StudentProfileScreen() {
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
@@ -46,6 +47,7 @@ export default function StudentProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!user);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [feedbackText, setFeedbackText] = useState('');
   const [sendingFeedback, setSendingFeedback] = useState(false);
@@ -56,7 +58,12 @@ export default function StudentProfileScreen() {
       setProfile(data);
       setFullName(data.fullName || '');
       setPhone(data.phone || '');
+      setLoadError(null);
       void updateUser(data);
+    } catch (err: unknown) {
+      setLoadError(
+        err instanceof Error ? err.message : 'Không thể đồng bộ hồ sơ cá nhân.',
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -94,8 +101,13 @@ export default function StudentProfileScreen() {
       Alert.alert('Lỗi', 'Họ tên không được để trống.');
       return;
     }
-    if (newPassword.trim() && newPassword.trim().length < 6) {
+    const changedPassword = Boolean(newPassword.trim());
+    if (changedPassword && newPassword.trim().length < 6) {
       Alert.alert('Lỗi', 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+    if (changedPassword && newPassword.trim() !== confirmPassword.trim()) {
+      Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp.');
       return;
     }
 
@@ -104,12 +116,22 @@ export default function StudentProfileScreen() {
       const updated = await usersApi.updateProfile({
         fullName: fullName.trim(),
         phone: phone.trim() || undefined,
-        ...(newPassword.trim() ? { password: newPassword.trim() } : {}),
+        ...(changedPassword ? { password: newPassword.trim() } : {}),
       });
       setProfile((prev) => (prev ? { ...prev, ...updated } : updated));
       void updateUser(updated);
       setNewPassword('');
-      Alert.alert('Thành công', 'Đã cập nhật hồ sơ cá nhân.');
+      setConfirmPassword('');
+      if (changedPassword) {
+        // BR-AUTH-001: Backend revokes active sessions on password change
+        Alert.alert(
+          'Đã đổi mật khẩu thành công',
+          'Vì lý do bảo mật (BR-AUTH-001), phiên cũ đã được thu hồi. Vui lòng đăng nhập lại bằng mật khẩu mới.',
+          [{ text: 'Đăng nhập lại', onPress: () => void logout() }],
+        );
+      } else {
+        Alert.alert('Thành công', 'Đã cập nhật hồ sơ cá nhân.');
+      }
     } catch (err: unknown) {
       Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể lưu hồ sơ.');
     } finally {
@@ -201,6 +223,26 @@ export default function StudentProfileScreen() {
           />
         }
       >
+        {loadError ? (
+          <Card
+            style={{
+              backgroundColor: p.roseSoft,
+              borderColor: p.rose,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <Ionicons name="alert-circle" size={18} color={p.rose} />
+            <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: p.rose }}>
+              {loadError}
+            </Text>
+            <TouchableOpacity onPress={() => void loadProfile()}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: p.rose }}>Thử lại</Text>
+            </TouchableOpacity>
+          </Card>
+        ) : null}
+
         {/* Identity Card */}
         <Card style={styles.identityCard}>
           <TouchableOpacity
@@ -380,6 +422,19 @@ export default function StudentProfileScreen() {
               placeholderTextColor={p.textMuted}
             />
           </View>
+          {newPassword.trim() ? (
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: p.textMuted }]}>Xác nhận mật khẩu mới</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                placeholder="Nhập lại mật khẩu mới"
+                placeholderTextColor={p.textMuted}
+              />
+            </View>
+          ) : null}
           <PrimaryButton
             title="Lưu thay đổi"
             icon="save-outline"

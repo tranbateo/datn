@@ -26,8 +26,10 @@ export default function TeacherSettingsScreen() {
   const { user, updateUser, logout } = useAuthStore();
 
   const [fullName, setFullName] = useState(user?.fullName || '');
+  const [phone, setPhone] = useState(user?.phone || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -39,6 +41,7 @@ export default function TeacherSettingsScreen() {
       .getProfile()
       .then((data) => {
         setFullName(data.fullName || '');
+        setPhone(data.phone || '');
         setAvatarUrl(data.avatarUrl || '');
         void updateUser(data);
       })
@@ -82,8 +85,13 @@ export default function TeacherSettingsScreen() {
       Alert.alert('Lỗi', 'Họ và tên không được để trống.');
       return;
     }
-    if (newPassword.trim() && newPassword.trim().length < 6) {
+    const pwd = newPassword.trim();
+    if (pwd && pwd.length < 6) {
       Alert.alert('Lỗi', 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+    if (pwd && pwd !== confirmPassword.trim()) {
+      Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp.');
       return;
     }
 
@@ -91,11 +99,23 @@ export default function TeacherSettingsScreen() {
     try {
       const updated = await usersApi.updateProfile({
         fullName: fullName.trim(),
-        ...(newPassword.trim() ? { password: newPassword.trim() } : {}),
+        phone: phone.trim() || undefined,
+        ...(pwd ? { password: pwd } : {}),
       });
       void updateUser(updated);
       setNewPassword('');
-      Alert.alert('Thành công', 'Đã cập nhật hồ sơ Giáo viên.');
+      setConfirmPassword('');
+      if (pwd) {
+        // BR-AUTH-001: Backend revokes refreshTokenHash on password change
+        Alert.alert(
+          'Đổi mật khẩu thành công',
+          'Vì lý do bảo mật (BR-AUTH-001), phiên đăng nhập hiện tại đã được thu hồi. Vui lòng đăng nhập lại bằng mật khẩu mới.',
+          [{ text: 'Đăng nhập lại', onPress: () => void logout() }],
+          { cancelable: false },
+        );
+      } else {
+        Alert.alert('Thành công', 'Đã cập nhật hồ sơ Giáo viên.');
+      }
     } catch (err: unknown) {
       Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể lưu thay đổi.');
     } finally {
@@ -175,6 +195,17 @@ export default function TeacherSettingsScreen() {
             />
           </View>
           <View style={styles.field}>
+            <Text style={[styles.label, { color: p.textMuted }]}>Số điện thoại liên hệ</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              placeholder="VD: 0912345678"
+              placeholderTextColor={p.textMuted}
+            />
+          </View>
+          <View style={styles.field}>
             <Text style={[styles.label, { color: p.textMuted }]}>
               Mật khẩu mới (để trống nếu không đổi)
             </Text>
@@ -187,6 +218,21 @@ export default function TeacherSettingsScreen() {
               placeholderTextColor={p.textMuted}
             />
           </View>
+          {newPassword.trim().length > 0 ? (
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: p.textMuted }]}>
+                Xác nhận mật khẩu mới
+              </Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                placeholder="Nhập lại mật khẩu mới"
+                placeholderTextColor={p.textMuted}
+              />
+            </View>
+          ) : null}
           <PrimaryButton
             title="Lưu thay đổi"
             icon="save-outline"

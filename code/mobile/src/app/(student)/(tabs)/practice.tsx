@@ -22,31 +22,48 @@ import {
   type Subject,
 } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
+import { getCached, isCacheFresh, setCached } from '@/lib/ttl-cache';
 import {
   Badge,
   Card,
   EmptyView,
   ErrorView,
-  LoadingView,
   PrimaryButton,
+  SkeletonDashboard,
   usePalette,
 } from '@/components/ui/mobile-ui';
 
 const QUESTION_COUNTS = [30, 35, 40, 45, 50];
 
+interface PracticeSubjectSnapshot {
+  quizzes: Quiz[];
+  history: QuizAttemptHistoryItem[];
+}
+
 export default function StudentPracticeScreen() {
   const p = usePalette();
   const router = useRouter();
   const params = useLocalSearchParams<{ subjectId?: string }>();
-  const { user } = useAuthStore();
+  const { user, updateUser } = useAuthStore();
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [pickedSubjectId, setPickedSubjectId] = useState<string | null>(null);
+  const paramSubjectId = params.subjectId || '';
+  const [pickedSubject, setPickedSubject] = useState<{
+    param: string;
+    id: string;
+  } | null>(null);
+
+  const pickedSubjectId =
+    pickedSubject && pickedSubject.param === paramSubjectId
+      ? pickedSubject.id
+      : paramSubjectId || null;
+
   const selectedSubject =
-    pickedSubjectId ??
-    (params.subjectId && subjects.some((s) => s.id === params.subjectId)
-      ? params.subjectId
-      : subjects[0]?.id ?? null);
+    pickedSubjectId && subjects.some((s) => s.id === pickedSubjectId)
+      ? pickedSubjectId
+      : params.subjectId && subjects.some((s) => s.id === params.subjectId)
+        ? params.subjectId
+        : subjects[0]?.id ?? null;
   const [activeTab, setActiveTab] = useState<'exams' | 'history'>('exams');
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [history, setHistory] = useState<QuizAttemptHistoryItem[]>([]);
@@ -63,6 +80,9 @@ export default function StudentPracticeScreen() {
   const loadSubjects = useCallback(async () => {
     try {
       const profile = user?.grade ? user : await usersApi.getProfile();
+      if (profile && !user?.grade) {
+        void updateUser(profile);
+      }
       const subs = profile?.grade
         ? await curriculumApi.getSubjectsByGrade(profile.grade)
         : [];
@@ -73,7 +93,7 @@ export default function StudentPracticeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, updateUser]);
 
   useEffect(() => {
     const run = async () => {
@@ -82,14 +102,28 @@ export default function StudentPracticeScreen() {
     void run();
   }, [loadSubjects]);
 
-  const loadSubjectData = useCallback(async (subId: string) => {
+  const loadSubjectData = useCallback(async (subId: string, force = false) => {
+    const cacheKey = `student:practice:${subId}`;
+    if (!force && isCacheFresh(cacheKey)) {
+      const snap = getCached<PracticeSubjectSnapshot>(cacheKey);
+      if (snap) {
+        setQuizzes(snap.quizzes);
+        setHistory(snap.history);
+        setLoadingList(false);
+        setRefreshing(false);
+        return;
+      }
+    }
     try {
       const [qRes, hRes] = await Promise.all([
         quizApi.getBySubject(subId).catch(() => []),
         quizApi.getHistory(subId).catch(() => []),
       ]);
-      setQuizzes(Array.isArray(qRes) ? qRes : []);
-      setHistory(Array.isArray(hRes) ? hRes : []);
+      const safeQ = Array.isArray(qRes) ? qRes : [];
+      const safeH = Array.isArray(hRes) ? hRes : [];
+      setQuizzes(safeQ);
+      setHistory(safeH);
+      setCached<PracticeSubjectSnapshot>(cacheKey, { quizzes: safeQ, history: safeH });
     } finally {
       setLoadingList(false);
       setRefreshing(false);
@@ -99,10 +133,7 @@ export default function StudentPracticeScreen() {
   useFocusEffect(
     useCallback(() => {
       if (!selectedSubject) return;
-      const run = async () => {
-        await loadSubjectData(selectedSubject);
-      };
-      void run();
+      void loadSubjectData(selectedSubject, false);
     }, [selectedSubject, loadSubjectData]),
   );
 
@@ -129,7 +160,7 @@ export default function StudentPracticeScreen() {
     }
   };
 
-  if (loading) return <LoadingView label="Đang tải kho đề kiểm tra..." />;
+  if (loading) return <SkeletonDashboard label="Đang tải kho đề kiểm tra..." />;
   if (error) {
     return (
       <ErrorView
@@ -154,7 +185,7 @@ export default function StudentPracticeScreen() {
             onRefresh={() => {
               if (!selectedSubject) return;
               setRefreshing(true);
-              void loadSubjectData(selectedSubject);
+              void loadSubjectData(selectedSubject, true);
             }}
             tintColor={p.primary}
           />
@@ -208,7 +239,7 @@ export default function StudentPracticeScreen() {
                 key={sub.id}
                 onPress={() => {
                   setLoadingList(true);
-                  setPickedSubjectId(sub.id);
+                  setPickedSubject({ param: paramSubjectId, id: sub.id });
                 }}
                 style={[
                   styles.pill,

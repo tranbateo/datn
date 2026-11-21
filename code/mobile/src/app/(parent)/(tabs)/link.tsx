@@ -17,6 +17,7 @@ import {
   parentApi,
   type ParentDashboardData,
 } from '@/services/mobile.services';
+import { invalidateCache } from '@/lib/ttl-cache';
 import {
   ADAPTIVE_CONTENT_STYLE,
   Badge,
@@ -33,11 +34,17 @@ export default function ParentLinkStudentScreen() {
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [linked, setLinked] = useState<ParentDashboardData['students']>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadLinked = useCallback(async () => {
     try {
       const dash = await parentApi.getDashboard();
       setLinked(Array.isArray(dash?.students) ? dash.students : []);
+      setLoadError(null);
+    } catch (err: unknown) {
+      setLoadError(
+        err instanceof Error ? err.message : 'Không thể tải danh sách tài khoản con.',
+      );
     } finally {
       setRefreshing(false);
     }
@@ -63,6 +70,7 @@ export default function ParentLinkStudentScreen() {
     try {
       const res = await parentApi.linkStudent(clean);
       setCode('');
+      invalidateCache('parent:');
       Alert.alert(
         'Liên kết thành công!',
         `Đã kết nối với học sinh ${res.student?.fullName || ''}.`,
@@ -92,6 +100,7 @@ export default function ParentLinkStudentScreen() {
             try {
               await parentApi.unlinkStudent(studentId);
               setLinked((prev) => prev.filter((item) => item.student.id !== studentId));
+              invalidateCache('parent:');
               Alert.alert('Đã hủy liên kết', `Đã gỡ liên kết với ${fullName}.`);
             } catch (err: unknown) {
               Alert.alert(
@@ -158,6 +167,26 @@ export default function ParentLinkStudentScreen() {
         <Text style={[styles.secTitle, { color: p.text }]}>
           Các con đã liên kết ({linked.length})
         </Text>
+
+        {loadError ? (
+          <Card
+            style={{
+              backgroundColor: p.roseSoft,
+              borderColor: p.rose,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <Ionicons name="alert-circle" size={18} color={p.rose} />
+            <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: p.rose }}>
+              {loadError}
+            </Text>
+            <TouchableOpacity onPress={() => void loadLinked()}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: p.rose }}>Thử lại</Text>
+            </TouchableOpacity>
+          </Card>
+        ) : null}
 
         {linked.length === 0 ? (
           <EmptyView

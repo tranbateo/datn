@@ -28,6 +28,7 @@ import {
   type RagCitation,
   type Subject,
 } from '@/services/mobile.services';
+import { ApiError } from '@/lib/api-client';
 import { useAuthStore } from '@/store/authStore';
 import {
   Card,
@@ -44,7 +45,7 @@ export default function StudentAiTutorScreen() {
     subjectName?: string;
     prefill?: string;
   }>();
-  const { user } = useAuthStore();
+  const { user, updateUser } = useAuthStore();
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(
@@ -84,7 +85,10 @@ export default function StudentAiTutorScreen() {
   const loadInitial = useCallback(async () => {
     setLoadingInit(true);
     try {
-      const profile = user?.grade ? user : await usersApi.getProfile();
+      const profile = user?.grade ? user : await usersApi.getProfile().catch(() => null);
+      if (profile && !user?.grade) {
+        void updateUser(profile);
+      }
       const [subs, sessList] = await Promise.all([
         profile?.grade
           ? curriculumApi.getSubjectsByGrade(profile.grade).catch(() => [])
@@ -93,14 +97,12 @@ export default function StudentAiTutorScreen() {
       ]);
       setSubjects(Array.isArray(subs) ? subs : []);
       setSessions(Array.isArray(sessList) ? sessList : []);
-
-      if (!params.subjectId && subs.length > 0) {
-        setSelectedSubjectId((prev) => prev || subs[0].id);
-      }
+    } catch {
+      // Keep UI interactive even on transient network errors
     } finally {
       setLoadingInit(false);
     }
-  }, [user, params.subjectId]);
+  }, [user, updateUser]);
 
   useEffect(() => {
     void loadInitial();
@@ -111,8 +113,9 @@ export default function StudentAiTutorScreen() {
     try {
       const detail = await chatApi.getSessionHistory(sessionId);
       setActiveSessionId(detail.id);
-      if (detail.subjectId) setSelectedSubjectId(detail.subjectId);
+      setSelectedSubjectId(detail.subjectId || null);
       setMessages(Array.isArray(detail.messages) ? detail.messages : []);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 120);
     } catch (err: unknown) {
       Alert.alert(
         'Lỗi',
@@ -188,13 +191,70 @@ export default function StudentAiTutorScreen() {
         ]);
       }
 
-      const reply = await chatApi.sendMessage(sid, promptText, imageToSend);
-      setMessages((prev) => [
-        ...prev.filter((m) => m.id !== tempUserMsg.id),
-        { ...reply.userMsg, imageUrl: imageToSend?.uri || reply.userMsg.imageUrl },
-        { ...reply.aiMsg, citations: reply.citations || reply.aiMsg.citations },
-      ]);
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
+      const tempAiId = `stream-${Date.now()}`;
+      let receivedStreamChunk = false;
+
+      try {
+        const streamed = await chatApi.sendMessageStream(
+          sid,
+          promptText,
+          imageToSend,
+          (delta) => {
+            receivedStreamChunk = true;
+            setMessages((prev) => {
+              const exists = prev.some((m) => m.id === tempAiId);
+              if (!exists) {
+                return [
+                  ...prev,
+                  {
+                    id: tempAiId,
+                    role: 'assistant',
+                    content: delta,
+                    createdAt: new Date().toISOString(),
+                  },
+                ];
+              }
+              return prev.map((m) =>
+                m.id === tempAiId ? { ...m, content: `${m.content}${delta}` } : m,
+              );
+            });
+            listRef.current?.scrollToEnd({ animated: false });
+          },
+        );
+
+        const finalText =
+          streamed.content.trim() ||
+          'Thầy/Cô AI đã nhận câu hỏi nhưng chưa có nội dung trả lời. Em thử hỏi cụ thể hơn nhé!';
+
+        setMessages((prev) => {
+          const finalAiMsg: ChatMessageItem = {
+            id: streamed.messageId || tempAiId,
+            role: 'assistant',
+            content: finalText,
+            citations: streamed.citations,
+            createdAt: new Date().toISOString(),
+          };
+          const exists = prev.some((m) => m.id === tempAiId);
+          return exists
+            ? prev.map((m) => (m.id === tempAiId ? finalAiMsg : m))
+            : [...prev, finalAiMsg];
+        });
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      } catch (streamErr) {
+        // Never double-call on client/quota/auth errors (400, 401, 403, 429)
+        const status = streamErr instanceof ApiError ? streamErr.status : 0;
+        const isClientBusinessError = status >= 400 && status < 500 && status !== 404 && status !== 408;
+        if (receivedStreamChunk || isClientBusinessError) {
+          throw streamErr;
+        }
+        const reply = await chatApi.sendMessage(sid, promptText, imageToSend);
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== tempUserMsg.id && m.id !== tempAiId),
+          { ...reply.userMsg, imageUrl: imageToSend?.uri || reply.userMsg.imageUrl },
+          { ...reply.aiMsg, citations: reply.citations || reply.aiMsg.citations },
+        ]);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
+      }
     } catch (err: unknown) {
       setMessages((prev) => [
         ...prev,
@@ -247,7 +307,9 @@ export default function StudentAiTutorScreen() {
             Gia sư AI (RAG)
           </Text>
           <Text style={{ fontSize: 12, color: p.textMuted }} numberOfLines={1}>
-            {currentSubject ? `Môn ${currentSubject.name} • Khối ${currentSubject.grade}` : 'Trích dẫn tài liệu lớp học'}
+            {currentSubject
+              ? `Môn ${currentSubject.name} • Khối ${currentSubject.grade}`
+              : `Tổng hợp Khối ${user?.grade || ''} • Tự nhận diện môn`}
           </Text>
         </View>
         <TouchableOpacity
@@ -262,6 +324,30 @@ export default function StudentAiTutorScreen() {
       {subjects.length > 0 ? (
         <View style={[styles.subjectStrip, { borderBottomColor: p.border }]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 14 }}>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedSubjectId(null);
+                setActiveSessionId(null);
+                setMessages([]);
+              }}
+              style={[
+                styles.pill,
+                {
+                  backgroundColor: selectedSubjectId === null ? p.primary : p.card,
+                  borderColor: selectedSubjectId === null ? p.primary : p.border,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: selectedSubjectId === null ? '#FFFFFF' : p.text,
+                  fontSize: 12,
+                  fontWeight: '700',
+                }}
+              >
+                Tổng hợp
+              </Text>
+            </TouchableOpacity>
             {subjects.map((sub) => {
               const active = sub.id === selectedSubjectId;
               return (
@@ -356,6 +442,35 @@ export default function StudentAiTutorScreen() {
                         style={styles.msgImage}
                         resizeMode="cover"
                       />
+                    ) : item.imageUrl === 'uploaded' ? (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 5,
+                          backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : p.cardMuted,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          borderRadius: 8,
+                          alignSelf: 'flex-start',
+                          marginBottom: 6,
+                        }}
+                      >
+                        <Ionicons
+                          name="image-outline"
+                          size={13}
+                          color={isUser ? '#FFFFFF' : p.textMuted}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: '700',
+                            color: isUser ? '#FFFFFF' : p.textMuted,
+                          }}
+                        >
+                          Ảnh bài tập đã đính kèm
+                        </Text>
+                      </View>
                     ) : null}
                     {isUser ? (
                       <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 21 }}>

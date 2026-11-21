@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -36,8 +37,20 @@ export default function StudentCourseDetailScreen() {
   const [docs, setDocs] = useState<CourseDocument[]>([]);
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
   const [readingDoc, setReadingDoc] = useState<CourseDocument | null>(null);
+  const [docSearch, setDocSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const filteredChunks = useMemo(() => {
+    const chunks = readingDoc?.chunks || [];
+    const q = docSearch.trim().toLowerCase();
+    if (!q) return chunks;
+    return chunks.filter(
+      (c) =>
+        (c.content || '').toLowerCase().includes(q) ||
+        `trang ${c.page}`.includes(q),
+    );
+  }, [readingDoc, docSearch]);
 
   const loadDetail = useCallback(async () => {
     if (!id) return;
@@ -244,11 +257,20 @@ export default function StudentCourseDetailScreen() {
       <Modal
         visible={Boolean(readingDoc)}
         animationType="slide"
-        onRequestClose={() => setReadingDoc(null)}
+        onRequestClose={() => {
+          setReadingDoc(null);
+          setDocSearch('');
+        }}
       >
         <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]}>
           <View style={[styles.header, { backgroundColor: p.card, borderBottomColor: p.border }]}>
-            <TouchableOpacity onPress={() => setReadingDoc(null)} hitSlop={10}>
+            <TouchableOpacity
+              onPress={() => {
+                setReadingDoc(null);
+                setDocSearch('');
+              }}
+              hitSlop={10}
+            >
               <Ionicons name="close" size={24} color={p.text} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
@@ -271,12 +293,49 @@ export default function StudentCourseDetailScreen() {
             ) : null}
 
             {readingDoc?.chunks && readingDoc.chunks.length > 0 ? (
-              readingDoc.chunks.map((chunk, idx) => (
-                <Card key={`chunk-${idx}`} style={{ gap: 8 }}>
-                  <Badge label={`Trang ${chunk.page || idx + 1}`} tone="blue" />
-                  <RichText content={chunk.content} color={p.text} boldColor={p.text} />
-                </Card>
-              ))
+              <>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    backgroundColor: p.card,
+                    borderColor: p.border,
+                  }}
+                >
+                  <Ionicons name="search-outline" size={18} color={p.textMuted} />
+                  <TextInput
+                    style={{ flex: 1, color: p.text, fontSize: 13, paddingVertical: 10 }}
+                    placeholder="Tìm từ khóa hoặc số trang trong tài liệu..."
+                    placeholderTextColor={p.textMuted}
+                    value={docSearch}
+                    onChangeText={setDocSearch}
+                  />
+                  {docSearch ? (
+                    <TouchableOpacity onPress={() => setDocSearch('')}>
+                      <Ionicons name="close-circle" size={18} color={p.textMuted} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {filteredChunks.length === 0 ? (
+                  <EmptyView
+                    icon="search-outline"
+                    title="Không tìm thấy đoạn phù hợp"
+                    description={`Không có nội dung nào khớp với từ khóa "${docSearch}".`}
+                  />
+                ) : (
+                  filteredChunks.map((chunk, idx) => (
+                    <Card key={`chunk-${chunk.page}-${idx}`} style={{ gap: 8 }}>
+                      <Badge label={`Trang ${chunk.page || idx + 1}`} tone="blue" />
+                      <RichText content={chunk.content} color={p.text} boldColor={p.text} />
+                    </Card>
+                  ))
+                )}
+              </>
             ) : (
               <EmptyView
                 icon="document-text-outline"

@@ -44,6 +44,8 @@ export const API_ENDPOINTS = {
     LIST: '/courses',
     DETAIL: (id: string) => `/courses/${id}`,
     CREATE_LESSON: (courseId: string) => `/courses/${courseId}/lessons`,
+    UPDATE_LESSON: (courseId: string, lessonId: string) =>
+      `/courses/${courseId}/lessons/${lessonId}`,
     DELETE_LESSON: (courseId: string, lessonId: string) =>
       `/courses/${courseId}/lessons/${lessonId}`,
   },
@@ -56,6 +58,7 @@ export const API_ENDPOINTS = {
     CREATE_SESSION: '/chat/session',
     SESSION_DETAIL: (id: string) => `/chat/session/${id}`,
     SEND_MESSAGE: (id: string) => `/chat/session/${id}/message`,
+    SEND_MESSAGE_STREAM: (id: string) => `/chat/session/${id}/message-stream`,
   },
   QUIZ: {
     BY_SUBJECT: (subjectId: string) => `/quiz/subject/${subjectId}`,
@@ -71,6 +74,8 @@ export const API_ENDPOINTS = {
   GAMIFICATION: {
     PROFILE: '/gamification/profile',
     ANALYTICS: '/gamification/analytics',
+    LEADERBOARD: (grade?: number) =>
+      grade ? `/gamification/leaderboard?grade=${grade}` : '/gamification/leaderboard',
   },
   CALENDAR: {
     LIST: '/calendar',

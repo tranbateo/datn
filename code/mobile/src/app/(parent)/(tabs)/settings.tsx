@@ -29,6 +29,7 @@ export default function ParentSettingsScreen() {
   const [phone, setPhone] = useState(user?.phone || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -84,8 +85,13 @@ export default function ParentSettingsScreen() {
       Alert.alert('Lỗi', 'Vui lòng nhập họ và tên.');
       return;
     }
-    if (newPassword.trim() && newPassword.trim().length < 6) {
+    const changedPassword = Boolean(newPassword.trim());
+    if (changedPassword && newPassword.trim().length < 6) {
       Alert.alert('Lỗi', 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+    if (changedPassword && newPassword.trim() !== confirmPassword.trim()) {
+      Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp.');
       return;
     }
 
@@ -94,11 +100,20 @@ export default function ParentSettingsScreen() {
       const updated = await usersApi.updateProfile({
         fullName: fullName.trim(),
         phone: phone.trim() || undefined,
-        ...(newPassword.trim() ? { password: newPassword.trim() } : {}),
+        ...(changedPassword ? { password: newPassword.trim() } : {}),
       });
       void updateUser(updated);
       setNewPassword('');
-      Alert.alert('Thành công', 'Đã cập nhật thông tin tài khoản Phụ huynh.');
+      setConfirmPassword('');
+      if (changedPassword) {
+        Alert.alert(
+          'Đã đổi mật khẩu thành công',
+          'Vì lý do bảo mật (BR-AUTH-001), phiên cũ đã được thu hồi. Quý phụ huynh vui lòng đăng nhập lại bằng mật khẩu mới.',
+          [{ text: 'Đăng nhập lại', onPress: () => void logout() }],
+        );
+      } else {
+        Alert.alert('Thành công', 'Đã cập nhật thông tin tài khoản Phụ huynh.');
+      }
     } catch (err: unknown) {
       Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể lưu thay đổi.');
     } finally {
@@ -199,6 +214,19 @@ export default function ParentSettingsScreen() {
               placeholderTextColor={p.textMuted}
             />
           </View>
+          {newPassword.trim() ? (
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: p.textMuted }]}>Xác nhận mật khẩu mới</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                placeholder="Nhập lại mật khẩu mới"
+                placeholderTextColor={p.textMuted}
+              />
+            </View>
+          ) : null}
           <PrimaryButton
             title="Lưu thay đổi"
             icon="save-outline"

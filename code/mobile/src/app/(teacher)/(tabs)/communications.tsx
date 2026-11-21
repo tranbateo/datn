@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -28,16 +28,27 @@ import {
   type TeacherStudentItem,
 } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
+import { getCached, invalidateCache, isCacheFresh, setCached } from '@/lib/ttl-cache';
 import {
   ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
-  LoadingView,
   PrimaryButton,
+  SkeletonDashboard,
   usePalette,
 } from '@/components/ui/mobile-ui';
+
+const TEACHER_COMMS_CACHE_KEY = 'teacher:comms';
+
+interface TeacherCommsSnapshot {
+  classes: TeacherClassOption[];
+  students: TeacherStudentItem[];
+  parents: TeacherScopedParent[];
+  proposals: TeacherProposalItem[];
+  resetRequests: TeacherResetRequestItem[];
+}
 
 type CommTab = 'parents' | 'broadcast' | 'resets';
 
@@ -57,27 +68,38 @@ const TEMPLATES = [
 export default function TeacherCommunicationsScreen() {
   const p = usePalette();
   const { user } = useAuthStore();
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; t?: string }>();
+  const cached = getCached<TeacherCommsSnapshot>(TEACHER_COMMS_CACHE_KEY);
 
-  const [pickedTab, setPickedTab] = useState<CommTab | null>(null);
-  const activeTab: CommTab =
-    pickedTab ??
-    (params.tab === 'broadcast'
+  const paramKey = `${params.tab ?? ''}|${params.t ?? ''}`;
+  const defaultParamTab: CommTab =
+    params.tab === 'broadcast'
       ? 'broadcast'
       : params.tab === 'resets'
         ? 'resets'
-        : 'parents');
+        : 'parents';
+  const [pickedTabState, setPickedTabState] = useState<{
+    key: string;
+    tab: CommTab;
+  } | null>(null);
+  const activeTab: CommTab =
+    pickedTabState && pickedTabState.key === paramKey
+      ? pickedTabState.tab
+      : defaultParamTab;
+  const setPickedTab = (tab: CommTab) => setPickedTabState({ key: paramKey, tab });
 
-  const [classes, setClasses] = useState<TeacherClassOption[]>([]);
-  const [students, setStudents] = useState<TeacherStudentItem[]>([]);
-  const [parents, setParents] = useState<TeacherScopedParent[]>([]);
-  const [proposals, setProposals] = useState<TeacherProposalItem[]>([]);
-  const [resetRequests, setResetRequests] = useState<TeacherResetRequestItem[]>([]);
+  const [classes, setClasses] = useState<TeacherClassOption[]>(cached?.classes ?? []);
+  const [students, setStudents] = useState<TeacherStudentItem[]>(cached?.students ?? []);
+  const [parents, setParents] = useState<TeacherScopedParent[]>(cached?.parents ?? []);
+  const [proposals, setProposals] = useState<TeacherProposalItem[]>(cached?.proposals ?? []);
+  const [resetRequests, setResetRequests] = useState<TeacherResetRequestItem[]>(
+    cached?.resetRequests ?? [],
+  );
 
   // Broadcast form
   const [targetType, setTargetType] = useState<'CLASS' | 'STUDENT'>('CLASS');
-  const [selectedClassId, setSelectedClassId] = useState('');
-  const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState(cached?.classes?.[0]?.id ?? '');
+  const [selectedStudentId, setSelectedStudentId] = useState(cached?.students?.[0]?.id ?? '');
   const [audience, setAudience] = useState<'PARENTS' | 'STUDENTS' | 'BOTH'>('PARENTS');
   const [notifTitle, setNotifTitle] = useState('');
   const [notifBody, setNotifBody] = useState('');
@@ -89,13 +111,27 @@ export default function TeacherCommunicationsScreen() {
   const [loadingThread, setLoadingThread] = useState(false);
   const [msgText, setMsgText] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
+  const chatListRef = useRef<FlatList<DirectMessageItem>>(null);
 
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
+    if (!force && isCacheFresh(TEACHER_COMMS_CACHE_KEY)) {
+      const snap = getCached<TeacherCommsSnapshot>(TEACHER_COMMS_CACHE_KEY);
+      if (snap) {
+        setClasses(snap.classes);
+        setStudents(snap.students);
+        setParents(snap.parents);
+        setProposals(snap.proposals);
+        setResetRequests(snap.resetRequests);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+    }
     try {
       const [clsRes, stuRes, parRes, propRes, rstRes] = await Promise.all([
         teacherApi.getClasses().catch(() => []),
@@ -106,11 +142,21 @@ export default function TeacherCommunicationsScreen() {
       ]);
       const clsList = Array.isArray(clsRes) ? clsRes : [];
       const stuList = Array.isArray(stuRes) ? stuRes : [];
+      const parList = Array.isArray(parRes) ? parRes : [];
+      const propList = Array.isArray(propRes) ? propRes : [];
+      const rstList = Array.isArray(rstRes) ? rstRes : [];
       setClasses(clsList);
       setStudents(stuList);
-      setParents(Array.isArray(parRes) ? parRes : []);
-      setProposals(Array.isArray(propRes) ? propRes : []);
-      setResetRequests(Array.isArray(rstRes) ? rstRes : []);
+      setParents(parList);
+      setProposals(propList);
+      setResetRequests(rstList);
+      setCached<TeacherCommsSnapshot>(TEACHER_COMMS_CACHE_KEY, {
+        classes: clsList,
+        students: stuList,
+        parents: parList,
+        proposals: propList,
+        resetRequests: rstList,
+      });
       if (clsList.length > 0) {
         setSelectedClassId((prev) => prev || clsList[0].id);
       }
@@ -128,12 +174,26 @@ export default function TeacherCommunicationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const run = async () => {
-        await loadData();
-      };
-      void run();
+      void loadData(false);
     }, [loadData]),
   );
+
+  // Auto-poll parent chat thread every 5s while chat modal is open
+  useEffect(() => {
+    if (!chatParent) return;
+    const parentId = chatParent.id;
+    const interval = setInterval(() => {
+      teacherApi
+        .getMessages(parentId)
+        .then((msgs) => {
+          if (Array.isArray(msgs)) {
+            setThread((prev) => (msgs.length !== prev.length ? msgs : prev));
+          }
+        })
+        .catch(() => undefined);
+    }, 5_000);
+    return () => clearInterval(interval);
+  }, [chatParent]);
 
   const openChat = async (parent: TeacherScopedParent) => {
     setChatParent(parent);
@@ -159,6 +219,7 @@ export default function TeacherCommunicationsScreen() {
     try {
       const sent = await teacherApi.sendMessage(chatParent.id, text);
       setThread((prev) => [...prev, sent]);
+      setTimeout(() => chatListRef.current?.scrollToEnd({ animated: true }), 80);
     } catch (err: unknown) {
       setMsgText(text);
       Alert.alert('Lỗi gửi tin', err instanceof Error ? err.message : 'Thử lại sau.');
@@ -177,6 +238,7 @@ export default function TeacherCommunicationsScreen() {
       setProposals((prev) =>
         prev.map((item) => (item.id === prop.id ? { ...item, status } : item)),
       );
+      invalidateCache('teacher:');
       Alert.alert(
         'Đã cập nhật',
         status === 'APPROVED'
@@ -237,6 +299,7 @@ export default function TeacherCommunicationsScreen() {
       const res = await teacherApi.resetStudentPassword(reqItem.userId);
       const pwd = res.temporaryPassword || res.tempPassword || '';
       setResetRequests((prev) => prev.filter((r) => r.userId !== reqItem.userId));
+      invalidateCache('teacher:');
       Alert.alert(
         'Đã cấp mật khẩu tạm',
         `Học sinh: ${reqItem.fullName} (${reqItem.studentCode || ''})\nMật khẩu tạm: ${pwd}\n\nPhụ huynh đã liên kết cũng đã nhận thông báo tự động.`,
@@ -251,14 +314,16 @@ export default function TeacherCommunicationsScreen() {
     }
   };
 
-  if (loading) return <LoadingView label="Đang tải trung tâm liên lạc..." />;
-  if (error) {
+  if (loading && parents.length === 0 && classes.length === 0) {
+    return <SkeletonDashboard label="Đang tải trung tâm liên lạc..." />;
+  }
+  if (error && parents.length === 0 && classes.length === 0) {
     return (
       <ErrorView
         message={error}
         onRetry={() => {
           setLoading(true);
-          void loadData();
+          void loadData(true);
         }}
       />
     );
@@ -273,7 +338,7 @@ export default function TeacherCommunicationsScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void loadData();
+              void loadData(true);
             }}
             tintColor={p.emerald}
           />
@@ -679,8 +744,10 @@ export default function TeacherCommunicationsScreen() {
               </View>
             ) : (
               <FlatList
+                ref={chatListRef}
                 data={thread}
                 keyExtractor={(item) => item.id}
+                onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })}
                 contentContainerStyle={{ padding: 14, gap: 10, flexGrow: 1 }}
                 ListEmptyComponent={
                   <EmptyView

@@ -28,6 +28,8 @@ export default function LoginScreen() {
   const [role, setRole] = useState<LoginRole>('student');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [schoolCode, setSchoolCode] = useState('');
+  const [showSchoolCode, setShowSchoolCode] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -50,7 +52,7 @@ export default function LoginScreen() {
     setErrorMsg('');
     setLoading(true);
     try {
-      const data = await authApi.login(trimmed, password);
+      const data = await authApi.login(trimmed, password, schoolCode);
 
       if (data.requireOtp && data.email) {
         setOtpEmail(data.email);
@@ -366,14 +368,47 @@ export default function LoginScreen() {
                 </View>
               </View>
 
-              <TouchableOpacity
-                onPress={() => router.push('/(auth)/forgot-password')}
-                style={styles.forgotLink}
-              >
-                <Text style={{ color: accentColor, fontSize: 13, fontWeight: '700' }}>
-                  Quên mật khẩu? Gửi yêu cầu cấp lại
-                </Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={() => setShowSchoolCode((v) => !v)}
+                  style={{ paddingVertical: 2 }}
+                >
+                  <Text style={{ color: p.textMuted, fontSize: 12, fontWeight: '600' }}>
+                    {showSchoolCode ? 'Ẩn mã trường' : '+ Nhập mã trường (nếu có)'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => router.push('/(auth)/forgot-password')}
+                  style={styles.forgotLink}
+                >
+                  <Text style={{ color: accentColor, fontSize: 13, fontWeight: '700' }}>
+                    Quên mật khẩu?
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {showSchoolCode ? (
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.label, { color: p.text }]}>Mã trường học (tùy chọn)</Text>
+                  <View
+                    style={[
+                      styles.inputRow,
+                      { backgroundColor: p.bg, borderColor: p.border },
+                    ]}
+                  >
+                    <Ionicons name="business-outline" size={19} color={p.textMuted} />
+                    <TextInput
+                      style={[styles.input, { color: p.text }]}
+                      placeholder="VD: THCS01 (dùng khi trùng mã HS giữa các trường)"
+                      placeholderTextColor={p.textMuted}
+                      value={schoolCode}
+                      onChangeText={setSchoolCode}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                    />
+                  </View>
+                </View>
+              ) : null}
 
               <PrimaryButton
                 title={

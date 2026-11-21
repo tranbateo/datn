@@ -23,81 +23,125 @@ import {
   type Subject,
 } from '@/services/mobile.services';
 import { useAuthStore, type MobileUser } from '@/store/authStore';
+import { getCached, invalidateCache, isCacheFresh, setCached } from '@/lib/ttl-cache';
 import {
   ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
-  LoadingView,
   NotificationSheet,
+  SkeletonDashboard,
   UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
+
+const STUDENT_HOME_CACHE_KEY = 'student:home';
+
+interface StudentHomeSnapshot {
+  profile: MobileUser;
+  gamification: GamificationProfile | null;
+  subjects: Subject[];
+  upcomingEvents: CalendarEvent[];
+  notifications: NotificationItem[];
+}
 
 export default function StudentHomeScreen() {
   const p = usePalette();
   const router = useRouter();
   const { user: storedUser, updateUser } = useAuthStore();
+  const initialSnap = getCached<StudentHomeSnapshot>(STUDENT_HOME_CACHE_KEY);
 
-  const [profile, setProfile] = useState<MobileUser | null>(storedUser);
-  const [gamification, setGamification] = useState<GamificationProfile | null>(null);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [upcomingEvents, setUpcomingEvents] = useState<CalendarEvent[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [profile, setProfile] = useState<MobileUser | null>(
+    initialSnap?.profile ?? storedUser,
+  );
+  const [gamification, setGamification] = useState<GamificationProfile | null>(
+    initialSnap?.gamification ?? null,
+  );
+  const [subjects, setSubjects] = useState<Subject[]>(initialSnap?.subjects ?? []);
+  const [upcomingEvents, setUpcomingEvents] = useState<CalendarEvent[]>(
+    initialSnap?.upcomingEvents ?? [],
+  );
+  const [notifications, setNotifications] = useState<NotificationItem[]>(
+    initialSnap?.notifications ?? [],
+  );
   const [showNotifs, setShowNotifs] = useState(false);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialSnap);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [userRes, gamifRes, eventsRes, notifsRes] = await Promise.all([
-        usersApi.getProfile(),
-        gamificationApi.getProfile().catch(() => null),
-        calendarApi.list().catch(() => []),
-        notificationsApi.list().catch(() => []),
-      ]);
-
-      setProfile(userRes);
-      void updateUser(userRes);
-      setGamification(gamifRes);
-      setNotifications(Array.isArray(notifsRes) ? notifsRes : []);
-      setError(null);
-
-      const now = Date.now();
-      const upcoming = (Array.isArray(eventsRes) ? eventsRes : [])
-        .filter((e) => new Date(e.startTime).getTime() >= now - 3_600_000)
-        .sort(
-          (a, b) =>
-            new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-        )
-        .slice(0, 3);
-      setUpcomingEvents(upcoming);
-
-      if (userRes?.grade) {
-        const subs = await curriculumApi
-          .getSubjectsByGrade(userRes.grade)
-          .catch(() => []);
-        setSubjects(Array.isArray(subs) ? subs : []);
+  const loadData = useCallback(
+    async (force = false) => {
+      if (!force && isCacheFresh(STUDENT_HOME_CACHE_KEY)) {
+        const snap = getCached<StudentHomeSnapshot>(STUDENT_HOME_CACHE_KEY);
+        if (snap) {
+          setProfile(snap.profile);
+          setGamification(snap.gamification);
+          setSubjects(snap.subjects);
+          setUpcomingEvents(snap.upcomingEvents);
+          setNotifications(snap.notifications);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
       }
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : 'Không thể tải dữ liệu trang chủ.',
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [updateUser]);
+      try {
+        const [userRes, gamifRes, eventsRes, notifsRes] = await Promise.all([
+          usersApi.getProfile(),
+          gamificationApi.getProfile().catch(() => null),
+          calendarApi.list().catch(() => []),
+          notificationsApi.list().catch(() => []),
+        ]);
+
+        const safeNotifs = Array.isArray(notifsRes) ? notifsRes : [];
+        const now = Date.now();
+        const upcoming = (Array.isArray(eventsRes) ? eventsRes : [])
+          .filter((e) => new Date(e.startTime).getTime() >= now - 3_600_000)
+          .sort(
+            (a, b) =>
+              new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+          )
+          .slice(0, 3);
+
+        let safeSubs: Subject[] = [];
+        if (userRes?.grade) {
+          const subs = await curriculumApi
+            .getSubjectsByGrade(userRes.grade)
+            .catch(() => []);
+          safeSubs = Array.isArray(subs) ? subs : [];
+        }
+
+        setProfile(userRes);
+        void updateUser(userRes);
+        setGamification(gamifRes);
+        setNotifications(safeNotifs);
+        setUpcomingEvents(upcoming);
+        setSubjects(safeSubs);
+        setError(null);
+
+        setCached<StudentHomeSnapshot>(STUDENT_HOME_CACHE_KEY, {
+          profile: userRes,
+          gamification: gamifRes,
+          subjects: safeSubs,
+          upcomingEvents: upcoming,
+          notifications: safeNotifs,
+        });
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error ? err.message : 'Không thể tải dữ liệu trang chủ.',
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [updateUser],
+  );
 
   useFocusEffect(
     useCallback(() => {
-      const run = async () => {
-        await loadData();
-      };
-      void run();
+      void loadData(false);
     }, [loadData]),
   );
 
@@ -105,6 +149,7 @@ export default function StudentHomeScreen() {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
     );
+    invalidateCache(STUDENT_HOME_CACHE_KEY);
     try {
       await notificationsApi.markRead(id);
     } catch {
@@ -114,6 +159,7 @@ export default function StudentHomeScreen() {
 
   const handleMarkAllRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    invalidateCache(STUDENT_HOME_CACHE_KEY);
     try {
       await notificationsApi.markAllRead();
     } catch {
@@ -122,7 +168,7 @@ export default function StudentHomeScreen() {
   };
 
   if (loading && !profile) {
-    return <LoadingView label="Đang tải không gian học tập..." />;
+    return <SkeletonDashboard label="Đang tải không gian học tập..." />;
   }
 
   if (error && !profile) {
@@ -131,7 +177,7 @@ export default function StudentHomeScreen() {
         message={error}
         onRetry={() => {
           setLoading(true);
-          void loadData();
+          void loadData(true);
         }}
       />
     );
@@ -139,8 +185,11 @@ export default function StudentHomeScreen() {
 
   const activeClass = profile?.classEnrollments?.[0]?.class;
   const currentXp = gamification?.currentXp ?? gamification?.xp ?? 0;
-  const nextLevelXp = gamification?.nextLevelXp || 1000;
-  const xpPercent = Math.min(100, Math.round((currentXp / nextLevelXp) * 100));
+  const nextLevelXp = gamification?.nextLevelXp || 100;
+  const xpPercent =
+    typeof gamification?.levelProgressPercent === 'number'
+      ? Math.max(0, Math.min(100, gamification.levelProgressPercent))
+      : Math.min(100, Math.round((currentXp / nextLevelXp) * 100));
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   return (
@@ -152,7 +201,7 @@ export default function StudentHomeScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void loadData();
+              void loadData(true);
             }}
             tintColor={p.primary}
           />
@@ -416,6 +465,17 @@ export default function StudentHomeScreen() {
         notifications={notifications}
         onMarkRead={(id) => void handleMarkRead(id)}
         onMarkAllRead={() => void handleMarkAllRead()}
+        onPressItem={(item) => {
+          setShowNotifs(false);
+          const text = `${item.title || ''} ${item.body || ''}`;
+          if (/bài tập|kiểm tra|đề/i.test(text)) {
+            router.push('/(student)/(tabs)/practice');
+          } else if (/thăng cấp|cấp độ|xp/i.test(text)) {
+            router.push('/(student)/(tabs)/progress');
+          } else if (/lịch học|thời khóa biểu/i.test(text)) {
+            router.push('/(student)/(tabs)/schedule');
+          }
+        }}
       />
     </SafeAreaView>
   );

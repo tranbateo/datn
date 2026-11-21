@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,32 +14,67 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   formatClassLabel,
+  quizApi,
   teacherApi,
+  type QuizAttemptDetail,
   type TeacherStudentAttemptsResponse,
   type TeacherStudentItem,
 } from '@/services/mobile.services';
+import { invalidateCache } from '@/lib/ttl-cache';
 import {
+  ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
   LoadingView,
   PrimaryButton,
+  QuizAttemptViewerModal,
   usePalette,
 } from '@/components/ui/mobile-ui';
 
 export default function TeacherStudentsScreen() {
   const p = usePalette();
+  const params = useLocalSearchParams<{
+    className?: string;
+    search?: string;
+    t?: string;
+  }>();
+  const paramKey = `${params.className ?? ''}|${params.search ?? ''}|${params.t ?? ''}`;
+
   const [students, setStudents] = useState<TeacherStudentItem[]>([]);
-  const [search, setSearch] = useState('');
-  const [classFilter, setClassFilter] = useState('ALL');
+  const [searchOverride, setSearchOverride] = useState<{ key: string; value: string } | null>(
+    null,
+  );
+  const [classOverride, setClassOverride] = useState<{ key: string; value: string } | null>(
+    null,
+  );
+
+  const search =
+    searchOverride && searchOverride.key === paramKey
+      ? searchOverride.value
+      : params.search || '';
+  const classFilter =
+    classOverride && classOverride.key === paramKey
+      ? classOverride.value
+      : params.className || 'ALL';
+
+  const setSearch = (value: string) => setSearchOverride({ key: paramKey, value });
+  const setClassFilter = (value: string) => setClassOverride({ key: paramKey, value });
 
   const [selectedStudent, setSelectedStudent] = useState<TeacherStudentItem | null>(null);
   const [attemptsData, setAttemptsData] = useState<TeacherStudentAttemptsResponse | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [resettingPwd, setResettingPwd] = useState(false);
+
+  // Attempt Detail Viewer Modal (read-only inspection before manual grade override)
+  const [attemptViewerOpen, setAttemptViewerOpen] = useState(false);
+  const [attemptDetail, setAttemptDetail] = useState<QuizAttemptDetail | null>(null);
+  const [loadingAttemptDetail, setLoadingAttemptDetail] = useState(false);
+  const [attemptDetailError, setAttemptDetailError] = useState<string | null>(null);
 
   // Manual Grade Override modal (BR-QUIZ-002)
   const [editAttempt, setEditAttempt] = useState<{
@@ -68,12 +103,28 @@ export default function TeacherStudentsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    const run = async () => {
-      await loadStudents();
-    };
-    void run();
-  }, [loadStudents]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadStudents();
+    }, [loadStudents]),
+  );
+
+  const openAttemptDetail = async (attemptId: string) => {
+    setAttemptViewerOpen(true);
+    setAttemptDetail(null);
+    setAttemptDetailError(null);
+    setLoadingAttemptDetail(true);
+    try {
+      const detail = await quizApi.getAttemptDetail(attemptId);
+      setAttemptDetail(detail);
+    } catch (err: unknown) {
+      setAttemptDetailError(
+        err instanceof Error ? err.message : 'Không thể tải chi tiết bài làm.',
+      );
+    } finally {
+      setLoadingAttemptDetail(false);
+    }
+  };
 
   const classOptions = useMemo(() => {
     const set = new Set<string>();
@@ -126,6 +177,7 @@ export default function TeacherStudentsScreen() {
             try {
               const res = await teacherApi.resetStudentPassword(student.id);
               const pwd = res.temporaryPassword || res.tempPassword || '';
+              invalidateCache('teacher:');
               Alert.alert(
                 'Đã cấp mật khẩu tạm',
                 `Học sinh: ${student.name}\nMã HS: ${student.studentCode}\nMật khẩu tạm: ${pwd}\n\nHãy gửi cho học sinh hoặc phụ huynh.`,
@@ -175,6 +227,7 @@ export default function TeacherStudentsScreen() {
       );
       setEditAttempt(null);
       setScoreReason('');
+      invalidateCache('teacher:');
       Alert.alert('Đã cập nhật điểm', 'Điểm mới và lý do đã được ghi nhận vào Audit Log.');
       void loadStudents();
     } catch (err: unknown) {
@@ -203,7 +256,7 @@ export default function TeacherStudentsScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -324,7 +377,7 @@ export default function TeacherStudentsScreen() {
 
       {/* Student Detail Modal */}
       <Modal
-        visible={Boolean(selectedStudent)}
+        visible={Boolean(selectedStudent) && !attemptViewerOpen}
         animationType="slide"
         onRequestClose={() => setSelectedStudent(null)}
       >
@@ -343,7 +396,7 @@ export default function TeacherStudentsScreen() {
             </View>
           </View>
 
-          <ScrollView contentContainerStyle={styles.scroll}>
+          <ScrollView contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}>
             {selectedStudent?.isHomeroomTeacher ? (
               <PrimaryButton
                 title="Cấp mật khẩu tạm cho học sinh này"
@@ -380,25 +433,56 @@ export default function TeacherStudentsScreen() {
                     <Text style={{ fontSize: 15, fontWeight: '700', color: p.text }}>
                       {att.quizTitle}
                     </Text>
-                    <View style={styles.rowBetween}>
-                      <Text style={{ fontSize: 11, color: p.textMuted }}>
-                        {new Date(att.completedAt).toLocaleString('vi-VN')}
-                      </Text>
+                    <Text style={{ fontSize: 11, color: p.textMuted }}>
+                      Nộp lúc: {new Date(att.completedAt).toLocaleString('vi-VN')}
+                    </Text>
+                    <View style={[styles.rowBetween, { flexWrap: 'wrap', gap: 8 }]}>
                       <TouchableOpacity
-                        onPress={() => {
-                          setEditAttempt({
-                            id: att.id,
-                            quizTitle: att.quizTitle,
-                            score: att.score,
-                          });
-                          setNewScore(String(att.score));
-                          setScoreReason('');
+                        onPress={() => void openAttemptDetail(att.id)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 5,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 9,
+                          backgroundColor: p.cardMuted,
                         }}
                       >
-                        <Text style={{ color: p.primary, fontSize: 12, fontWeight: '800' }}>
-                          Sửa điểm thủ công
+                        <Ionicons name="eye-outline" size={14} color={p.text} />
+                        <Text style={{ color: p.text, fontSize: 12, fontWeight: '700' }}>
+                          Xem bài làm
                         </Text>
                       </TouchableOpacity>
+                      {att.canEditScore !== false ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setEditAttempt({
+                              id: att.id,
+                              quizTitle: att.quizTitle,
+                              score: att.score,
+                            });
+                            setNewScore(String(att.score));
+                            setScoreReason('');
+                          }}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 5,
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 9,
+                            backgroundColor: p.primarySoft,
+                          }}
+                        >
+                          <Ionicons name="create-outline" size={14} color={p.primary} />
+                          <Text style={{ color: p.primary, fontSize: 12, fontWeight: '800' }}>
+                            Sửa điểm thủ công
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <Badge label="Chỉ xem (GVCN)" tone="slate" />
+                      )}
                     </View>
                   </Card>
                 ))}
@@ -414,59 +498,69 @@ export default function TeacherStudentsScreen() {
             onRequestClose={() => setEditAttempt(null)}
           >
             <Pressable style={styles.backdrop} onPress={() => setEditAttempt(null)}>
-              <Card style={{ width: '90%', gap: 12 }}>
-                <Text style={{ fontSize: 17, fontWeight: '800', color: p.text }}>
-                  Chỉnh sửa điểm (Audit Log)
-                </Text>
-                <Text style={{ fontSize: 13, color: p.textMuted }} numberOfLines={2}>
-                  Bài: {editAttempt?.quizTitle}
-                </Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
-                  placeholder="Điểm mới (0 - 100)"
-                  placeholderTextColor={p.textMuted}
-                  keyboardType="numeric"
-                  value={newScore}
-                  onChangeText={setNewScore}
-                />
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: p.bg,
-                      borderColor: p.border,
-                      color: p.text,
-                      minHeight: 74,
-                      textAlignVertical: 'top',
-                      paddingTop: 10,
-                    },
-                  ]}
-                  placeholder="Lý do điều chỉnh điểm (bắt buộc)..."
-                  placeholderTextColor={p.textMuted}
-                  value={scoreReason}
-                  onChangeText={setScoreReason}
-                  multiline
-                />
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <PrimaryButton
-                    title="Hủy"
-                    color={p.textMuted}
-                    onPress={() => setEditAttempt(null)}
-                    style={{ flex: 1 }}
+              <Pressable onPress={() => undefined} style={{ width: '90%', maxWidth: 440 }}>
+                <Card style={{ gap: 12 }}>
+                  <Text style={{ fontSize: 17, fontWeight: '800', color: p.text }}>
+                    Chỉnh sửa điểm (Audit Log)
+                  </Text>
+                  <Text style={{ fontSize: 13, color: p.textMuted }} numberOfLines={2}>
+                    Bài: {editAttempt?.quizTitle}
+                  </Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
+                    placeholder="Điểm mới (0 - 100)"
+                    placeholderTextColor={p.textMuted}
+                    keyboardType="numeric"
+                    value={newScore}
+                    onChangeText={setNewScore}
                   />
-                  <PrimaryButton
-                    title="Lưu điểm"
-                    color={p.emerald}
-                    loading={savingScore}
-                    onPress={() => void handleSaveOverrideScore()}
-                    style={{ flex: 1 }}
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: p.bg,
+                        borderColor: p.border,
+                        color: p.text,
+                        minHeight: 74,
+                        textAlignVertical: 'top',
+                        paddingTop: 10,
+                      },
+                    ]}
+                    placeholder="Lý do điều chỉnh điểm (bắt buộc)..."
+                    placeholderTextColor={p.textMuted}
+                    value={scoreReason}
+                    onChangeText={setScoreReason}
+                    multiline
                   />
-                </View>
-              </Card>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <PrimaryButton
+                      title="Hủy"
+                      color={p.textMuted}
+                      onPress={() => setEditAttempt(null)}
+                      style={{ flex: 1 }}
+                    />
+                    <PrimaryButton
+                      title="Lưu điểm"
+                      color={p.emerald}
+                      loading={savingScore}
+                      onPress={() => void handleSaveOverrideScore()}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                </Card>
+              </Pressable>
             </Pressable>
           </Modal>
         </SafeAreaView>
       </Modal>
+
+      <QuizAttemptViewerModal
+        visible={attemptViewerOpen}
+        loading={loadingAttemptDetail}
+        detail={attemptDetail}
+        error={attemptDetailError}
+        onClose={() => setAttemptViewerOpen(false)}
+      />
     </SafeAreaView>
   );
 }

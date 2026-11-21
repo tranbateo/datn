@@ -18,39 +18,67 @@ import {
   type TeacherDashboardStats,
 } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
+import { getCached, invalidateCache, isCacheFresh, setCached } from '@/lib/ttl-cache';
 import {
   ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
-  LoadingView,
   NotificationSheet,
+  SkeletonDashboard,
   UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
+
+const TEACHER_DASH_CACHE_KEY = 'teacher:dashboard';
+
+interface TeacherDashSnapshot {
+  stats: TeacherDashboardStats;
+  notifications: NotificationItem[];
+}
 
 export default function TeacherDashboardScreen() {
   const p = usePalette();
   const router = useRouter();
   const { user } = useAuthStore();
+  const cached = getCached<TeacherDashSnapshot>(TEACHER_DASH_CACHE_KEY);
 
-  const [stats, setStats] = useState<TeacherDashboardStats | null>(null);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [stats, setStats] = useState<TeacherDashboardStats | null>(
+    cached?.stats ?? null,
+  );
+  const [notifications, setNotifications] = useState<NotificationItem[]>(
+    cached?.notifications ?? [],
+  );
   const [showNotifs, setShowNotifs] = useState(false);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
+    if (!force && isCacheFresh(TEACHER_DASH_CACHE_KEY)) {
+      const snap = getCached<TeacherDashSnapshot>(TEACHER_DASH_CACHE_KEY);
+      if (snap) {
+        setStats(snap.stats);
+        setNotifications(snap.notifications);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+    }
     try {
       const [statsRes, notifsRes] = await Promise.all([
         teacherApi.getDashboardStats(),
         notificationsApi.list().catch(() => []),
       ]);
+      const safeNotifs = Array.isArray(notifsRes) ? notifsRes : [];
       setStats(statsRes);
-      setNotifications(Array.isArray(notifsRes) ? notifsRes : []);
+      setNotifications(safeNotifs);
+      setCached<TeacherDashSnapshot>(TEACHER_DASH_CACHE_KEY, {
+        stats: statsRes,
+        notifications: safeNotifs,
+      });
       setError(null);
     } catch (err: unknown) {
       setError(
@@ -66,10 +94,7 @@ export default function TeacherDashboardScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const run = async () => {
-        await loadData();
-      };
-      void run();
+      void loadData(false);
     }, [loadData]),
   );
 
@@ -77,6 +102,7 @@ export default function TeacherDashboardScreen() {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
     );
+    invalidateCache(TEACHER_DASH_CACHE_KEY);
     try {
       await notificationsApi.markRead(id);
     } catch {
@@ -86,6 +112,7 @@ export default function TeacherDashboardScreen() {
 
   const handleMarkAllRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    invalidateCache(TEACHER_DASH_CACHE_KEY);
     try {
       await notificationsApi.markAllRead();
     } catch {
@@ -94,7 +121,7 @@ export default function TeacherDashboardScreen() {
   };
 
   if (loading && !stats) {
-    return <LoadingView label="Đang tải Cổng Giáo viên..." />;
+    return <SkeletonDashboard label="Đang tải Cổng Giáo viên..." />;
   }
   if (error && !stats) {
     return (
@@ -102,7 +129,7 @@ export default function TeacherDashboardScreen() {
         message={error}
         onRetry={() => {
           setLoading(true);
-          void loadData();
+          void loadData(true);
         }}
       />
     );
@@ -123,7 +150,7 @@ export default function TeacherDashboardScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void loadData();
+              void loadData(true);
             }}
             tintColor={p.emerald}
           />
@@ -184,7 +211,7 @@ export default function TeacherDashboardScreen() {
               onPress={() =>
                 router.push({
                   pathname: '/(teacher)/(tabs)/communications',
-                  params: { tab: 'broadcast' },
+                  params: { tab: 'broadcast', t: String(Date.now()) },
                 })
               }
               style={styles.heroWhiteBtn}
@@ -198,7 +225,7 @@ export default function TeacherDashboardScreen() {
               onPress={() =>
                 router.push({
                   pathname: '/(teacher)/(tabs)/communications',
-                  params: { tab: 'parents' },
+                  params: { tab: 'parents', t: String(Date.now()) },
                 })
               }
               style={styles.heroGhostBtn}
@@ -231,7 +258,7 @@ export default function TeacherDashboardScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/(teacher)/(tabs)/communications',
-                    params: { tab: 'resets' },
+                    params: { tab: 'resets', t: String(Date.now()) },
                   })
                 }
                 style={[styles.alertItem, { backgroundColor: p.card }]}
@@ -248,7 +275,7 @@ export default function TeacherDashboardScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/(teacher)/(tabs)/communications',
-                    params: { tab: 'parents' },
+                    params: { tab: 'parents', t: String(Date.now()) },
                   })
                 }
                 style={[styles.alertItem, { backgroundColor: p.card }]}
@@ -304,30 +331,54 @@ export default function TeacherDashboardScreen() {
         ) : (
           <View style={{ gap: 8 }}>
             {homeroomClasses.map((c) => (
-              <Card key={`hr-${c.id}`} style={styles.rowBetween}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>
-                    {formatClassLabel(c.name, c.grade)}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: p.textMuted }}>
-                    Sĩ số: {c.studentsCount} học sinh
-                  </Text>
-                </View>
-                <Badge label="GVCN" tone="emerald" />
-              </Card>
+              <TouchableOpacity
+                key={`hr-${c.id}`}
+                activeOpacity={0.85}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(teacher)/(tabs)/students',
+                    params: { className: c.name, t: String(Date.now()) },
+                  })
+                }
+              >
+                <Card style={styles.rowBetween}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>
+                      {formatClassLabel(c.name, c.grade)}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: p.textMuted }}>
+                      Sĩ số: {c.studentsCount} học sinh • Chạm để xem danh sách
+                    </Text>
+                  </View>
+                  <Badge label="GVCN" tone="emerald" />
+                  <Ionicons name="chevron-forward" size={16} color={p.textMuted} />
+                </Card>
+              </TouchableOpacity>
             ))}
             {subjectClasses.map((sc) => (
-              <Card key={`sb-${sc.id}`} style={styles.rowBetween}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: p.text }}>
-                    {formatClassLabel(sc.className, sc.grade)} • {sc.subjectName}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: p.textMuted }}>
-                    Sĩ số: {sc.studentsCount} học sinh
-                  </Text>
-                </View>
-                <Badge label="Bộ môn" tone="blue" />
-              </Card>
+              <TouchableOpacity
+                key={`sb-${sc.id}`}
+                activeOpacity={0.85}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(teacher)/(tabs)/students',
+                    params: { className: sc.className, t: String(Date.now()) },
+                  })
+                }
+              >
+                <Card style={styles.rowBetween}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: p.text }}>
+                      {formatClassLabel(sc.className, sc.grade)} • {sc.subjectName}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: p.textMuted }}>
+                      Sĩ số: {sc.studentsCount} học sinh • Chạm để xem danh sách
+                    </Text>
+                  </View>
+                  <Badge label="Bộ môn" tone="blue" />
+                  <Ionicons name="chevron-forward" size={16} color={p.textMuted} />
+                </Card>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -343,17 +394,29 @@ export default function TeacherDashboardScreen() {
         ) : (
           <View style={{ gap: 8 }}>
             {stats.needsAttention.map((item, idx) => (
-              <Card key={`att-${idx}`} style={styles.rowBetween}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: p.text }}>
-                    {item.name}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: p.rose, marginTop: 2 }}>
-                    {item.issues}
-                  </Text>
-                </View>
-                <Badge label="Cần hỗ trợ" tone="rose" />
-              </Card>
+              <TouchableOpacity
+                key={`att-${idx}`}
+                activeOpacity={0.85}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(teacher)/(tabs)/students',
+                    params: { search: item.name, t: String(Date.now()) },
+                  })
+                }
+              >
+                <Card style={styles.rowBetween}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: p.text }}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: p.rose, marginTop: 2 }}>
+                      {item.issues}
+                    </Text>
+                  </View>
+                  <Badge label="Cần hỗ trợ" tone="rose" />
+                  <Ionicons name="chevron-forward" size={16} color={p.textMuted} />
+                </Card>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -370,12 +433,12 @@ export default function TeacherDashboardScreen() {
           if (/cấp lại mật khẩu|quên mật khẩu/i.test(item.title || '')) {
             router.push({
               pathname: '/(teacher)/(tabs)/communications',
-              params: { tab: 'resets' },
+              params: { tab: 'resets', t: String(Date.now()) },
             });
           } else if (/tin nhắn|kiến nghị|đề xuất/i.test(item.title || '')) {
             router.push({
               pathname: '/(teacher)/(tabs)/communications',
-              params: { tab: 'parents' },
+              params: { tab: 'parents', t: String(Date.now()) },
             });
           }
         }}

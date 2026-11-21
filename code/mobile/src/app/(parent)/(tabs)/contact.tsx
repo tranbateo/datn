@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   formatClassLabel,
   parentApi,
@@ -26,17 +26,26 @@ import {
   type ProposalItem,
 } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
+import { getCached, invalidateCache, isCacheFresh, setCached } from '@/lib/ttl-cache';
 import {
   ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
-  LoadingView,
   PrimaryButton,
+  SkeletonDashboard,
   UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
+
+const PARENT_CONTACT_CACHE_KEY = 'parent:contact';
+
+interface ParentContactSnapshot {
+  teachers: ParentTeacherItem[];
+  children: ChildSummary[];
+  proposals: ProposalItem[];
+}
 
 interface ChildSummary {
   id: string;
@@ -48,13 +57,39 @@ interface ChildSummary {
 export default function ParentContactScreen() {
   const p = usePalette();
   const { user } = useAuthStore();
+  const params = useLocalSearchParams<{
+    teacherId?: string;
+    childId?: string;
+    t?: string;
+  }>();
+  const paramKey = `${params.childId ?? ''}|${params.teacherId ?? ''}|${params.t ?? ''}`;
+  const cached = getCached<ParentContactSnapshot>(PARENT_CONTACT_CACHE_KEY);
+  const autoOpenedTeacherRef = useRef<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'messages' | 'proposals'>('messages');
-  const [teachers, setTeachers] = useState<ParentTeacherItem[]>([]);
-  const [children, setChildren] = useState<ChildSummary[]>([]);
-  const [selectedChildId, setSelectedChildId] = useState<string>('ALL');
+  const [tabOverride, setTabOverride] = useState<{
+    key: string;
+    tab: 'messages' | 'proposals';
+  } | null>(null);
+  const activeTab: 'messages' | 'proposals' =
+    tabOverride && tabOverride.key === paramKey ? tabOverride.tab : 'messages';
+  const setActiveTab = (tab: 'messages' | 'proposals') =>
+    setTabOverride({ key: paramKey, tab });
+
+  const [teachers, setTeachers] = useState<ParentTeacherItem[]>(cached?.teachers ?? []);
+  const [children, setChildren] = useState<ChildSummary[]>(cached?.children ?? []);
+  const [childOverride, setChildOverride] = useState<{
+    key: string;
+    id: string;
+  } | null>(null);
+  const selectedChildId =
+    childOverride && childOverride.key === paramKey
+      ? childOverride.id
+      : params.childId && children.some((c) => c.id === params.childId)
+        ? params.childId
+        : 'ALL';
+  const setSelectedChildId = (id: string) => setChildOverride({ key: paramKey, id });
   const [teacherSearch, setTeacherSearch] = useState('');
-  const [proposals, setProposals] = useState<ProposalItem[]>([]);
+  const [proposals, setProposals] = useState<ProposalItem[]>(cached?.proposals ?? []);
 
   // Active Chat modal state
   const [activeTeacher, setActiveTeacher] = useState<ParentTeacherItem | null>(null);
@@ -62,20 +97,32 @@ export default function ParentContactScreen() {
   const [loadingThread, setLoadingThread] = useState(false);
   const [msgInput, setMsgInput] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
+  const chatListRef = useRef<FlatList<DirectMessageItem>>(null);
 
   // Create Proposal modal state
   const [showProposalModal, setShowProposalModal] = useState(false);
-  const [propTeacherId, setPropTeacherId] = useState<string>('');
-  const [propStudentId, setPropStudentId] = useState<string>('');
+  const [propTeacherId, setPropTeacherId] = useState<string>(cached?.teachers?.[0]?.id ?? '');
+  const [propStudentId, setPropStudentId] = useState<string>(cached?.children?.[0]?.id ?? '');
   const [propTitle, setPropTitle] = useState('');
   const [propContent, setPropContent] = useState('');
   const [submittingProp, setSubmittingProp] = useState(false);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
+    if (!force && isCacheFresh(PARENT_CONTACT_CACHE_KEY)) {
+      const snap = getCached<ParentContactSnapshot>(PARENT_CONTACT_CACHE_KEY);
+      if (snap) {
+        setTeachers(snap.teachers);
+        setChildren(snap.children);
+        setProposals(snap.proposals);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+    }
     try {
       const [tRes, dashRes, propRes] = await Promise.all([
         parentApi.getTeachers(),
@@ -89,9 +136,15 @@ export default function ParentContactScreen() {
         className: s.student.className,
         grade: s.student.grade,
       }));
+      const safeProps = Array.isArray(propRes) ? propRes : [];
       setTeachers(tList);
       setChildren(childList);
-      setProposals(Array.isArray(propRes) ? propRes : []);
+      setProposals(safeProps);
+      setCached<ParentContactSnapshot>(PARENT_CONTACT_CACHE_KEY, {
+        teachers: tList,
+        children: childList,
+        proposals: safeProps,
+      });
       setError(null);
 
       if (tList.length > 0) {
@@ -112,12 +165,26 @@ export default function ParentContactScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const run = async () => {
-        await loadData();
-      };
-      void run();
+      void loadData(false);
     }, [loadData]),
   );
+
+  // Auto-poll direct chat thread every 5s while chat modal is open
+  useEffect(() => {
+    if (!activeTeacher) return;
+    const teacherId = activeTeacher.id;
+    const interval = setInterval(() => {
+      parentApi
+        .getMessages(teacherId)
+        .then((msgs) => {
+          if (Array.isArray(msgs)) {
+            setThread((prev) => (msgs.length !== prev.length ? msgs : prev));
+          }
+        })
+        .catch(() => undefined);
+    }, 5_000);
+    return () => clearInterval(interval);
+  }, [activeTeacher]);
 
   // Per-child scoped teacher display (prevents GVCN badge bleed between siblings)
   const scopedTeachers = useMemo(() => {
@@ -145,15 +212,35 @@ export default function ParentContactScreen() {
             ? homeroomEntries.length > 0
             : Boolean(t.isHomeroom);
         const homeroomClassLabel = homeroomEntries
-          .map((r) => r.className)
+          .map((r) => r.homeroomClassName || r.className)
           .filter(Boolean)
           .join(', ');
         const roleSummary =
           matchedRoles.length > 0
             ? matchedRoles
-                .map((r) => `${r.roleLabel} (${r.studentName})`)
-                .join(' • ')
-            : (t.roleLabels || t.roles || []).join(' • ');
+              .map((r) => {
+                const baseLabel =
+                  r.summary ||
+                  r.roleLabel ||
+                  [
+                    r.isHomeroom
+                      ? r.homeroomClassName
+                        ? `GVCN ${r.homeroomClassName}`
+                        : 'GVCN'
+                      : null,
+                    Array.isArray(r.subjects) && r.subjects.length > 0
+                      ? `GV Bộ môn ${r.subjects.join(', ')}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' • ') ||
+                  'Giáo viên';
+                return children.length > 1 || selectedChildId === 'ALL'
+                  ? `${baseLabel} — ${r.studentName}`
+                  : baseLabel;
+              })
+              .join(' • ')
+            : t.roleSummary || (t.roleLabels || t.roles || []).join(' • ');
 
         return {
           ...t,
@@ -170,9 +257,9 @@ export default function ParentContactScreen() {
         );
       })
       .sort((a, b) => Number(b.isHomeroomForScope) - Number(a.isHomeroomForScope));
-  }, [teachers, selectedChildId, teacherSearch]);
+  }, [teachers, selectedChildId, teacherSearch, children.length]);
 
-  const openChat = async (teacher: ParentTeacherItem) => {
+  const openChat = useCallback(async (teacher: ParentTeacherItem) => {
     setActiveTeacher(teacher);
     setLoadingThread(true);
     try {
@@ -186,7 +273,39 @@ export default function ParentContactScreen() {
     } finally {
       setLoadingThread(false);
     }
-  };
+  }, []);
+
+  // Auto-open homeroom teacher chat when navigated from Parent Dashboard
+  useEffect(() => {
+    if (!params.teacherId || teachers.length === 0) return;
+    const openKey = `${params.teacherId}|${params.t ?? ''}`;
+    if (autoOpenedTeacherRef.current === openKey) return;
+    const target = teachers.find((t) => t.id === params.teacherId);
+    if (!target) return;
+    autoOpenedTeacherRef.current = openKey;
+    const timer = setTimeout(() => {
+      void openChat(target);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [params.teacherId, params.t, teachers, openChat]);
+
+  // Teachers strictly eligible for the child selected in the Create Proposal modal
+  const proposalTeachers = useMemo(() => {
+    if (!propStudentId) return teachers;
+    return teachers.filter((t) => {
+      if (Array.isArray(t.studentRoles) && t.studentRoles.length > 0) {
+        return t.studentRoles.some((sr) => sr.studentId === propStudentId);
+      }
+      if (Array.isArray(t.studentIds) && t.studentIds.length > 0) {
+        return t.studentIds.includes(propStudentId);
+      }
+      return true;
+    });
+  }, [teachers, propStudentId]);
+
+  const effectivePropTeacherId = proposalTeachers.some((t) => t.id === propTeacherId)
+    ? propTeacherId
+    : proposalTeachers[0]?.id || '';
 
   const handleSendMessage = async () => {
     if (!activeTeacher || !msgInput.trim() || sendingMsg) return;
@@ -196,6 +315,7 @@ export default function ParentContactScreen() {
     try {
       const sent = await parentApi.sendMessage(activeTeacher.id, text);
       setThread((prev) => [...prev, sent]);
+      setTimeout(() => chatListRef.current?.scrollToEnd({ animated: true }), 80);
     } catch (err: unknown) {
       setMsgInput(text);
       Alert.alert(
@@ -208,19 +328,20 @@ export default function ParentContactScreen() {
   };
 
   const handleCreateProposal = async () => {
-    if (!propTeacherId || !propTitle.trim() || !propContent.trim()) {
+    if (!effectivePropTeacherId || !propTitle.trim() || !propContent.trim()) {
       Alert.alert('Thiếu thông tin', 'Vui lòng chọn giáo viên, tiêu đề và nội dung đề xuất.');
       return;
     }
     setSubmittingProp(true);
     try {
       const created = await parentApi.createProposal({
-        teacherId: propTeacherId,
+        teacherId: effectivePropTeacherId,
         title: propTitle.trim(),
         content: propContent.trim(),
         studentId: propStudentId || undefined,
       });
       setProposals((prev) => [created, ...prev]);
+      invalidateCache('parent:');
       setPropTitle('');
       setPropContent('');
       setShowProposalModal(false);
@@ -232,14 +353,16 @@ export default function ParentContactScreen() {
     }
   };
 
-  if (loading) return <LoadingView label="Đang tải danh bạ giáo viên..." />;
-  if (error) {
+  if (loading && teachers.length === 0) {
+    return <SkeletonDashboard label="Đang tải danh bạ giáo viên..." />;
+  }
+  if (error && teachers.length === 0) {
     return (
       <ErrorView
         message={error}
         onRetry={() => {
           setLoading(true);
-          void loadData();
+          void loadData(true);
         }}
       />
     );
@@ -254,7 +377,7 @@ export default function ParentContactScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void loadData();
+              void loadData(true);
             }}
             tintColor={p.indigo}
           />
@@ -533,8 +656,10 @@ export default function ParentContactScreen() {
               </View>
             ) : (
               <FlatList
+                ref={chatListRef}
                 data={thread}
                 keyExtractor={(item) => item.id}
+                onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })}
                 contentContainerStyle={{ padding: 14, gap: 10, flexGrow: 1 }}
                 ListEmptyComponent={
                   <EmptyView
@@ -623,35 +748,6 @@ export default function ParentContactScreen() {
               Gửi Đề xuất / Đơn xin phép
             </Text>
 
-            <Text style={{ fontSize: 12, fontWeight: '700', color: p.textMuted }}>
-              Chọn Giáo viên nhận:
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {teachers.map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  onPress={() => setPropTeacherId(t.id)}
-                  style={[
-                    styles.pill,
-                    {
-                      backgroundColor: propTeacherId === t.id ? p.indigo : p.cardMuted,
-                      borderColor: propTeacherId === t.id ? p.indigo : p.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: propTeacherId === t.id ? '#FFFFFF' : p.text,
-                      fontWeight: '700',
-                      fontSize: 12,
-                    }}
-                  >
-                    {t.fullName}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
             {children.length > 0 ? (
               <>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: p.textMuted }}>
@@ -684,6 +780,35 @@ export default function ParentContactScreen() {
                 </ScrollView>
               </>
             ) : null}
+
+            <Text style={{ fontSize: 12, fontWeight: '700', color: p.textMuted }}>
+              Chọn Giáo viên nhận (đúng lớp của con):
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {proposalTeachers.map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  onPress={() => setPropTeacherId(t.id)}
+                  style={[
+                    styles.pill,
+                    {
+                      backgroundColor: effectivePropTeacherId === t.id ? p.indigo : p.cardMuted,
+                      borderColor: effectivePropTeacherId === t.id ? p.indigo : p.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: effectivePropTeacherId === t.id ? '#FFFFFF' : p.text,
+                      fontWeight: '700',
+                      fontSize: 12,
+                    }}
+                  >
+                    {t.fullName}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             <TextInput
               style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}

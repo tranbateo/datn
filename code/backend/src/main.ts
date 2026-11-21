@@ -16,7 +16,8 @@ async function bootstrap() {
 
   // Enable CORS with environment allowlist (GEMINI.md Section 9: No wildcard with credentials)
   const allowedOrigins = (
-    process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000'
+    process.env.CORS_ORIGINS ||
+    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:8081,http://127.0.0.1:8081'
   )
     .split(',')
     .map((o) => o.trim())

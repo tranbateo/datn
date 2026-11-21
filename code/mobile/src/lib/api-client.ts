@@ -20,9 +20,18 @@ const ERROR_TRANSLATIONS: Record<string, string> = {
     'Bản quyền hệ thống của trường đã hết hạn. Vui lòng liên hệ Quản trị viên nhà trường.',
   ACCOUNT_DISABLED:
     'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Giáo viên chủ nhiệm hoặc Nhà trường.',
+  PENDING_APPROVAL:
+    'Tài khoản đang tạm khóa hoặc chờ kích hoạt. Vui lòng liên hệ Giáo viên chủ nhiệm hoặc Nhà trường.',
   MUST_CHANGE_PASSWORD:
     'Bạn cần đổi mật khẩu khởi tạo trước khi sử dụng hệ thống.',
+  INVALID_CREDENTIALS: 'Thông tin đăng nhập hoặc mật khẩu không chính xác.',
   'Invalid credentials': 'Thông tin đăng nhập hoặc mật khẩu không chính xác.',
+  OTP_NOT_FOUND: 'Không tìm thấy mã xác thực OTP. Vui lòng đăng nhập lại để nhận mã mới.',
+  OTP_EXPIRED: 'Mã xác thực OTP đã hết hạn. Vui lòng quay lại đăng nhập để nhận mã mới.',
+  OTP_INVALID: 'Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại email.',
+  EMAIL_SEND_FAILED: 'Không thể gửi email OTP lúc này. Vui lòng thử lại sau ít phút.',
+  INVALID_REFRESH_TOKEN: 'Phiên đăng nhập đã hết hạn hoặc bị thu hồi. Vui lòng đăng nhập lại.',
+  USER_NOT_FOUND: 'Không tìm thấy tài khoản người dùng.',
   Unauthorized: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
 };
 
@@ -38,7 +47,7 @@ export function translateBackendError(raw: string): string {
 
 let refreshPromise: Promise<string | null> | null = null;
 
-async function attemptTokenRefresh(): Promise<string | null> {
+export async function attemptTokenRefresh(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {

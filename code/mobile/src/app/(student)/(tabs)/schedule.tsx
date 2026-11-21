@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { calendarApi, type CalendarEvent } from '@/services/mobile.services';
+import { invalidateCache } from '@/lib/ttl-cache';
 import {
   Badge,
   Card,
@@ -26,6 +27,29 @@ import {
 } from '@/components/ui/mobile-ui';
 
 const DAY_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+const QUICK_TIME_SLOTS = [
+  { label: 'Sáng (07:30)', start: '07:30', end: '09:00' },
+  { label: 'Chiều (14:00)', start: '14:00', end: '15:30' },
+  { label: 'Tối 1 (19:00)', start: '19:00', end: '20:30' },
+  { label: 'Tối 2 (20:30)', start: '20:30', end: '22:00' },
+] as const;
+
+function formatLocalDateYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function normalizeTimeHm(raw: string): string | null {
+  const match = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
 
 function getStartOfWeek(ref: Date): Date {
   const d = new Date(ref);
@@ -59,7 +83,7 @@ export default function StudentScheduleScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState('');
   const [type, setType] = useState<'CLASS' | 'EXAM' | 'STUDY'>('CLASS');
-  const [dateStr, setDateStr] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateStr, setDateStr] = useState(() => formatLocalDateYmd(new Date()));
   const [startStr, setStartStr] = useState('19:00');
   const [endStr, setEndStr] = useState('20:30');
   const [description, setDescription] = useState('');
@@ -137,6 +161,7 @@ export default function StudentScheduleScreen() {
         });
       }
       Alert.alert('Thành công', `Đã trích xuất và lưu ${parsed.length} buổi học từ ảnh!`);
+      invalidateCache('student:home');
       await loadEvents();
     } catch (err: unknown) {
       Alert.alert(
@@ -157,25 +182,47 @@ export default function StudentScheduleScreen() {
   };
 
   const handleCreateEvent = async () => {
-    if (!title.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên lịch học và ngày theo định dạng YYYY-MM-DD.');
+    const cleanDate = dateStr.trim();
+    const normStart = normalizeTimeHm(startStr);
+    const normEnd = normalizeTimeHm(endStr);
+
+    if (!title.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên môn học hoặc sự kiện.');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+      Alert.alert('Ngày không hợp lệ', 'Hãy chạm chọn ngày hoặc nhập theo dạng YYYY-MM-DD.');
+      return;
+    }
+    if (!normStart || !normEnd) {
+      Alert.alert('Giờ không hợp lệ', 'Giờ bắt đầu/kết thúc phải đúng định dạng HH:mm (VD: 19:00).');
+      return;
+    }
+
+    const startDateObj = new Date(`${cleanDate}T${normStart}:00`);
+    const endDateObj = new Date(`${cleanDate}T${normEnd}:00`);
+    if (Number.isNaN(startDateObj.getTime()) || Number.isNaN(endDateObj.getTime())) {
+      Alert.alert('Thời gian không hợp lệ', 'Vui lòng kiểm tra lại ngày và giờ đã chọn.');
+      return;
+    }
+    if (endDateObj.getTime() <= startDateObj.getTime()) {
+      Alert.alert('Giờ kết thúc không hợp lệ', 'Giờ kết thúc phải lớn hơn giờ bắt đầu.');
       return;
     }
 
     setSaving(true);
     try {
-      const startIso = new Date(`${dateStr.trim()}T${startStr.trim()}:00`).toISOString();
-      const endIso = new Date(`${dateStr.trim()}T${endStr.trim()}:00`).toISOString();
       await calendarApi.create({
         title: title.trim(),
         type,
-        startTime: startIso,
-        endTime: endIso,
+        startTime: startDateObj.toISOString(),
+        endTime: endDateObj.toISOString(),
         description: description.trim() || undefined,
       });
       setTitle('');
       setDescription('');
       setShowAdd(false);
+      invalidateCache('student:home');
       await loadEvents();
     } catch (err: unknown) {
       Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể lưu sự kiện.');
@@ -194,6 +241,7 @@ export default function StudentScheduleScreen() {
           try {
             await calendarApi.remove(ev.id);
             setEvents((prev) => prev.filter((item) => item.id !== ev.id));
+            invalidateCache('student:home');
           } catch (err: unknown) {
             Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể xóa sự kiện.');
           }
@@ -441,6 +489,42 @@ export default function StudentScheduleScreen() {
               ))}
             </View>
 
+            <Text style={{ fontSize: 12, fontWeight: '700', color: p.textMuted }}>
+              Chọn nhanh ngày trong tuần:
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 6 }}
+            >
+              {weekDays.map((d, idx) => {
+                const ymd = formatLocalDateYmd(d);
+                const picked = dateStr === ymd;
+                return (
+                  <TouchableOpacity
+                    key={`pick-${ymd}`}
+                    onPress={() => setDateStr(ymd)}
+                    style={{
+                      paddingHorizontal: 11,
+                      paddingVertical: 7,
+                      borderRadius: 10,
+                      backgroundColor: picked ? p.primary : p.cardMuted,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: picked ? '#FFFFFF' : p.text,
+                        fontSize: 12,
+                        fontWeight: '700',
+                      }}
+                    >
+                      {DAY_LABELS[idx]} {d.getDate()}/{d.getMonth() + 1}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             <TextInput
               style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
               placeholder="Ngày (YYYY-MM-DD)"
@@ -448,6 +532,44 @@ export default function StudentScheduleScreen() {
               value={dateStr}
               onChangeText={setDateStr}
             />
+
+            <Text style={{ fontSize: 12, fontWeight: '700', color: p.textMuted }}>
+              Khung giờ phổ biến:
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 6 }}
+            >
+              {QUICK_TIME_SLOTS.map((slot) => {
+                const active = startStr === slot.start && endStr === slot.end;
+                return (
+                  <TouchableOpacity
+                    key={slot.label}
+                    onPress={() => {
+                      setStartStr(slot.start);
+                      setEndStr(slot.end);
+                    }}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 7,
+                      borderRadius: 10,
+                      backgroundColor: active ? p.indigo : p.cardMuted,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: active ? '#FFFFFF' : p.text,
+                        fontSize: 12,
+                        fontWeight: '700',
+                      }}
+                    >
+                      {slot.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <TextInput

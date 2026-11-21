@@ -16,14 +16,22 @@ import {
   type LearningAnalytics,
   type MasteryStatus,
 } from '@/services/mobile.services';
+import { getCached, isCacheFresh, setCached } from '@/lib/ttl-cache';
 import {
   Badge,
   Card,
   EmptyView,
   ErrorView,
-  LoadingView,
+  SkeletonDashboard,
   usePalette,
 } from '@/components/ui/mobile-ui';
+
+const PROGRESS_CACHE_KEY = 'student:progress';
+
+interface ProgressSnapshot {
+  profile: GamificationProfile;
+  analytics: LearningAnalytics;
+}
 
 const MASTERY_META: Record<
   MasteryStatus,
@@ -38,13 +46,28 @@ const MASTERY_META: Record<
 export default function StudentProgressScreen() {
   const p = usePalette();
   const router = useRouter();
-  const [profile, setProfile] = useState<GamificationProfile | null>(null);
-  const [analytics, setAnalytics] = useState<LearningAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = getCached<ProgressSnapshot>(PROGRESS_CACHE_KEY);
+  const [profile, setProfile] = useState<GamificationProfile | null>(
+    cached?.profile ?? null,
+  );
+  const [analytics, setAnalytics] = useState<LearningAnalytics | null>(
+    cached?.analytics ?? null,
+  );
+  const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
+    if (!force && isCacheFresh(PROGRESS_CACHE_KEY)) {
+      const snap = getCached<ProgressSnapshot>(PROGRESS_CACHE_KEY);
+      if (snap) {
+        setProfile(snap.profile);
+        setAnalytics(snap.analytics);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+    }
     try {
       const [gProf, gAnal] = await Promise.all([
         gamificationApi.getProfile(),
@@ -52,6 +75,10 @@ export default function StudentProgressScreen() {
       ]);
       setProfile(gProf);
       setAnalytics(gAnal);
+      setCached<ProgressSnapshot>(PROGRESS_CACHE_KEY, {
+        profile: gProf,
+        analytics: gAnal,
+      });
       setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Không thể tải báo cáo tiến độ.');
@@ -63,21 +90,20 @@ export default function StudentProgressScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const run = async () => {
-        await loadData();
-      };
-      void run();
+      void loadData(false);
     }, [loadData]),
   );
 
-  if (loading) return <LoadingView label="Đang tổng hợp tiến độ học tập..." />;
-  if (error) {
+  if (loading && !profile) {
+    return <SkeletonDashboard label="Đang tổng hợp tiến độ học tập..." />;
+  }
+  if (error && !profile) {
     return (
       <ErrorView
         message={error}
         onRetry={() => {
           setLoading(true);
-          void loadData();
+          void loadData(true);
         }}
       />
     );
@@ -94,7 +120,7 @@ export default function StudentProgressScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void loadData();
+              void loadData(true);
             }}
             tintColor={p.primary}
           />
@@ -181,6 +207,14 @@ export default function StudentProgressScreen() {
           <View style={{ gap: 10 }}>
             {analytics.subjects.map((sub) => {
               const meta = MASTERY_META[sub.masteryStatus] || MASTERY_META.unassessed;
+              const trendMeta =
+                sub.trend === 'up'
+                  ? { label: '↗ Đang tiến bộ', color: p.emerald }
+                  : sub.trend === 'down'
+                    ? { label: '↘ Cần chú ý', color: p.rose }
+                    : sub.trend === 'stable'
+                      ? { label: '→ Ổn định', color: p.primary }
+                      : null;
               return (
                 <Card key={sub.subjectId} style={{ gap: 8 }}>
                   <View style={styles.rowBetween}>
@@ -189,7 +223,7 @@ export default function StudentProgressScreen() {
                     </Text>
                     <Badge label={meta.label} tone={meta.tone} />
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 14 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
                     <Text style={{ fontSize: 12, color: p.textMuted }}>
                       Số bài: <Text style={{ fontWeight: '700', color: p.text }}>{sub.attemptsCount}</Text>
                     </Text>
@@ -205,12 +239,84 @@ export default function StudentProgressScreen() {
                         {sub.bestScore !== null ? `${sub.bestScore}/100` : '--'}
                       </Text>
                     </Text>
+                    {trendMeta ? (
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: trendMeta.color }}>
+                        {trendMeta.label}
+                      </Text>
+                    ) : null}
                   </View>
                   {sub.recommendation ? (
                     <Text style={{ fontSize: 12, color: p.textMuted, lineHeight: 18 }}>
                       {sub.recommendation}
                     </Text>
                   ) : null}
+                  {Array.isArray(sub.recentMistakes) && sub.recentMistakes.length > 0 ? (
+                    <View
+                      style={{
+                        backgroundColor: p.roseSoft,
+                        padding: 10,
+                        borderRadius: 10,
+                        gap: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: p.rose }}>
+                        Điểm hay nhầm gần đây:
+                      </Text>
+                      {sub.recentMistakes.slice(0, 2).map((m, idx) => (
+                        <Text
+                          key={`${sub.subjectId}-m-${idx}`}
+                          style={{ fontSize: 12, color: p.text, lineHeight: 17 }}
+                          numberOfLines={2}
+                        >
+                          • {m}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: '/(student)/(tabs)/explore',
+                          params: {
+                            subjectId: sub.subjectId,
+                            subjectName: sub.subjectName,
+                            prefill: `Thầy/Cô AI ơi, em muốn ôn tập lại kiến thức trọng tâm môn ${sub.subjectName} lớp ${sub.grade} để cải thiện điểm nhé!`,
+                          },
+                        })
+                      }
+                      style={{
+                        flex: 1,
+                        backgroundColor: p.primarySoft,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: p.primary, fontSize: 12, fontWeight: '800' }}>
+                        Ôn cùng Gia sư AI
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: '/(student)/(tabs)/practice',
+                          params: { subjectId: sub.subjectId },
+                        })
+                      }
+                      style={{
+                        flex: 1,
+                        backgroundColor: p.cardMuted,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: p.text, fontSize: 12, fontWeight: '800' }}>
+                        Luyện đề ngay
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </Card>
               );
             })}

@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  BackHandler,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,12 +16,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
+  generateClientUuid,
+  matchesQuizOption,
   parseQuestionOptions,
   quizApi,
   type Question,
   type QuestionResult,
   type Quiz,
 } from '@/services/mobile.services';
+import { invalidateCache } from '@/lib/ttl-cache';
 import {
   ADAPTIVE_CONTENT_STYLE,
   Badge,
@@ -44,6 +51,187 @@ function isEssayQuestion(q: Question): boolean {
   );
 }
 
+/**
+ * Isolated countdown timer component so ticking every second NEVER re-renders 30–50 question cards.
+ */
+const ExamTimer = React.memo(function ExamTimer({
+  initialSeconds,
+  active,
+  onExpire,
+}: {
+  initialSeconds: number;
+  active: boolean;
+  onExpire: () => void;
+}) {
+  const p = usePalette();
+  const [timeLeft, setTimeLeft] = useState(initialSeconds);
+  const expiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+
+  useEffect(() => {
+    if (active && timeLeft === 0 && !expiredRef.current) {
+      expiredRef.current = true;
+      onExpire();
+    }
+  }, [active, timeLeft, onExpire]);
+
+  const urgent = timeLeft < 180;
+
+  return (
+    <View
+      style={[
+        styles.timerBadge,
+        { backgroundColor: urgent ? p.roseSoft : p.primarySoft },
+      ]}
+    >
+      <Ionicons name="time-outline" size={15} color={urgent ? p.rose : p.primary} />
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: '800',
+          color: urgent ? p.rose : p.primary,
+        }}
+      >
+        {formatClock(timeLeft)}
+      </Text>
+    </View>
+  );
+});
+
+interface QuestionCardProps {
+  q: Question;
+  idx: number;
+  selected: string;
+  qr?: QuestionResult;
+  hasResult: boolean;
+  onAnswerChange: (questionId: string, value: string) => void;
+}
+
+const QuestionCard = React.memo(function QuestionCard({
+  q,
+  idx,
+  selected,
+  qr,
+  hasResult,
+  onAnswerChange,
+}: QuestionCardProps) {
+  const p = usePalette();
+  const isEssay = isEssayQuestion(q);
+  const options = useMemo(() => parseQuestionOptions(q.options), [q.options]);
+
+  return (
+    <Card style={{ gap: 10 }}>
+      <View style={styles.qHead}>
+        <Badge label={`Câu ${idx + 1}`} tone="indigo" />
+        <Badge label={isEssay ? 'Tự luận' : 'Trắc nghiệm'} tone="slate" />
+        {qr ? (
+          <Badge
+            label={qr.isCorrect ? 'Đúng' : 'Sai'}
+            tone={qr.isCorrect ? 'emerald' : 'rose'}
+          />
+        ) : null}
+      </View>
+
+      <RichText content={q.content} color={p.text} boldColor={p.text} fontSize={15} />
+
+      {isEssay ? (
+        <TextInput
+          editable={!hasResult}
+          style={[
+            styles.essayInput,
+            { backgroundColor: p.bg, borderColor: p.border, color: p.text },
+          ]}
+          placeholder="Nhập câu trả lời tự luận của em..."
+          placeholderTextColor={p.textMuted}
+          value={selected}
+          onChangeText={(txt) => onAnswerChange(q.id, txt)}
+          multiline
+        />
+      ) : (
+        <View style={{ gap: 8 }}>
+          {options.map((opt, optIdx) => {
+            const letter = String.fromCharCode(65 + optIdx);
+            const isPicked = matchesQuizOption(selected, opt, letter);
+            const isCorrectOpt = Boolean(
+              qr && matchesQuizOption(qr.correctOption, opt, letter),
+            );
+            let borderColor = p.border;
+            let bg = p.bg;
+            if (hasResult) {
+              if (isCorrectOpt) {
+                borderColor = p.emerald;
+                bg = p.emeraldSoft;
+              } else if (isPicked && !qr?.isCorrect) {
+                borderColor = p.rose;
+                bg = p.roseSoft;
+              }
+            } else if (isPicked) {
+              borderColor = p.primary;
+              bg = p.primarySoft;
+            }
+
+            return (
+              <TouchableOpacity
+                key={`${q.id}-opt-${optIdx}`}
+                disabled={hasResult}
+                onPress={() => onAnswerChange(q.id, opt)}
+                style={[styles.optionBtn, { borderColor, backgroundColor: bg }]}
+              >
+                <Text
+                  style={{
+                    fontWeight: '800',
+                    color: isPicked ? p.primary : p.textMuted,
+                    width: 22,
+                  }}
+                >
+                  {letter}.
+                </Text>
+                <Text style={{ flex: 1, color: p.text, fontSize: 14, lineHeight: 20 }}>
+                  {opt}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      {qr ? (
+        <View style={[styles.explainBox, { backgroundColor: p.cardMuted, gap: 6 }]}>
+          <Text style={{ fontSize: 12, fontWeight: '800', color: p.emerald }}>
+            Đáp án đúng: {qr.correctOption}
+          </Text>
+          {qr.errorAnalysis ? (
+            <Text style={{ fontSize: 12, color: p.rose, lineHeight: 18 }}>
+              Phân tích lỗi: {qr.errorAnalysis}
+            </Text>
+          ) : null}
+          {qr.correction || qr.explanation ? (
+            <RichText
+              content={`**Giải thích:** ${qr.correction || qr.explanation}`}
+              color={p.text}
+              boldColor={p.text}
+              fontSize={12}
+            />
+          ) : null}
+        </View>
+      ) : null}
+    </Card>
+  );
+});
+
 export default function QuizExamScreen() {
   const p = usePalette();
   const router = useRouter();
@@ -54,7 +242,7 @@ export default function QuizExamScreen() {
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [timeLeft, setTimeLeft] = useState<number>(1800);
+  const [initialDurationSec, setInitialDurationSec] = useState<number>(1800);
   const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -68,10 +256,11 @@ export default function QuizExamScreen() {
     resultsMap: Record<string, QuestionResult>;
   } | null>(null);
 
-  const scrollRef = useRef<ScrollView>(null);
-  const questionOffsets = useRef<Record<string, number>>({});
+  const listRef = useRef<FlatList<{ q: Question; idx: number }>>(null);
   const submittedRef = useRef(false);
   const answersRef = useRef<Record<string, string>>({});
+  // BR-QUIZ-002: Stable client-side UUID guarantees idempotent submission even on retry
+  const idempotentAttemptIdRef = useRef<string>(generateClientUuid());
 
   useEffect(() => {
     answersRef.current = answers;
@@ -100,7 +289,7 @@ export default function QuizExamScreen() {
       } else {
         const data = await quizApi.getById(quizId);
         setQuiz(data);
-        setTimeLeft(Math.max(60, (data.duration || 30) * 60));
+        setInitialDurationSec(Math.max(60, (data.duration || 30) * 60));
       }
       setError(null);
     } catch (err: unknown) {
@@ -117,14 +306,20 @@ export default function QuizExamScreen() {
     void run();
   }, [loadQuiz]);
 
+  const handleAnswerChange = useCallback((questionId: string, value: string) => {
+    setAnswers((prev) =>
+      prev[questionId] === value ? prev : { ...prev, [questionId]: value },
+    );
+  }, []);
+
   const submitExam = useCallback(
     async (exitReason?: string) => {
       if (submittedRef.current || !quiz) return;
       submittedRef.current = true;
       setSubmitting(true);
 
-      const questions = quiz.questions || [];
-      const payload = questions.map((q) => {
+      const questionsList = quiz.questions || [];
+      const payload = questionsList.map((q) => {
         const val = (answersRef.current[q.id] || '').trim();
         const isEssay = isEssayQuestion(q);
         return {
@@ -135,7 +330,12 @@ export default function QuizExamScreen() {
       });
 
       try {
-        const res = await quizApi.submit(quiz.id, payload, exitReason);
+        const res = await quizApi.submit(
+          quiz.id,
+          payload,
+          exitReason,
+          idempotentAttemptIdRef.current,
+        );
         const map: Record<string, QuestionResult> = {};
         for (const qr of res.questionResults || []) {
           map[qr.questionId] = qr;
@@ -153,7 +353,8 @@ export default function QuizExamScreen() {
           resultsMap: map,
         });
         setFilterMode('all');
-        scrollRef.current?.scrollTo({ y: 0, animated: true });
+        invalidateCache('student:');
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
       } catch (err: unknown) {
         submittedRef.current = false;
         Alert.alert(
@@ -167,26 +368,38 @@ export default function QuizExamScreen() {
     [quiz],
   );
 
-  // Countdown timer (only in active exam mode)
-  useEffect(() => {
-    if (loading || result || attemptId) return;
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [loading, result, attemptId]);
+  const handleTimeExpire = useCallback(() => {
+    void submitExam('TIME_EXPIRED');
+  }, [submitExam]);
 
-  useEffect(() => {
-    if (!loading && !result && !attemptId && timeLeft === 0) {
-      void submitExam('TIME_EXPIRED');
+  const handleBack = useCallback(() => {
+    if (!result && !attemptId && !loading && quiz) {
+      Alert.alert(
+        'Thoát phòng thi?',
+        'Bài làm chưa nộp sẽ không được lưu nếu em thoát ngay bây giờ.',
+        [
+          { text: 'Ở lại', style: 'cancel' },
+          { text: 'Nộp bài luôn', onPress: () => void submitExam('AUTO_SUBMIT_ON_EXIT') },
+          { text: 'Thoát', style: 'destructive', onPress: () => router.back() },
+        ],
+      );
+      return;
     }
-  }, [timeLeft, loading, result, attemptId, submitExam]);
+    router.back();
+  }, [result, attemptId, loading, quiz, submitExam, router]);
+
+  // Intercept Android hardware back button during active exam so student cannot accidentally lose progress
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!result && !attemptId && !loading && quiz) {
+        handleBack();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [result, attemptId, loading, quiz, handleBack]);
 
   const questions = useMemo(() => quiz?.questions || [], [quiz]);
 
@@ -205,9 +418,11 @@ export default function QuizExamScreen() {
       });
   }, [questions, filterMode, result, answers]);
 
-  const confirmSubmit = () => {
+  const confirmSubmit = useCallback(() => {
     const total = questions.length;
-    const answered = Object.values(answers).filter((v) => v.trim().length > 0).length;
+    const answered = Object.values(answersRef.current).filter(
+      (v) => v.trim().length > 0,
+    ).length;
     Alert.alert(
       'Xác nhận nộp bài',
       `Em đã trả lời ${answered}/${total} câu hỏi. Chắc chắn muốn nộp bài ngay?`,
@@ -216,23 +431,15 @@ export default function QuizExamScreen() {
         { text: 'Nộp bài', onPress: () => void submitExam('USER_SUBMIT') },
       ],
     );
-  };
+  }, [questions.length, submitExam]);
 
-  const handleBack = () => {
-    if (!result && !attemptId) {
-      Alert.alert(
-        'Thoát phòng thi?',
-        'Bài làm chưa nộp sẽ không được lưu nếu em thoát ngay bây giờ.',
-        [
-          { text: 'Ở lại', style: 'cancel' },
-          { text: 'Nộp bài luôn', onPress: () => void submitExam('AUTO_SUBMIT_ON_EXIT') },
-          { text: 'Thoát', style: 'destructive', onPress: () => router.back() },
-        ],
-      );
-      return;
-    }
-    router.back();
-  };
+  const jumpToQuestionIndex = useCallback((index: number) => {
+    listRef.current?.scrollToIndex({
+      index,
+      animated: true,
+      viewPosition: 0.05,
+    });
+  }, []);
 
   if (loading) return <LoadingView label="Đang tải phòng thi..." />;
   if (error || !quiz) {
@@ -272,27 +479,12 @@ export default function QuizExamScreen() {
           </Text>
         </View>
         {!result ? (
-          <View
-            style={[
-              styles.timerBadge,
-              { backgroundColor: timeLeft < 180 ? p.roseSoft : p.primarySoft },
-            ]}
-          >
-            <Ionicons
-              name="time-outline"
-              size={15}
-              color={timeLeft < 180 ? p.rose : p.primary}
-            />
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: '800',
-                color: timeLeft < 180 ? p.rose : p.primary,
-              }}
-            >
-              {formatClock(timeLeft)}
-            </Text>
-          </View>
+          <ExamTimer
+            key={`${quiz.id}-${initialDurationSec}`}
+            initialSeconds={initialDurationSec}
+            active={!loading && !result && !attemptId}
+            onExpire={handleTimeExpire}
+          />
         ) : (
           <Badge
             label={`${result.normalizedScore}/100`}
@@ -391,12 +583,7 @@ export default function QuizExamScreen() {
               return (
                 <TouchableOpacity
                   key={`nav-${q.id}`}
-                  onPress={() => {
-                    const y = questionOffsets.current[q.id];
-                    if (typeof y === 'number') {
-                      scrollRef.current?.scrollTo({ y: Math.max(0, y - 10), animated: true });
-                    }
-                  }}
+                  onPress={() => jumpToQuestionIndex(idx)}
                   style={[styles.numChip, { backgroundColor: bg }]}
                 >
                   <Text style={{ fontSize: 11, fontWeight: '800', color: fg }}>
@@ -409,181 +596,91 @@ export default function QuizExamScreen() {
         ) : null}
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Score Summary Banner */}
-        {result ? (
-          <Card
-            style={{
-              backgroundColor:
-                result.normalizedScore >= 50 ? p.emeraldSoft : p.roseSoft,
-              borderColor: result.normalizedScore >= 50 ? p.emerald : p.rose,
-              gap: 8,
-            }}
-          >
-            <Text style={{ fontSize: 19, fontWeight: '800', color: p.text }}>
-              {attemptId ? 'Xem lại bài làm đã lưu' : 'Đã hoàn thành bài kiểm tra!'}
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              <Badge
-                label={`Điểm: ${result.normalizedScore}/100`}
-                tone={result.normalizedScore >= 50 ? 'emerald' : 'rose'}
-              />
-              <Badge label={`Đúng: ${result.score}/${result.total} câu`} tone="blue" />
-              {result.xp > 0 ? <Badge label={`+${result.xp} XP`} tone="amber" /> : null}
-            </View>
-          </Card>
-        ) : null}
-
-        {displayedQuestions.length === 0 ? (
-          <Card style={{ alignItems: 'center', paddingVertical: 24, gap: 6 }}>
-            <Ionicons name="checkmark-circle" size={32} color={p.emerald} />
-            <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>
-              {result ? 'Tuyệt vời! Em không sai câu nào!' : 'Em đã trả lời hết tất cả các câu hỏi!'}
-            </Text>
-          </Card>
-        ) : (
-          displayedQuestions.map(({ q, idx }) => {
-            const isEssay = isEssayQuestion(q);
-            const options = parseQuestionOptions(q.options);
-            const selected = answers[q.id] || '';
-            const qr = result?.resultsMap[q.id];
-
-            return (
-              <View
-                key={q.id}
-                onLayout={(e) => {
-                  questionOffsets.current[q.id] = e.nativeEvent.layout.y;
+        <FlatList
+          ref={listRef}
+          data={displayedQuestions}
+          keyExtractor={(item) => item.q.id}
+          contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
+          onScrollToIndexFailed={(info) => {
+            listRef.current?.scrollToOffset({
+              offset: Math.max(0, info.averageItemLength * info.index),
+              animated: true,
+            });
+          }}
+          ListHeaderComponent={
+            result ? (
+              <Card
+                style={{
+                  backgroundColor:
+                    result.normalizedScore >= 50 ? p.emeraldSoft : p.roseSoft,
+                  borderColor: result.normalizedScore >= 50 ? p.emerald : p.rose,
+                  gap: 8,
                 }}
               >
-                <Card style={{ gap: 10 }}>
-                  <View style={styles.qHead}>
-                    <Badge label={`Câu ${idx + 1}`} tone="indigo" />
-                    <Badge
-                      label={isEssay ? 'Tự luận' : 'Trắc nghiệm'}
-                      tone="slate"
-                    />
-                    {qr ? (
-                      <Badge
-                        label={qr.isCorrect ? 'Đúng' : 'Sai'}
-                        tone={qr.isCorrect ? 'emerald' : 'rose'}
-                      />
-                    ) : null}
-                  </View>
-
-                  <RichText content={q.content} color={p.text} boldColor={p.text} fontSize={15} />
-
-                  {isEssay ? (
-                    <TextInput
-                      editable={!result}
-                      style={[
-                        styles.essayInput,
-                        { backgroundColor: p.bg, borderColor: p.border, color: p.text },
-                      ]}
-                      placeholder="Nhập câu trả lời tự luận của em..."
-                      placeholderTextColor={p.textMuted}
-                      value={selected}
-                      onChangeText={(txt) =>
-                        setAnswers((prev) => ({ ...prev, [q.id]: txt }))
-                      }
-                      multiline
-                    />
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {options.map((opt, optIdx) => {
-                        const letter = String.fromCharCode(65 + optIdx);
-                        const isPicked = selected === opt || selected === letter;
-                        const isCorrectOpt =
-                          qr && (qr.correctOption === opt || qr.correctOption === letter);
-                        let borderColor = p.border;
-                        let bg = p.bg;
-                        if (result) {
-                          if (isCorrectOpt) {
-                            borderColor = p.emerald;
-                            bg = p.emeraldSoft;
-                          } else if (isPicked && !qr?.isCorrect) {
-                            borderColor = p.rose;
-                            bg = p.roseSoft;
-                          }
-                        } else if (isPicked) {
-                          borderColor = p.primary;
-                          bg = p.primarySoft;
-                        }
-
-                        return (
-                          <TouchableOpacity
-                            key={`${q.id}-opt-${optIdx}`}
-                            disabled={Boolean(result)}
-                            onPress={() =>
-                              setAnswers((prev) => ({ ...prev, [q.id]: opt }))
-                            }
-                            style={[
-                              styles.optionBtn,
-                              { borderColor, backgroundColor: bg },
-                            ]}
-                          >
-                            <Text
-                              style={{
-                                fontWeight: '800',
-                                color: isPicked ? p.primary : p.textMuted,
-                                width: 22,
-                              }}
-                            >
-                              {letter}.
-                            </Text>
-                            <Text style={{ flex: 1, color: p.text, fontSize: 14, lineHeight: 20 }}>
-                              {opt}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-
-                  {qr ? (
-                    <View style={[styles.explainBox, { backgroundColor: p.cardMuted, gap: 6 }]}>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: p.emerald }}>
-                        Đáp án đúng: {qr.correctOption}
-                      </Text>
-                      {qr.errorAnalysis ? (
-                        <Text style={{ fontSize: 12, color: p.rose, lineHeight: 18 }}>
-                          Phân tích lỗi: {qr.errorAnalysis}
-                        </Text>
-                      ) : null}
-                      {qr.correction || qr.explanation ? (
-                        <RichText
-                          content={`**Giải thích:** ${qr.correction || qr.explanation}`}
-                          color={p.text}
-                          boldColor={p.text}
-                          fontSize={12}
-                        />
-                      ) : null}
-                    </View>
-                  ) : null}
-                </Card>
-              </View>
-            );
-          })
-        )}
-
-        {!result ? (
-          <PrimaryButton
-            title={submitting ? 'Đang chấm điểm...' : 'Nộp bài kiểm tra'}
-            icon="checkmark-done-outline"
-            loading={submitting}
-            onPress={confirmSubmit}
-          />
-        ) : (
-          <PrimaryButton
-            title="Quay lại danh sách đề"
-            icon="arrow-back"
-            color={p.indigo}
-            onPress={() => router.back()}
-          />
-        )}
-      </ScrollView>
+                <Text style={{ fontSize: 19, fontWeight: '800', color: p.text }}>
+                  {attemptId ? 'Xem lại bài làm đã lưu' : 'Đã hoàn thành bài kiểm tra!'}
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Badge
+                    label={`Điểm: ${result.normalizedScore}/100`}
+                    tone={result.normalizedScore >= 50 ? 'emerald' : 'rose'}
+                  />
+                  <Badge label={`Đúng: ${result.score}/${result.total} câu`} tone="blue" />
+                  {result.xp > 0 ? <Badge label={`+${result.xp} XP`} tone="amber" /> : null}
+                </View>
+              </Card>
+            ) : null
+          }
+          ListEmptyComponent={
+            <Card style={{ alignItems: 'center', paddingVertical: 24, gap: 6 }}>
+              <Ionicons name="checkmark-circle" size={32} color={p.emerald} />
+              <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>
+                {result
+                  ? 'Tuyệt vời! Em không sai câu nào!'
+                  : 'Em đã trả lời hết tất cả các câu hỏi!'}
+              </Text>
+            </Card>
+          }
+          renderItem={({ item }) => (
+            <QuestionCard
+              q={item.q}
+              idx={item.idx}
+              selected={answers[item.q.id] || ''}
+              qr={result?.resultsMap[item.q.id]}
+              hasResult={Boolean(result)}
+              onAnswerChange={handleAnswerChange}
+            />
+          )}
+          ListFooterComponent={
+            <View style={{ paddingTop: 4 }}>
+              {!result ? (
+                <PrimaryButton
+                  title={submitting ? 'Đang chấm điểm...' : 'Nộp bài kiểm tra'}
+                  icon="checkmark-done-outline"
+                  loading={submitting}
+                  onPress={confirmSubmit}
+                />
+              ) : (
+                <PrimaryButton
+                  title="Quay lại danh sách đề"
+                  icon="arrow-back"
+                  color={p.indigo}
+                  onPress={() => router.back()}
+                />
+              )}
+            </View>
+          }
+        />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

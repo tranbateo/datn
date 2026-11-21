@@ -1,6 +1,11 @@
-import { API_ENDPOINTS } from '@/constants/api';
-import { fetchApi } from '@/lib/api-client';
-import type { MobileUser } from '@/store/authStore';
+import { API_ENDPOINTS, getApiBaseUrl } from '@/constants/api';
+import {
+  ApiError,
+  attemptTokenRefresh,
+  fetchApi,
+  translateBackendError,
+} from '@/lib/api-client';
+import { useAuthStore, type MobileUser } from '@/store/authStore';
 
 export interface LoginResponse {
   accessToken: string;
@@ -161,10 +166,15 @@ export interface GamificationProfile {
   currentXp: number;
   xp?: number;
   lifetimeXp?: number;
+  currentLevelMinXp?: number;
   nextLevelXp: number;
+  xpInCurrentLevel?: number;
+  xpRequiredForNextLevel?: number;
+  xpRemainingToNextLevel?: number;
   streakDays: number;
   longestStreak?: number;
   levelProgressPercent?: number;
+  rank?: number;
 }
 
 export type MasteryStatus = 'strong' | 'developing' | 'weak' | 'unassessed';
@@ -173,12 +183,15 @@ export interface SubjectMastery {
   subjectId: string;
   subjectName: string;
   grade: number;
+  courseId?: string | null;
   attemptsCount: number;
   averageScore: number | null;
   bestScore: number | null;
   latestScore: number | null;
+  trend?: 'up' | 'down' | 'stable' | 'none';
   masteryStatus: MasteryStatus;
   recommendation: string;
+  weakQuizzes?: { quizId: string; title: string; score: number }[];
   recentMistakes: string[];
 }
 
@@ -238,12 +251,18 @@ export interface ParentTeacherItem {
   avatarUrl?: string | null;
   roles?: string[];
   roleLabels?: string[];
+  roleSummary?: string;
+  homeroomClassNames?: string[];
+  studentNames?: string[];
   studentRoles?: {
     studentId: string;
     studentName: string;
     className?: string | null;
     isHomeroom?: boolean;
-    roleLabel: string;
+    homeroomClassName?: string | null;
+    subjects?: string[];
+    summary?: string;
+    roleLabel?: string;
   }[];
   studentIds?: string[];
   isHomeroom?: boolean;
@@ -341,12 +360,63 @@ export function parseQuestionOptions(raw: string[] | string | undefined): string
   }
 }
 
+/**
+ * Normalizes a multiple-choice answer or option string so "A", "A. 24", and "24"
+ * match consistently across exam taking, grading, and attempt review.
+ */
+export function matchesQuizOption(
+  candidate: string | null | undefined,
+  optionText: string,
+  letter: string,
+): boolean {
+  if (!candidate) return false;
+  const cleanCand = candidate.trim();
+  const cleanOpt = optionText.trim();
+  const upperLetter = letter.trim().toUpperCase();
+  if (!cleanCand) return false;
+  if (cleanCand === cleanOpt || cleanCand.toUpperCase() === upperLetter) return true;
+
+  const stripPrefix = (s: string) => s.replace(/^[A-Da-d][.):\-\s]+/, '').trim();
+  const candPrefixMatch = cleanCand.match(/^([A-Da-d])[.):\-\s]/);
+  if (candPrefixMatch && candPrefixMatch[1].toUpperCase() === upperLetter) {
+    return true;
+  }
+  const strippedCand = stripPrefix(cleanCand);
+  const strippedOpt = stripPrefix(cleanOpt);
+  return Boolean(strippedCand && strippedOpt && strippedCand === strippedOpt);
+}
+
+/**
+ * Generates a RFC-4122 UUID v4 for idempotent quiz attempt submission (BR-QUIZ-002).
+ */
+export function generateClientUuid(): string {
+  const hex = '0123456789abcdef';
+  let uuid = '';
+  for (let i = 0; i < 36; i++) {
+    if (i === 8 || i === 13 || i === 18 || i === 23) {
+      uuid += '-';
+    } else if (i === 14) {
+      uuid += '4';
+    } else if (i === 19) {
+      uuid += hex[(Math.floor(Math.random() * 16) & 0x3) | 0x8];
+    } else {
+      uuid += hex[Math.floor(Math.random() * 16)];
+    }
+  }
+  return uuid;
+}
+
 export const authApi = {
-  login: (identifier: string, password: string) =>
+  login: (identifier: string, password: string, schoolCode?: string) =>
     fetchApi<LoginResponse>(API_ENDPOINTS.AUTH.LOGIN, {
       method: 'POST',
       skipAuth: true,
-      body: JSON.stringify({ identifier, email: identifier, password }),
+      body: JSON.stringify({
+        identifier,
+        email: identifier,
+        password,
+        ...(schoolCode?.trim() ? { schoolCode: schoolCode.trim() } : {}),
+      }),
     }),
 
   verifyLoginOtp: (email: string, otp: string) =>
@@ -472,6 +542,163 @@ export const chatApi = {
       timeoutMs: 90_000,
     });
   },
+
+  sendMessageStream: async (
+    sessionId: string,
+    content: string,
+    image: { uri: string; name?: string; type?: string } | null,
+    onDelta: (chunk: string) => void,
+    isRetry = false,
+  ): Promise<{ content: string; citations: RagCitation[]; messageId?: string }> => {
+    const token = useAuthStore.getState().token;
+    const url = `${getApiBaseUrl()}${API_ENDPOINTS.CHAT.SEND_MESSAGE_STREAM(sessionId)}`;
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.timeout = 95_000;
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+      xhr.setRequestHeader('Accept', 'text/event-stream');
+
+      let processedOffset = 0;
+      let leftoverBuffer = '';
+      let accumulated = '';
+      let citations: RagCitation[] = [];
+      let messageId: string | undefined;
+      let streamError: string | null = null;
+
+      const parseSseBuffer = (chunkText: string) => {
+        const combined = leftoverBuffer + chunkText;
+        const lines = combined.split(/\r?\n/);
+        leftoverBuffer = lines.pop() ?? '';
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line.startsWith('data:')) continue;
+          const payloadStr = line.slice(5).trim();
+          if (!payloadStr || payloadStr === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(payloadStr) as {
+              content?: string;
+              citations?: RagCitation[];
+              messageId?: string;
+              error?: string;
+            };
+            if (parsed.error) {
+              streamError = parsed.error;
+            }
+            if (typeof parsed.content === 'string' && parsed.content.length > 0) {
+              accumulated += parsed.content;
+              onDelta(parsed.content);
+            }
+            if (Array.isArray(parsed.citations)) {
+              citations = parsed.citations;
+            }
+            if (parsed.messageId) {
+              messageId = parsed.messageId;
+            }
+          } catch {
+            // Ignore malformed partial JSON frame
+          }
+        }
+      };
+
+      xhr.onprogress = () => {
+        const text = xhr.responseText || '';
+        if (text.length > processedOffset) {
+          const delta = text.slice(processedOffset);
+          processedOffset = text.length;
+          parseSseBuffer(delta);
+        }
+      };
+
+      xhr.onload = async () => {
+        const text = xhr.responseText || '';
+        if (text.length > processedOffset) {
+          parseSseBuffer(text.slice(processedOffset));
+          processedOffset = text.length;
+        }
+        if (leftoverBuffer.trim()) {
+          parseSseBuffer('\n');
+        }
+
+        if (xhr.status === 401 && !isRetry) {
+          const nextToken = await attemptTokenRefresh();
+          if (nextToken) {
+            try {
+              const retried = await chatApi.sendMessageStream(
+                sessionId,
+                content,
+                image,
+                onDelta,
+                true,
+              );
+              resolve(retried);
+            } catch (retryErr) {
+              reject(retryErr);
+            }
+            return;
+          }
+          reject(new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'));
+          return;
+        }
+
+        if (xhr.status < 200 || xhr.status >= 300) {
+          let errMsg = `Lỗi kết nối Gia sư AI (${xhr.status})`;
+          try {
+            const parsedErr = JSON.parse(text) as { message?: string | string[] };
+            if (Array.isArray(parsedErr.message)) {
+              errMsg = parsedErr.message.join(', ');
+            } else if (typeof parsedErr.message === 'string' && parsedErr.message.trim()) {
+              errMsg = parsedErr.message;
+            }
+          } catch {
+            if (text.trim() && !text.trim().startsWith('<')) {
+              errMsg = text.trim().slice(0, 200);
+            }
+          }
+          reject(new ApiError(translateBackendError(errMsg), xhr.status));
+          return;
+        }
+
+        if (streamError && !accumulated) {
+          reject(new ApiError(translateBackendError(streamError), 500));
+          return;
+        }
+
+        resolve({ content: accumulated, citations, messageId });
+      };
+
+      xhr.onerror = () => {
+        reject(new ApiError('Không thể kết nối luồng Gia sư AI.', 0));
+      };
+
+      xhr.ontimeout = () => {
+        reject(
+          new ApiError(
+            'Gia sư AI phản hồi quá thời gian chờ. Em vui lòng thử lại nhé!',
+            408,
+          ),
+        );
+      };
+
+      if (image) {
+        const formData = new FormData();
+        formData.append('content', content);
+        formData.append('image', {
+          uri: image.uri,
+          name: image.name || 'homework.jpg',
+          type: image.type || 'image/jpeg',
+        } as unknown as Blob);
+        xhr.send(formData);
+      } else {
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(JSON.stringify({ content }));
+      }
+    });
+  },
 };
 
 export const quizApi = {
@@ -499,10 +726,11 @@ export const quizApi = {
       textAnswer?: string;
     }[],
     exitReason?: string,
+    attemptId?: string,
   ) =>
     fetchApi<QuizSubmitResponse>(API_ENDPOINTS.QUIZ.SUBMIT(quizId), {
       method: 'POST',
-      body: JSON.stringify({ answers, exitReason }),
+      body: JSON.stringify({ answers, exitReason, attemptId }),
       timeoutMs: 90_000,
     }),
 
@@ -687,12 +915,15 @@ export interface TeacherStudentAttemptsResponse {
     fullName: string;
     studentCode?: string | null;
     className?: string | null;
+    grade?: number | null;
+    isHomeroomTeacher?: boolean;
   };
   attempts: {
     id: string;
     quizId: string;
     quizTitle: string;
     subjectName: string;
+    canEditScore?: boolean;
     score: number;
     totalQuestions: number;
     completedAt: string;
@@ -794,14 +1025,72 @@ export interface TeacherCourseItem {
   subject?: string;
   grade?: string;
   gradeNum?: number;
+  lessons?: number;
   lessonsCount?: number;
+  students?: number;
+  assignedClasses?: string[];
   documentsCount?: number;
+}
+
+interface RawTeacherClassesResponse {
+  homeroomClasses?: {
+    id: string;
+    name: string;
+    grade: number;
+    role?: string;
+    studentsCount: number;
+  }[];
+  subjectClasses?: {
+    id: string;
+    classId: string;
+    className: string;
+    grade: number;
+    subjectName?: string;
+    role?: string;
+    studentsCount: number;
+  }[];
 }
 
 export const teacherApi = {
   getDashboardStats: () =>
     fetchApi<TeacherDashboardStats>(API_ENDPOINTS.TEACHER.DASHBOARD_STATS),
-  getClasses: () => fetchApi<TeacherClassOption[]>(API_ENDPOINTS.TEACHER.CLASSES),
+  getClasses: async (): Promise<TeacherClassOption[]> => {
+    const raw = await fetchApi<TeacherClassOption[] | RawTeacherClassesResponse>(
+      API_ENDPOINTS.TEACHER.CLASSES,
+    );
+    if (Array.isArray(raw)) return raw;
+
+    const merged = new Map<string, TeacherClassOption>();
+    for (const hc of raw?.homeroomClasses || []) {
+      merged.set(hc.id, {
+        id: hc.id,
+        name: hc.name,
+        grade: hc.grade,
+        role: 'GVCN',
+        studentsCount: hc.studentsCount || 0,
+      });
+    }
+    for (const sc of raw?.subjectClasses || []) {
+      const targetClassId = sc.classId || sc.id;
+      const existing = merged.get(targetClassId);
+      if (existing) {
+        // Keep GVCN priority; append subject label if helpful
+        existing.subjectName = existing.subjectName
+          ? `${existing.subjectName}, ${sc.subjectName || ''}`.replace(/,\s*$/, '')
+          : sc.subjectName;
+      } else {
+        merged.set(targetClassId, {
+          id: targetClassId,
+          name: sc.className,
+          grade: sc.grade,
+          role: 'GVBM',
+          subjectName: sc.subjectName,
+          studentsCount: sc.studentsCount || 0,
+        });
+      }
+    }
+    return Array.from(merged.values());
+  },
   getCourses: () => fetchApi<TeacherCourseItem[]>(API_ENDPOINTS.TEACHER.COURSES),
   getCourseDetail: (courseId: string) =>
     fetchApi<CourseItem>(API_ENDPOINTS.COURSES.DETAIL(courseId)),
@@ -813,6 +1102,18 @@ export const teacherApi = {
       API_ENDPOINTS.COURSES.CREATE_LESSON(courseId),
       {
         method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
+  updateLesson: (
+    courseId: string,
+    lessonId: string,
+    payload: { title?: string; content?: string; order?: number },
+  ) =>
+    fetchApi<{ id: string; title: string; content?: string }>(
+      API_ENDPOINTS.COURSES.UPDATE_LESSON(courseId, lessonId),
+      {
+        method: 'PATCH',
         body: JSON.stringify(payload),
       },
     ),

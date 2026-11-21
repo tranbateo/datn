@@ -1,10 +1,4 @@
 export const APP_ROUTES = {
-  HOME: '/',
-  EXPLORE: '/explore',
-  PRACTICE: '/practice',
-  PROGRESS: '/progress',
-  SCHEDULE: '/schedule',
-  AI_TUTOR: '/ai-tutor',
   LOGIN: '/(auth)/login',
   CHANGE_PASSWORD: '/(auth)/change-password',
   FORGOT_PASSWORD: '/(auth)/forgot-password',

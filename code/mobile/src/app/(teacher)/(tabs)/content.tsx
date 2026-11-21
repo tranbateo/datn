@@ -16,24 +16,36 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import {
+  quizApi,
   teacherApi,
   type CourseItem,
+  type QuizAttemptDetail,
   type TeacherCourseItem,
   type TeacherDocumentItem,
   type TeacherQuizDetail,
   type TeacherQuizItem,
 } from '@/services/mobile.services';
+import { getCached, invalidateCache, isCacheFresh, setCached } from '@/lib/ttl-cache';
 import {
   ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
-  LoadingView,
   PrimaryButton,
+  QuizAttemptViewerModal,
   RichText,
+  SkeletonDashboard,
   usePalette,
 } from '@/components/ui/mobile-ui';
+
+const TEACHER_CONTENT_CACHE_KEY = 'teacher:content';
+
+interface TeacherContentSnapshot {
+  quizzes: TeacherQuizItem[];
+  courses: TeacherCourseItem[];
+  documents: TeacherDocumentItem[];
+}
 
 const QUIZ_STATUS_MAP: Record<
   string,
@@ -47,47 +59,71 @@ const QUIZ_STATUS_MAP: Record<
 
 export default function TeacherContentScreen() {
   const p = usePalette();
+  const cached = getCached<TeacherContentSnapshot>(TEACHER_CONTENT_CACHE_KEY);
   const [activeTab, setActiveTab] = useState<'quizzes' | 'courses' | 'documents'>('quizzes');
-  const [quizzes, setQuizzes] = useState<TeacherQuizItem[]>([]);
-  const [courses, setCourses] = useState<TeacherCourseItem[]>([]);
-  const [documents, setDocuments] = useState<TeacherDocumentItem[]>([]);
+  const [quizzes, setQuizzes] = useState<TeacherQuizItem[]>(cached?.quizzes ?? []);
+  const [courses, setCourses] = useState<TeacherCourseItem[]>(cached?.courses ?? []);
+  const [documents, setDocuments] = useState<TeacherDocumentItem[]>(cached?.documents ?? []);
 
-  // Quiz Detail Modal
+  // Quiz Detail Modal & Student Attempt Viewer
   const [selectedQuiz, setSelectedQuiz] = useState<TeacherQuizDetail | null>(null);
   const [loadingQuizDetail, setLoadingQuizDetail] = useState(false);
+  const [attemptViewerOpen, setAttemptViewerOpen] = useState(false);
+  const [attemptDetail, setAttemptDetail] = useState<QuizAttemptDetail | null>(null);
+  const [loadingAttemptDetail, setLoadingAttemptDetail] = useState(false);
+  const [attemptDetailError, setAttemptDetailError] = useState<string | null>(null);
 
   // AI Build Quiz Modal (BR-QUIZ-001: Always created as DRAFT for teacher review)
   const [showAiBuilder, setShowAiBuilder] = useState(false);
-  const [aiCourseId, setAiCourseId] = useState('');
+  const [aiCourseId, setAiCourseId] = useState(cached?.courses?.[0]?.id ?? '');
   const [aiTitle, setAiTitle] = useState('');
   const [aiTopic, setAiTopic] = useState('');
   const [aiNumQuestions, setAiNumQuestions] = useState(10);
   const [aiDuration, setAiDuration] = useState(15);
   const [buildingAiQuiz, setBuildingAiQuiz] = useState(false);
 
-  // Course Lessons Modal
+  // Course Lessons Modal (Create + Edit + Delete)
   const [activeCourse, setActiveCourse] = useState<CourseItem | null>(null);
   const [loadingCourse, setLoadingCourse] = useState(false);
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [newLessonContent, setNewLessonContent] = useState('');
   const [savingLesson, setSavingLesson] = useState(false);
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
+    if (!force && isCacheFresh(TEACHER_CONTENT_CACHE_KEY)) {
+      const snap = getCached<TeacherContentSnapshot>(TEACHER_CONTENT_CACHE_KEY);
+      if (snap) {
+        setQuizzes(snap.quizzes);
+        setCourses(snap.courses);
+        setDocuments(snap.documents);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+    }
     try {
       const [qRes, cRes, dRes] = await Promise.all([
         teacherApi.getQuizzes().catch(() => []),
         teacherApi.getCourses().catch(() => []),
         teacherApi.getDocuments().catch(() => []),
       ]);
+      const qList = Array.isArray(qRes) ? qRes : [];
       const cList = Array.isArray(cRes) ? cRes : [];
-      setQuizzes(Array.isArray(qRes) ? qRes : []);
+      const dList = Array.isArray(dRes) ? dRes : [];
+      setQuizzes(qList);
       setCourses(cList);
-      setDocuments(Array.isArray(dRes) ? dRes : []);
+      setDocuments(dList);
+      setCached<TeacherContentSnapshot>(TEACHER_CONTENT_CACHE_KEY, {
+        quizzes: qList,
+        courses: cList,
+        documents: dList,
+      });
       if (cList.length > 0) {
         setAiCourseId((prev) => prev || cList[0].id);
       }
@@ -102,10 +138,7 @@ export default function TeacherContentScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const run = async () => {
-        await loadData();
-      };
-      void run();
+      void loadData(false);
     }, [loadData]),
   );
 
@@ -145,7 +178,8 @@ export default function TeacherContentScreen() {
         'AI đã soạn xong bản nháp!',
         'Đề mới ở trạng thái Bản nháp (DRAFT) theo BR-QUIZ-001. Hãy kiểm tra nội dung câu hỏi rồi bấm Duyệt xuất bản / Giao cho lớp.',
       );
-      await loadData();
+      invalidateCache('teacher:');
+      await loadData(true);
     } catch (err: unknown) {
       Alert.alert(
         'Không thể sinh đề',
@@ -169,6 +203,7 @@ export default function TeacherContentScreen() {
       setSelectedQuiz((prev) =>
         prev && prev.id === quizId ? { ...prev, status } : prev,
       );
+      invalidateCache('teacher:');
       Alert.alert(
         'Đã cập nhật trạng thái',
         status === 'ASSIGNED'
@@ -199,24 +234,57 @@ export default function TeacherContentScreen() {
     }
   };
 
-  const handleCreateLesson = async () => {
+  const openAttemptDetail = async (attemptId: string) => {
+    setAttemptViewerOpen(true);
+    setAttemptDetail(null);
+    setAttemptDetailError(null);
+    setLoadingAttemptDetail(true);
+    try {
+      const detail = await quizApi.getAttemptDetail(attemptId);
+      setAttemptDetail(detail);
+    } catch (err: unknown) {
+      setAttemptDetailError(
+        err instanceof Error ? err.message : 'Không thể tải chi tiết bài làm.',
+      );
+    } finally {
+      setLoadingAttemptDetail(false);
+    }
+  };
+
+  const handleSaveLesson = async () => {
     if (!activeCourse || !newLessonTitle.trim()) {
       Alert.alert('Thiếu tiêu đề', 'Vui lòng nhập tiêu đề bài học.');
       return;
     }
     setSavingLesson(true);
     try {
-      await teacherApi.createLesson(activeCourse.id, {
-        title: newLessonTitle.trim(),
-        content: newLessonContent.trim() || undefined,
-        order: (activeCourse.lessons?.length || 0) + 1,
-      });
+      if (editingLessonId) {
+        await teacherApi.updateLesson(activeCourse.id, editingLessonId, {
+          title: newLessonTitle.trim(),
+          content: newLessonContent.trim() || undefined,
+        });
+      } else {
+        await teacherApi.createLesson(activeCourse.id, {
+          title: newLessonTitle.trim(),
+          content: newLessonContent.trim() || undefined,
+          order: (activeCourse.lessons?.length || 0) + 1,
+        });
+      }
+      setEditingLessonId(null);
       setNewLessonTitle('');
       setNewLessonContent('');
+      invalidateCache('teacher:');
       await openCourseDetail(activeCourse.id);
-      void loadData();
+      void loadData(true);
     } catch (err: unknown) {
-      Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể thêm bài học.');
+      Alert.alert(
+        'Lỗi',
+        err instanceof Error
+          ? err.message
+          : editingLessonId
+            ? 'Không thể cập nhật bài học.'
+            : 'Không thể thêm bài học.',
+      );
     } finally {
       setSavingLesson(false);
     }
@@ -231,8 +299,9 @@ export default function TeacherContentScreen() {
         onPress: async () => {
           try {
             await teacherApi.deleteLesson(courseId, lessonId);
+            invalidateCache('teacher:');
             await openCourseDetail(courseId);
-            void loadData();
+            void loadData(true);
           } catch (err: unknown) {
             Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể xóa bài học.');
           }
@@ -257,6 +326,7 @@ export default function TeacherContentScreen() {
             : d,
         ),
       );
+      invalidateCache('teacher:');
     } catch (err: unknown) {
       Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể đổi trạng thái tài liệu.');
     } finally {
@@ -278,6 +348,7 @@ export default function TeacherContentScreen() {
             try {
               await teacherApi.deleteDocument(doc.id);
               setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+              invalidateCache('teacher:');
             } catch (err: unknown) {
               Alert.alert(
                 'Lỗi',
@@ -292,14 +363,16 @@ export default function TeacherContentScreen() {
     );
   };
 
-  if (loading) return <LoadingView label="Đang tải học liệu & đề kiểm tra..." />;
-  if (error) {
+  if (loading && quizzes.length === 0 && courses.length === 0) {
+    return <SkeletonDashboard label="Đang tải học liệu & đề kiểm tra..." />;
+  }
+  if (error && quizzes.length === 0 && courses.length === 0) {
     return (
       <ErrorView
         message={error}
         onRetry={() => {
           setLoading(true);
-          void loadData();
+          void loadData(true);
         }}
       />
     );
@@ -314,7 +387,7 @@ export default function TeacherContentScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void loadData();
+              void loadData(true);
             }}
             tintColor={p.emerald}
           />
@@ -408,28 +481,31 @@ export default function TeacherContentScreen() {
                       >
                         <Ionicons name="eye-outline" size={15} color={p.text} />
                         <Text style={{ color: p.text, fontWeight: '700', fontSize: 12 }}>
-                          Xem đề & điểm
+                          {q.status === 'DRAFT' ? 'Xem & duyệt đề' : 'Xem đề & điểm'}
                         </Text>
                       </TouchableOpacity>
 
+                      {/* BR-QUIZ-001: DRAFT must be reviewed & approved (PUBLISHED) before assigning */}
                       {q.status === 'DRAFT' ? (
                         <TouchableOpacity
                           disabled={updatingId === q.id}
                           onPress={() => void handleQuizStatus(q.id, 'PUBLISHED')}
                           style={[styles.smallBtn, { backgroundColor: p.primarySoft }]}
                         >
+                          <Ionicons name="checkmark-done-outline" size={14} color={p.primary} />
                           <Text style={{ color: p.primary, fontWeight: '800', fontSize: 12 }}>
                             Duyệt xuất bản
                           </Text>
                         </TouchableOpacity>
                       ) : null}
 
-                      {q.status !== 'ASSIGNED' && q.status !== 'CLOSED' ? (
+                      {q.status === 'PUBLISHED' ? (
                         <TouchableOpacity
                           disabled={updatingId === q.id}
                           onPress={() => void handleQuizStatus(q.id, 'ASSIGNED')}
                           style={[styles.smallBtn, { backgroundColor: p.emeraldSoft }]}
                         >
+                          <Ionicons name="send-outline" size={14} color={p.emerald} />
                           <Text style={{ color: p.emerald, fontWeight: '800', fontSize: 12 }}>
                             Giao cho lớp
                           </Text>
@@ -444,6 +520,18 @@ export default function TeacherContentScreen() {
                         >
                           <Text style={{ color: p.rose, fontWeight: '800', fontSize: 12 }}>
                             Đóng đề
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+
+                      {q.status === 'CLOSED' ? (
+                        <TouchableOpacity
+                          disabled={updatingId === q.id}
+                          onPress={() => void handleQuizStatus(q.id, 'ASSIGNED')}
+                          style={[styles.smallBtn, { backgroundColor: p.emeraldSoft }]}
+                        >
+                          <Text style={{ color: p.emerald, fontWeight: '800', fontSize: 12 }}>
+                            Mở giao lại
                           </Text>
                         </TouchableOpacity>
                       ) : null}
@@ -478,7 +566,7 @@ export default function TeacherContentScreen() {
                     </Text>
                     <View style={styles.rowBetween}>
                       <Text style={{ fontSize: 12, color: p.textMuted }}>
-                        {c.lessonsCount || 0} bài học • {c.documentsCount || 0} tài liệu PDF
+                        {c.lessons ?? c.lessonsCount ?? 0} bài học • {c.documentsCount || 0} tài liệu PDF
                       </Text>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: p.emerald }}>
                         Quản lý bài →
@@ -661,11 +749,24 @@ export default function TeacherContentScreen() {
       <Modal
         visible={Boolean(activeCourse) || loadingCourse}
         animationType="slide"
-        onRequestClose={() => setActiveCourse(null)}
+        onRequestClose={() => {
+          setActiveCourse(null);
+          setEditingLessonId(null);
+          setNewLessonTitle('');
+          setNewLessonContent('');
+        }}
       >
         <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]}>
           <View style={[styles.modalHead, { backgroundColor: p.card, borderBottomColor: p.border }]}>
-            <TouchableOpacity onPress={() => setActiveCourse(null)} hitSlop={10}>
+            <TouchableOpacity
+              onPress={() => {
+                setActiveCourse(null);
+                setEditingLessonId(null);
+                setNewLessonTitle('');
+                setNewLessonContent('');
+              }}
+              hitSlop={10}
+            >
               <Ionicons name="arrow-back" size={22} color={p.text} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
@@ -685,9 +786,24 @@ export default function TeacherContentScreen() {
           ) : activeCourse ? (
             <ScrollView contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}>
               <Card style={{ gap: 10 }}>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>
-                  + Thêm bài học mới
-                </Text>
+                <View style={styles.rowBetween}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>
+                    {editingLessonId ? 'Chỉnh sửa bài học' : '+ Thêm bài học mới'}
+                  </Text>
+                  {editingLessonId ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditingLessonId(null);
+                        setNewLessonTitle('');
+                        setNewLessonContent('');
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: p.rose }}>
+                        Hủy sửa
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <TextInput
                   style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
                   placeholder="Tiêu đề bài học..."
@@ -714,11 +830,11 @@ export default function TeacherContentScreen() {
                   multiline
                 />
                 <PrimaryButton
-                  title="Lưu bài học"
-                  icon="add-circle-outline"
-                  color={p.emerald}
+                  title={editingLessonId ? 'Cập nhật bài học' : 'Lưu bài học'}
+                  icon={editingLessonId ? 'save-outline' : 'add-circle-outline'}
+                  color={editingLessonId ? p.primary : p.emerald}
                   loading={savingLesson}
-                  onPress={() => void handleCreateLesson()}
+                  onPress={() => void handleSaveLesson()}
                 />
               </Card>
 
@@ -726,17 +842,35 @@ export default function TeacherContentScreen() {
                 <EmptyView icon="book-outline" title="Chưa có bài học nào" />
               ) : (
                 (activeCourse.lessons || []).map((ls, idx) => (
-                  <Card key={ls.id} style={{ gap: 8 }}>
+                  <Card
+                    key={ls.id}
+                    style={{
+                      gap: 8,
+                      borderColor: editingLessonId === ls.id ? p.primary : p.border,
+                    }}
+                  >
                     <View style={styles.rowBetween}>
                       <Badge label={`Bài ${idx + 1}`} tone="blue" />
-                      <TouchableOpacity
-                        onPress={() =>
-                          handleDeleteLesson(activeCourse.id, ls.id, ls.title)
-                        }
-                        hitSlop={10}
-                      >
-                        <Ionicons name="trash-outline" size={18} color={p.rose} />
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setEditingLessonId(ls.id);
+                            setNewLessonTitle(ls.title || '');
+                            setNewLessonContent(ls.content || '');
+                          }}
+                          hitSlop={10}
+                        >
+                          <Ionicons name="create-outline" size={18} color={p.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() =>
+                            handleDeleteLesson(activeCourse.id, ls.id, ls.title)
+                          }
+                          hitSlop={10}
+                        >
+                          <Ionicons name="trash-outline" size={18} color={p.rose} />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                     <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>
                       {ls.title}
@@ -754,7 +888,7 @@ export default function TeacherContentScreen() {
 
       {/* Quiz Details Modal */}
       <Modal
-        visible={Boolean(selectedQuiz) || loadingQuizDetail}
+        visible={(Boolean(selectedQuiz) || loadingQuizDetail) && !attemptViewerOpen}
         animationType="slide"
         onRequestClose={() => setSelectedQuiz(null)}
       >
@@ -773,6 +907,12 @@ export default function TeacherContentScreen() {
                 </Text>
               ) : null}
             </View>
+            {selectedQuiz ? (
+              <Badge
+                label={(QUIZ_STATUS_MAP[selectedQuiz.status] || QUIZ_STATUS_MAP.DRAFT).label}
+                tone={(QUIZ_STATUS_MAP[selectedQuiz.status] || QUIZ_STATUS_MAP.DRAFT).tone}
+              />
+            ) : null}
           </View>
 
           {loadingQuizDetail && !selectedQuiz ? (
@@ -781,27 +921,53 @@ export default function TeacherContentScreen() {
             </View>
           ) : selectedQuiz ? (
             <ScrollView contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}>
+              {/* Quick BR-QUIZ-001 workflow action directly inside review modal */}
+              {selectedQuiz.status === 'DRAFT' ? (
+                <PrimaryButton
+                  title="Duyệt xuất bản đề này"
+                  icon="checkmark-done-outline"
+                  color={p.primary}
+                  loading={updatingId === selectedQuiz.id}
+                  onPress={() => void handleQuizStatus(selectedQuiz.id, 'PUBLISHED')}
+                />
+              ) : selectedQuiz.status === 'PUBLISHED' ? (
+                <PrimaryButton
+                  title="Giao đề này cho lớp ngay"
+                  icon="send-outline"
+                  color={p.emerald}
+                  loading={updatingId === selectedQuiz.id}
+                  onPress={() => void handleQuizStatus(selectedQuiz.id, 'ASSIGNED')}
+                />
+              ) : null}
+
               {selectedQuiz.attempts.length > 0 ? (
                 <>
                   <Text style={{ fontSize: 16, fontWeight: '800', color: p.text }}>
                     Kết quả học sinh ({selectedQuiz.attempts.length})
                   </Text>
                   <View style={{ gap: 8 }}>
-                    {selectedQuiz.attempts.slice(0, 15).map((a) => (
-                      <Card key={a.id} style={styles.rowBetween}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '700', color: p.text }}>
-                            {a.studentName}
-                          </Text>
-                          <Text style={{ fontSize: 11, color: p.textMuted }}>
-                            {new Date(a.completedAt).toLocaleString('vi-VN')}
-                          </Text>
-                        </View>
-                        <Badge
-                          label={`${a.score}/100`}
-                          tone={a.score >= 50 ? 'emerald' : 'rose'}
-                        />
-                      </Card>
+                    {selectedQuiz.attempts.slice(0, 20).map((a) => (
+                      <TouchableOpacity
+                        key={a.id}
+                        activeOpacity={0.85}
+                        onPress={() => void openAttemptDetail(a.id)}
+                      >
+                        <Card style={styles.rowBetween}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: p.text }}>
+                              {a.studentName}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: p.textMuted }}>
+                              {new Date(a.completedAt).toLocaleString('vi-VN')} • Chạm để xem bài làm
+                            </Text>
+                          </View>
+                          <Badge
+                            label={`${a.score}/100`}
+                            tone={a.score >= 50 ? 'emerald' : 'rose'}
+                          />
+                          <Ionicons name="chevron-forward" size={16} color={p.textMuted} />
+                        </Card>
+                      </TouchableOpacity>
                     ))}
                   </View>
                 </>
@@ -819,8 +985,20 @@ export default function TeacherContentScreen() {
                       boldColor={p.text}
                       fontSize={14}
                     />
+                    {Array.isArray(q.options) && q.options.length > 0 ? (
+                      <View style={{ gap: 4, marginTop: 2 }}>
+                        {q.options.map((opt, oIdx) => (
+                          <Text
+                            key={oIdx}
+                            style={{ fontSize: 13, color: p.textMuted, lineHeight: 19 }}
+                          >
+                            {opt}
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
                     {q.correctOption ? (
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: p.emerald }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: p.emerald, marginTop: 2 }}>
                         Đáp án đúng: {q.correctOption}
                       </Text>
                     ) : null}
@@ -845,6 +1023,14 @@ export default function TeacherContentScreen() {
           ) : null}
         </SafeAreaView>
       </Modal>
+
+      <QuizAttemptViewerModal
+        visible={attemptViewerOpen}
+        loading={loadingAttemptDetail}
+        detail={attemptDetail}
+        error={attemptDetailError}
+        onClose={() => setAttemptViewerOpen(false)}
+      />
     </SafeAreaView>
   );
 }

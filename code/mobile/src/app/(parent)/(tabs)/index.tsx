@@ -14,22 +14,33 @@ import {
   formatClassLabel,
   notificationsApi,
   parentApi,
+  quizApi,
   type MasteryStatus,
   type NotificationItem,
   type ParentDashboardData,
+  type QuizAttemptDetail,
 } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
+import { getCached, invalidateCache, isCacheFresh, setCached } from '@/lib/ttl-cache';
 import {
   ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
   EmptyView,
   ErrorView,
-  LoadingView,
   NotificationSheet,
+  QuizAttemptViewerModal,
+  SkeletonDashboard,
   UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
+
+const PARENT_DASH_CACHE_KEY = 'parent:dashboard';
+
+interface ParentDashSnapshot {
+  dashboard: ParentDashboardData;
+  notifications: NotificationItem[];
+}
 
 const MASTERY_MAP: Record<
   MasteryStatus,
@@ -45,27 +56,71 @@ export default function ParentDashboardScreen() {
   const p = usePalette();
   const router = useRouter();
   const { user } = useAuthStore();
+  const cached = getCached<ParentDashSnapshot>(PARENT_DASH_CACHE_KEY);
 
-  const [dashboard, setDashboard] = useState<ParentDashboardData | null>(null);
+  const [dashboard, setDashboard] = useState<ParentDashboardData | null>(
+    cached?.dashboard ?? null,
+  );
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(
+    cached?.notifications ?? [],
+  );
   const [showNotifs, setShowNotifs] = useState(false);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  // Read-only attempt detail modal for inspecting child's quiz work
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerLoading, setViewerLoading] = useState(false);
+  const [viewerDetail, setViewerDetail] = useState<QuizAttemptDetail | null>(null);
+  const [viewerError, setViewerError] = useState<string | null>(null);
+
+  const openChildAttempt = async (attemptId?: string) => {
+    if (!attemptId) return;
+    setViewerOpen(true);
+    setViewerLoading(true);
+    setViewerDetail(null);
+    setViewerError(null);
+    try {
+      const detail = await quizApi.getAttemptDetail(attemptId);
+      setViewerDetail(detail);
+    } catch (err: unknown) {
+      setViewerError(
+        err instanceof Error ? err.message : 'Không thể tải chi tiết bài làm của con.',
+      );
+    } finally {
+      setViewerLoading(false);
+    }
+  };
+
+  const loadData = useCallback(async (force = false) => {
+    if (!force && isCacheFresh(PARENT_DASH_CACHE_KEY)) {
+      const snap = getCached<ParentDashSnapshot>(PARENT_DASH_CACHE_KEY);
+      if (snap) {
+        setDashboard(snap.dashboard);
+        setNotifications(snap.notifications);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+    }
     try {
       const [dash, notifs] = await Promise.all([
         parentApi.getDashboard(),
         notificationsApi.list().catch(() => []),
       ]);
+      const safeNotifs = Array.isArray(notifs) ? notifs : dash.parentNotifications || [];
       setDashboard(dash);
-      setNotifications(Array.isArray(notifs) ? notifs : dash.parentNotifications || []);
+      setNotifications(safeNotifs);
       setSelectedIdx((prev) =>
         dash.students && prev >= dash.students.length ? 0 : prev,
       );
+      setCached<ParentDashSnapshot>(PARENT_DASH_CACHE_KEY, {
+        dashboard: dash,
+        notifications: safeNotifs,
+      });
       setError(null);
     } catch (err: unknown) {
       setError(
@@ -79,10 +134,7 @@ export default function ParentDashboardScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const run = async () => {
-        await loadData();
-      };
-      void run();
+      void loadData(false);
     }, [loadData]),
   );
 
@@ -90,6 +142,7 @@ export default function ParentDashboardScreen() {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
     );
+    invalidateCache(PARENT_DASH_CACHE_KEY);
     try {
       await notificationsApi.markRead(id);
     } catch {
@@ -99,6 +152,7 @@ export default function ParentDashboardScreen() {
 
   const handleMarkAllRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    invalidateCache(PARENT_DASH_CACHE_KEY);
     try {
       await notificationsApi.markAllRead();
     } catch {
@@ -107,7 +161,7 @@ export default function ParentDashboardScreen() {
   };
 
   if (loading && !dashboard) {
-    return <LoadingView label="Đang tải báo cáo Phụ huynh..." />;
+    return <SkeletonDashboard label="Đang tải báo cáo Phụ huynh..." />;
   }
   if (error && !dashboard) {
     return (
@@ -115,7 +169,7 @@ export default function ParentDashboardScreen() {
         message={error}
         onRetry={() => {
           setLoading(true);
-          void loadData();
+          void loadData(true);
         }}
       />
     );
@@ -134,7 +188,7 @@ export default function ParentDashboardScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void loadData();
+              void loadData(true);
             }}
             tintColor={p.indigo}
           />
@@ -258,7 +312,16 @@ export default function ParentDashboardScreen() {
                         GVCN: {activeEntry.student.homeroomTeacher.fullName}
                       </Text>
                       <TouchableOpacity
-                        onPress={() => router.push('/(parent)/(tabs)/contact')}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/(parent)/(tabs)/contact',
+                            params: {
+                              teacherId: activeEntry.student.homeroomTeacher?.id || '',
+                              childId: activeEntry.student.id,
+                              t: String(Date.now()),
+                            },
+                          })
+                        }
                         style={styles.msgPill}
                       >
                         <Text style={{ color: p.indigo, fontSize: 11, fontWeight: '800' }}>
@@ -340,27 +403,39 @@ export default function ParentDashboardScreen() {
 
                 {/* Recent Quizzes */}
                 <Text style={[styles.secTitle, { color: p.text }]}>
-                  Bài kiểm tra gần đây
+                  Bài kiểm tra gần đây (chạm để xem chi tiết)
                 </Text>
                 {activeEntry.recentQuizzes.length === 0 ? (
                   <EmptyView icon="document-text-outline" title="Con chưa làm bài kiểm tra nào" />
                 ) : (
                   <View style={{ gap: 8 }}>
                     {activeEntry.recentQuizzes.slice(0, 5).map((q, idx) => (
-                      <Card key={q.id || `quiz-${idx}`} style={styles.subRow}>
-                        <View style={{ flex: 1, marginRight: 10 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '700', color: p.text }} numberOfLines={1}>
-                            {q.quiz?.title || 'Bài kiểm tra'}
-                          </Text>
-                          <Text style={{ fontSize: 11, color: p.textMuted, marginTop: 2 }}>
-                            {q.startedAt ? new Date(q.startedAt).toLocaleString('vi-VN') : ''}
-                          </Text>
-                        </View>
-                        <Badge
-                          label={`${q.score}/100`}
-                          tone={q.score >= 50 ? 'emerald' : 'rose'}
-                        />
-                      </Card>
+                      <TouchableOpacity
+                        key={q.id || `quiz-${idx}`}
+                        activeOpacity={0.85}
+                        disabled={!q.id}
+                        onPress={() => void openChildAttempt(q.id)}
+                      >
+                        <Card style={styles.subRow}>
+                          <View style={{ flex: 1, marginRight: 10 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: p.text }} numberOfLines={1}>
+                              {q.quiz?.title || 'Bài kiểm tra'}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: p.textMuted, marginTop: 2 }}>
+                              {q.startedAt ? new Date(q.startedAt).toLocaleString('vi-VN') : ''}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Badge
+                              label={`${q.score}/100`}
+                              tone={q.score >= 50 ? 'emerald' : 'rose'}
+                            />
+                            {q.id ? (
+                              <Ionicons name="chevron-forward" size={16} color={p.textMuted} />
+                            ) : null}
+                          </View>
+                        </Card>
+                      </TouchableOpacity>
                     ))}
                   </View>
                 )}
@@ -430,6 +505,13 @@ export default function ParentDashboardScreen() {
             router.push('/(parent)/(tabs)/contact');
           }
         }}
+      />
+      <QuizAttemptViewerModal
+        visible={viewerOpen}
+        loading={viewerLoading}
+        detail={viewerDetail}
+        error={viewerError}
+        onClose={() => setViewerOpen(false)}
       />
     </SafeAreaView>
   );

@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { API_ENDPOINTS, getApiBaseUrl, setApiBaseUrl } from '@/constants/api';
+import { clearAllCache } from '@/lib/ttl-cache';
 
 const KEYS = {
   ACCESS_TOKEN: 'aitutor_access_token',
@@ -10,6 +11,63 @@ const KEYS = {
   MUST_CHANGE_PWD: 'aitutor_must_change_pwd',
   API_URL_OVERRIDE: 'aitutor_api_url',
 } as const;
+
+// Expo SecureStore has a 2048-byte limit per value on iOS/Android.
+// Never persist large base64 avatar data URLs or nested lists inside SecureStore.
+const SECURE_STORE_SAFE_LIMIT = 1800;
+
+function sanitizeUserForStorage(user: MobileUser): string {
+  const safeAvatar =
+    user.avatarUrl &&
+    !user.avatarUrl.startsWith('data:') &&
+    user.avatarUrl.length <= 256
+      ? user.avatarUrl
+      : null;
+
+  const primaryEnrollment = user.classEnrollments?.[0]?.class
+    ? [
+        {
+          class: {
+            id: user.classEnrollments[0].class.id,
+            name: user.classEnrollments[0].class.name ?? null,
+            grade: user.classEnrollments[0].class.grade ?? null,
+          },
+        },
+      ]
+    : undefined;
+
+  const compact: MobileUser = {
+    id: user.id,
+    email: user.email ?? null,
+    fullName: user.fullName ?? null,
+    phone: user.phone ?? null,
+    studentCode: user.studentCode ?? null,
+    role: user.role,
+    grade: user.grade ?? null,
+    avatarUrl: safeAvatar,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    school: user.school
+      ? { id: user.school.id, name: user.school.name ?? null }
+      : null,
+    ...(primaryEnrollment ? { classEnrollments: primaryEnrollment } : {}),
+  };
+
+  const encoded = JSON.stringify(compact);
+  if (encoded.length <= SECURE_STORE_SAFE_LIMIT) {
+    return encoded;
+  }
+
+  // Ultra-compact fallback guaranteed well under 2KB
+  const minimal: MobileUser = {
+    id: user.id,
+    fullName: user.fullName ?? null,
+    studentCode: user.studentCode ?? null,
+    role: user.role,
+    grade: user.grade ?? null,
+    mustChangePassword: Boolean(user.mustChangePassword),
+  };
+  return JSON.stringify(minimal);
+}
 
 // In-memory fallback ONLY for web preview (never AsyncStorage per BR-AUTH-002)
 const memoryFallback = new Map<string, string>();
@@ -26,7 +84,11 @@ async function secureSet(key: string, value: string): Promise<void> {
     memoryFallback.set(key, value);
     return;
   }
-  await SecureStore.setItemAsync(key, value);
+  try {
+    await SecureStore.setItemAsync(key, value);
+  } catch {
+    // Prevent native SecureStore size/keychain exceptions from crashing active UI flows
+  }
 }
 
 async function secureDelete(key: string): Promise<void> {
@@ -227,9 +289,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     const role = normalizeRole(user.role);
+    clearAllCache();
     await Promise.all([
       secureSet(KEYS.ACCESS_TOKEN, accessToken),
-      secureSet(KEYS.USER_DATA, JSON.stringify(user)),
+      secureSet(KEYS.USER_DATA, sanitizeUserForStorage(user)),
       secureSet(KEYS.MUST_CHANGE_PWD, mustChangePassword ? 'true' : 'false'),
       refreshToken
         ? secureSet(KEYS.REFRESH_TOKEN, refreshToken)
@@ -261,8 +324,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const current = get().user;
     if (!current) return;
     const nextUser = { ...current, ...patch };
-    await secureSet(KEYS.USER_DATA, JSON.stringify(nextUser));
     set({ user: nextUser });
+    await secureSet(KEYS.USER_DATA, sanitizeUserForStorage(nextUser));
   },
 
   saveCustomApiUrl: async (url) => {
@@ -274,6 +337,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    clearAllCache();
     const currentToken = get().token;
     if (currentToken) {
       try {
