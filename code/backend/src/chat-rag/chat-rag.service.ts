@@ -626,7 +626,7 @@ export class ChatRagService {
         `3. Nếu em hỏi chào hỏi hoặc chưa nêu rõ môn học: chào thân thiện, liệt kê ngắn gọn các môn có trong <context> của Lớp ${userGrade} và hỏi em muốn học môn/bài nào.`,
         `4. Nếu em ở cấp THCS/THPT (Lớp 6–12) và nói muốn học "Tiếng Việt": giải thích nhẹ nhàng rằng từ Lớp 6 môn Tiếng Việt tiếp nối thành môn **Ngữ văn** (gồm Đọc hiểu, Thực hành tiếng Việt và Viết) rồi gợi ý lộ trình học ngay.`,
         `5. Phạm vi khối lớp: Chỉ giải đáp kiến thức đúng chương trình Lớp ${userGrade}, không giải vượt cấp lên lớp cao hơn.`,
-        `6. Định dạng Markdown rõ ràng, sạch sẽ, dễ đọc với học sinh.`,
+        `6. Định dạng Markdown rõ ràng, sạch sẽ, dễ đọc với học sinh. Tuyệt đối không dùng thẻ HTML (như <br>) trong câu trả lời hay trong bảng Markdown.`,
       ].join('\n');
     }
 
@@ -641,7 +641,7 @@ export class ChatRagService {
       `4. PHẠM VI KHỐI LỚP BẮT BUỘC: Chỉ giảng giải và giải bài tập thuộc đúng chương trình **${subjectName} Lớp ${userGrade}** dựa trên tài liệu trong <context>. Nếu bài tập hoặc câu hỏi yêu cầu kiến thức của lớp cao hơn (không có trong <context> Lớp ${userGrade}), KHÔNG được giải bài mà hãy nhắc học sinh rằng kiến thức đó vượt quá chương trình Lớp ${userGrade}.`,
       `5. Khi học sinh muốn tóm tắt chương trình hoặc bắt đầu học môn ${subjectName} lớp ${userGrade}: hãy liệt kê đầy đủ các chương/chủ đề trọng tâm từ <context>, giảng ngắn gọn khái niệm đầu tiên kèm ví dụ minh họa dễ hiểu và gợi ý 2–3 chủ đề để học tiếp.`,
       `6. Khi học sinh hỏi bài tập đúng chương trình lớp ${userGrade}: xác định rõ đúng/sai, giải thích quy tắc/công thức chính xác từ <context> (ví dụ thì Hiện tại đơn chỉ thêm -s/-es với He/She/It, không thêm với I/You/We/They), trình bày từng bước và đưa câu sửa đúng kèm 1–2 câu luyện tập.`,
-      `7. Định dạng Markdown hiện đại: chia mục rõ ràng (### 1., ### 2.), dùng gạch đầu dòng in đậm từ khóa (- **Khái niệm:** ...) và dùng bảng Markdown (| Cột 1 | Cột 2 |) khi tổng hợp chương trình, công thức, từ vựng hoặc chia động từ. Dùng ký hiệu toán học trực quan (×, :, ², ³, √, Δ, ≠, ≤, ≥, ⇒, ⇔).`,
+      `7. Định dạng Markdown hiện đại: chia mục rõ ràng (### 1., ### 2.), dùng gạch đầu dòng in đậm từ khóa (- **Khái niệm:** ...) và dùng bảng Markdown (| Cột 1 | Cột 2 |) khi tổng hợp chương trình, công thức, từ vựng hoặc chia động từ. Tuyệt đối không dùng thẻ HTML (như <br>) trong bảng Markdown — khi có nhiều ý trong bảng, hãy tách thành các hàng riêng hoặc ngăn cách bằng dấu chấm phẩy (;). Dùng ký hiệu toán học trực quan (×, :, ², ³, √, Δ, ≠, ≤, ≥, ⇒, ⇔).`,
     ].join('\n');
   }
 

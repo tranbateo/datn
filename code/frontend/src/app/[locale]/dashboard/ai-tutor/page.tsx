@@ -2,7 +2,15 @@
 import { notify } from "@/lib/toast";
 
 import { API_ENDPOINTS } from "@/constants/api";
-import { Suspense, useState, useRef, useEffect, useSyncExternalStore } from "react";
+import {
+  Fragment,
+  Suspense,
+  useState,
+  useRef,
+  useEffect,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "@/i18n/routing";
 import {
@@ -151,25 +159,45 @@ function sanitizeAndFormatAiContent(text: string): string {
     .replace(/\^3\b/g, "³");
 }
 
+const HAS_HTML_BR_REGEX = /<br\s*\/?>/i;
+const SPLIT_HTML_BR_REGEX = /<br\s*\/?>/gi;
+
+function renderWithLineBreaks(node: ReactNode): ReactNode {
+  if (typeof node === "string") {
+    if (!HAS_HTML_BR_REGEX.test(node)) return node;
+    const parts = node.split(SPLIT_HTML_BR_REGEX);
+    return parts.map((part, idx) => (
+      <Fragment key={idx}>
+        {idx > 0 && <br />}
+        {part}
+      </Fragment>
+    ));
+  }
+  if (Array.isArray(node)) {
+    return node.map((child, idx) => <Fragment key={idx}>{renderWithLineBreaks(child)}</Fragment>);
+  }
+  return node;
+}
+
 const markdownComponents: Components = {
   h1: ({ children }) => (
     <h1 className="text-xl font-semibold text-slate-900 dark:text-white mt-6 mb-3 tracking-tight first:mt-0">
-      {children}
+      {renderWithLineBreaks(children)}
     </h1>
   ),
   h2: ({ children }) => (
     <h2 className="text-lg font-semibold text-slate-900 dark:text-white mt-6 mb-2.5 tracking-tight first:mt-0">
-      {children}
+      {renderWithLineBreaks(children)}
     </h2>
   ),
   h3: ({ children }) => (
     <h3 className="text-[17px] font-semibold text-slate-900 dark:text-white mt-5 mb-2 tracking-tight first:mt-0">
-      {children}
+      {renderWithLineBreaks(children)}
     </h3>
   ),
   p: ({ children }) => (
     <p className="text-[15.5px] leading-7 text-slate-800 dark:text-slate-200 mb-3.5 last:mb-0">
-      {children}
+      {renderWithLineBreaks(children)}
     </p>
   ),
   ul: ({ children }) => (
@@ -182,16 +210,18 @@ const markdownComponents: Components = {
       {children}
     </ol>
   ),
-  li: ({ children }) => <li className="pl-1">{children}</li>,
+  li: ({ children }) => <li className="pl-1">{renderWithLineBreaks(children)}</li>,
   strong: ({ children }) => (
-    <strong className="font-semibold text-slate-900 dark:text-white">{children}</strong>
+    <strong className="font-semibold text-slate-900 dark:text-white">
+      {renderWithLineBreaks(children)}
+    </strong>
   ),
   em: ({ children }) => (
-    <em className="italic text-slate-700 dark:text-slate-300">{children}</em>
+    <em className="italic text-slate-700 dark:text-slate-300">{renderWithLineBreaks(children)}</em>
   ),
   blockquote: ({ children }) => (
     <blockquote className="my-4 pl-4 border-l-2 border-blue-500/70 text-slate-700 dark:text-slate-300 bg-slate-50/70 dark:bg-slate-800/30 py-2 pr-3 rounded-r-lg">
-      {children}
+      {renderWithLineBreaks(children)}
     </blockquote>
   ),
   hr: () => <hr className="my-6 border-slate-200 dark:border-slate-800" />,
@@ -230,12 +260,12 @@ const markdownComponents: Components = {
   ),
   th: ({ children }) => (
     <th className="py-3 pr-6 pl-0 font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
-      {children}
+      {renderWithLineBreaks(children)}
     </th>
   ),
   td: ({ children }) => (
     <td className="py-3.5 pr-6 pl-0 text-slate-800 dark:text-slate-200 align-top first:font-semibold first:text-slate-900 dark:first:text-white">
-      {children}
+      {renderWithLineBreaks(children)}
     </td>
   ),
 };
@@ -492,7 +522,9 @@ function AITutorContent() {
 
   const handleCopyMessage = async (msgId: string, content: string) => {
     try {
-      await navigator.clipboard.writeText(sanitizeAndFormatAiContent(content));
+      await navigator.clipboard.writeText(
+        sanitizeAndFormatAiContent(content).replace(SPLIT_HTML_BR_REGEX, "\n"),
+      );
       setCopiedMsgId(msgId);
       setTimeout(() => setCopiedMsgId(null), 1800);
     } catch {

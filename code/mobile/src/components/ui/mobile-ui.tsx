@@ -240,18 +240,35 @@ export function formatReadableMath(raw: string): string {
     .replace(/!=/g, '≠');
 }
 
+function normalizeHtmlBreaks(text: string): string {
+  return text.replace(/[ \t]*<br\s*\/?>[ \t]*/gi, '\n');
+}
+
 function renderInlineStyled(text: string, color: string, boldColor: string) {
   const formatted = formatReadableMath(text);
   const parts = formatted.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*\n]+\*)/g);
+  let prevEndedWithBreak = false;
+  const applyLineBreaks = (value: string) => {
+    let normalized = normalizeHtmlBreaks(value);
+    if (prevEndedWithBreak) {
+      normalized = normalized.replace(/^[ \t]+/, '');
+    }
+    if (normalized.length > 0) {
+      prevEndedWithBreak = normalized.endsWith('\n');
+    }
+    return normalized;
+  };
+
   return parts.map((part, idx) => {
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return (
         <Text key={idx} style={{ fontWeight: '800', color: boldColor }}>
-          {part.slice(2, -2)}
+          {applyLineBreaks(part.slice(2, -2))}
         </Text>
       );
     }
     if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      prevEndedWithBreak = false;
       return (
         <Text
           key={idx}
@@ -272,13 +289,13 @@ function renderInlineStyled(text: string, color: string, boldColor: string) {
     if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
       return (
         <Text key={idx} style={{ fontStyle: 'italic', color }}>
-          {part.slice(1, -1)}
+          {applyLineBreaks(part.slice(1, -1))}
         </Text>
       );
     }
     return (
       <Text key={idx} style={{ color }}>
-        {part}
+        {applyLineBreaks(part)}
       </Text>
     );
   });
