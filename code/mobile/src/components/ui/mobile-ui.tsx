@@ -189,6 +189,14 @@ export function formatReadableMath(raw: string): string {
 
   // Common LaTeX commands -> crisp Unicode math
   text = text
+    .replace(/\\mathbb\{N\}\s*\^\s*\{\*\}/g, 'ℕ*')
+    .replace(/\\mathbb\{N\}\s*\^\s*\*/g, 'ℕ*')
+    .replace(/\\mathbb\{N\}/g, 'ℕ')
+    .replace(/\\mathbb\{Z\}/g, 'ℤ')
+    .replace(/\\mathbb\{Q\}/g, 'ℚ')
+    .replace(/\\mathbb\{R\}/g, 'ℝ')
+    .replace(/\\mathbb\{C\}/g, 'ℂ')
+    .replace(/\\ldots|\\dots/g, '…')
     .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)')
     .replace(/\\sqrt\{([^{}]+)\}/g, '√($1)')
     .replace(/\\text\{([^{}]+)\}/g, '$1')

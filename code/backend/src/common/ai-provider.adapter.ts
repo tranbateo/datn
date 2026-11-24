@@ -522,15 +522,110 @@ interface GeminiContent {
   parts: GeminiInlinePart[];
 }
 
+interface GeminiRequestPayload {
+  systemInstruction?: { parts: Array<{ text: string }> };
+  contents: GeminiContent[];
+  generationConfig: { temperature: number; maxOutputTokens: number };
+}
+
+const GEMINI_TERMINAL_FINISH_REASONS = new Set([
+  'STOP',
+  'SAFETY',
+  'RECITATION',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+  'OTHER',
+]);
+
+const GEMINI_RETRYABLE_STATUSES = new Set([404, 429, 500, 502, 503, 504]);
+
+const GEMINI_CONTINUATION_PROMPT =
+  'Kết nối vừa bị gián đoạn ngay giữa chừng. Hãy viết TIẾP NGAY TỪ ĐÚNG CHỖ ĐANG DỞ ở cuối câu trả lời trên cho đến khi hoàn thiện trọn vẹn. Tuyệt đối KHÔNG lặp lại nội dung đã viết, KHÔNG chào lại, KHÔNG giải thích hay nhắc tới việc mất kết nối.';
+
+const GEMINI_PARTIAL_FOOTER =
+  '\n\n*(Lưu ý: Máy chủ Gemini đang quá tải tạm thời nên câu trả lời bị ngắt giữa chừng — em chỉ cần nhắn **"tiếp tục"** để Thầy/Cô viết nốt phần còn lại nhé!)*';
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function stripContinuationOverlap(existing: string, incoming: string): string {
+  if (!existing || !incoming) return incoming;
+  const tail = existing.slice(-160);
+  const maxLen = Math.min(tail.length, incoming.length);
+  for (let len = maxLen; len >= 4; len--) {
+    if (tail.endsWith(incoming.slice(0, len))) {
+      return incoming.slice(len);
+    }
+  }
+  const trimmedIncoming = incoming.trimStart();
+  if (trimmedIncoming.length < incoming.length && trimmedIncoming.length >= 4) {
+    const maxTrimLen = Math.min(tail.length, trimmedIncoming.length);
+    for (let len = maxTrimLen; len >= 4; len--) {
+      if (tail.endsWith(trimmedIncoming.slice(0, len))) {
+        return trimmedIncoming.slice(len);
+      }
+    }
+  }
+  return incoming;
+}
+
+function buildGeminiRequestBody(
+  basePayload: GeminiRequestPayload,
+  modelName: string,
+  useMinimalThinking: boolean,
+): string {
+  const lower = modelName.toLowerCase();
+  const isGemma = lower.startsWith('gemma-');
+  const supportsThinkingLevel =
+    useMinimalThinking &&
+    !isGemma &&
+    (lower.startsWith('gemini-3') ||
+      lower.includes('flash-lite-latest') ||
+      lower.includes('flash-latest'));
+
+  let contents = basePayload.contents;
+  let systemInstruction = basePayload.systemInstruction;
+
+  if (isGemma && systemInstruction?.parts?.[0]?.text) {
+    const sysText = systemInstruction.parts[0].text;
+    const firstUserIdx = contents.findIndex((c) => c.role === 'user');
+    if (firstUserIdx >= 0) {
+      contents = contents.map((c, idx) =>
+        idx === firstUserIdx
+          ? {
+              role: c.role,
+              parts: [
+                { text: `[Hướng dẫn hệ thống]\n${sysText}\n\n` },
+                ...c.parts,
+              ],
+            }
+          : c,
+      );
+    } else {
+      contents = [{ role: 'user', parts: [{ text: sysText }] }, ...contents];
+    }
+    systemInstruction = undefined;
+  }
+
+  return JSON.stringify({
+    ...(systemInstruction ? { systemInstruction } : {}),
+    contents,
+    generationConfig: {
+      ...basePayload.generationConfig,
+      ...(supportsThinkingLevel
+        ? { thinkingConfig: { thinkingLevel: 'minimal' } }
+        : {}),
+    },
+  });
+}
+
 function extractGeminiPayload(
   input: unknown,
   temperature: number,
   maxOutputTokens: number,
-): {
-  systemInstruction?: { parts: Array<{ text: string }> };
-  contents: GeminiContent[];
-  generationConfig: { temperature: number; maxOutputTokens: number };
-} {
+): GeminiRequestPayload {
   const rawList = Array.isArray(input) ? input : [input];
   const systemParts: string[] = [];
   const contents: GeminiContent[] = [];
@@ -646,134 +741,372 @@ export class GeminiRestChatModel implements AiChatModelAdapter {
     const candidates = [
       this.model,
       'gemini-flash-lite-latest',
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-3.6-flash',
+      'gemini-3.7-flash',
+      'gemini-3.8-flash',
+      'gemini-flash-latest',
       'gemini-3.1-flash-lite',
       'gemini-3-flash-preview',
+      'gemma-4-31b-it',
+      'gemma-4-26b-a4b-it',
     ];
     return Array.from(new Set(candidates.filter(Boolean)));
   }
 
-  async invoke(input: unknown): Promise<AiChatResponse> {
-    const body = JSON.stringify(
-      extractGeminiPayload(input, this.temperature, this.maxOutputTokens),
-    );
-    const models = this.getCandidateModels();
+  private async fetchGeminiWithFallback(
+    payload: GeminiRequestPayload,
+    endpointAction: 'generateContent' | 'streamGenerateContent',
+    models: string[],
+    maxPasses: number,
+  ): Promise<{
+    response: Response;
+    modelName: string;
+    controller: AbortController;
+  }> {
+    const isStream = endpointAction === 'streamGenerateContent';
     let lastError = 'Gemini API error';
 
-    for (const modelName of models) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      });
+    for (let pass = 0; pass < maxPasses; pass++) {
+      for (let idx = 0; idx < models.length; idx++) {
+        const modelName = models[idx];
+        const query = isStream
+          ? `alt=sse&key=${encodeURIComponent(this.apiKey)}`
+          : `key=${encodeURIComponent(this.apiKey)}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:${endpointAction}?${query}`;
 
-      if (response.ok) {
-        const data: any = await response.json();
-        const text = extractGeminiCandidateText(data);
-        return { content: stripReasoningBlocks(text) };
+        for (const useMinimalThinking of [true, false]) {
+          const controller = new AbortController();
+          const connectTimeoutMs = isStream
+            ? idx === 0
+              ? 13_000
+              : 9_000
+            : 25_000;
+          const timer = setTimeout(() => controller.abort(), connectTimeoutMs);
+
+          try {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(isStream ? { Accept: 'text/event-stream' } : {}),
+              },
+              body: buildGeminiRequestBody(
+                payload,
+                modelName,
+                useMinimalThinking,
+              ),
+              signal: controller.signal,
+            });
+            clearTimeout(timer);
+
+            if (res.ok && (!isStream || res.body)) {
+              return { response: res, modelName, controller };
+            }
+
+            const errText = await res.text().catch(() => '');
+            lastError = `Gemini API error (${res.status}, ${modelName}): ${errText.slice(0, 300)}`;
+
+            // If this model rejects thinkingConfig, retry the same model without it
+            if (
+              res.status === 400 &&
+              useMinimalThinking &&
+              /thinking/i.test(errText)
+            ) {
+              continue;
+            }
+
+            if (GEMINI_RETRYABLE_STATUSES.has(res.status)) {
+              break;
+            }
+
+            // Non-retryable 4xx (e.g. invalid API key 400/403)
+            throw new Error(lastError);
+          } catch (err: any) {
+            clearTimeout(timer);
+            if (err?.name === 'AbortError') {
+              lastError = `Gemini API timeout (${connectTimeoutMs}ms, ${modelName})`;
+              break;
+            }
+            const errMsg =
+              typeof err?.message === 'string' ? (err.message as string) : '';
+            if (errMsg.startsWith('Gemini API error (')) {
+              throw err;
+            }
+            lastError = `Gemini network error (${modelName}): ${errMsg || String(err)}`;
+            break;
+          }
+        }
       }
 
-      const errText = await response.text().catch(() => '');
-      lastError = `Gemini API error (${response.status}, ${modelName}): ${errText.slice(0, 300)}`;
-      // Retry with fallback model on transient 503 high demand or deprecated 404
-      if (
-        response.status !== 503 &&
-        response.status !== 404 &&
-        response.status !== 429
-      ) {
-        throw new Error(lastError);
+      if (pass + 1 < maxPasses) {
+        await sleepMs(700 + pass * 600);
       }
     }
 
     throw new Error(lastError);
   }
 
-  async stream(input: unknown): Promise<AsyncIterable<AiChatResponse>> {
-    const body = JSON.stringify(
-      extractGeminiPayload(input, this.temperature, this.maxOutputTokens),
+  async invoke(input: unknown): Promise<AiChatResponse> {
+    const basePayload = extractGeminiPayload(
+      input,
+      this.temperature,
+      this.maxOutputTokens,
     );
     const models = this.getCandidateModels();
-    let response: Response | null = null;
-    let lastError = 'Gemini Stream API error';
+    let accumulated = '';
 
-    for (const modelName of models) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(this.apiKey)}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-        },
-        body,
-      });
+    for (let hop = 0; hop < 3; hop++) {
+      const hopPayload: GeminiRequestPayload = accumulated
+        ? {
+            ...basePayload,
+            contents: [
+              ...basePayload.contents,
+              { role: 'model', parts: [{ text: accumulated }] },
+              { role: 'user', parts: [{ text: GEMINI_CONTINUATION_PROMPT }] },
+            ],
+          }
+        : basePayload;
 
-      if (res.ok && res.body) {
-        response = res;
+      const { response } = await this.fetchGeminiWithFallback(
+        hopPayload,
+        'generateContent',
+        models,
+        2,
+      );
+      const data: any = await response.json();
+      const finishReason: string | null =
+        data?.candidates?.[0]?.finishReason ?? null;
+      const chunk = extractGeminiCandidateText(data);
+      const cleanedChunk =
+        hop > 0 ? stripContinuationOverlap(accumulated, chunk) : chunk;
+      accumulated += cleanedChunk;
+
+      if (
+        !finishReason ||
+        GEMINI_TERMINAL_FINISH_REASONS.has(finishReason) ||
+        !cleanedChunk
+      ) {
         break;
       }
-
-      const errText = await res.text().catch(() => '');
-      lastError = `Gemini Stream error (${res.status}, ${modelName}): ${errText.slice(0, 300)}`;
-      if (res.status !== 503 && res.status !== 404 && res.status !== 429) {
-        throw new Error(lastError);
-      }
     }
 
-    if (!response || !response.body) {
-      throw new Error(lastError);
-    }
+    return { content: stripReasoningBlocks(accumulated) };
+  }
 
-    const activeBody = response.body;
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async stream(input: unknown): Promise<AsyncIterable<AiChatResponse>> {
+    const basePayload = extractGeminiPayload(
+      input,
+      this.temperature,
+      this.maxOutputTokens,
+    );
+    const models = this.getCandidateModels();
+    const fetchWithFallback = this.fetchGeminiWithFallback.bind(this);
 
     async function* generateStream(): AsyncIterable<AiChatResponse> {
-      const reader = activeBody.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
+      const startedAt = Date.now();
+      const maxTotalDurationMs = 75_000;
+      const maxHops = 5;
+      let accumulatedText = '';
+      let isCompleted = false;
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split(/\r?\n/);
-          buffer = lines.pop() ?? '';
-
-          for (const rawLine of lines) {
-            const line = rawLine.trim();
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (!payload || payload === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(payload);
-              const textChunk = extractGeminiCandidateText(parsed);
-              if (textChunk) {
-                yield { content: textChunk };
-              }
-            } catch {
-              // Ignore incomplete or non-JSON SSE keepalive frames
-            }
-          }
+      for (let hop = 0; hop < maxHops && !isCompleted; hop++) {
+        if (hop > 0 && Date.now() - startedAt > maxTotalDurationMs) {
+          break;
         }
 
-        // Flush any remaining decoded bytes/frame at stream EOF
-        const remaining = (buffer + decoder.decode()).trim();
-        if (remaining.startsWith('data:')) {
-          const payload = remaining.slice(5).trim();
-          if (payload && payload !== '[DONE]') {
-            try {
-              const parsed = JSON.parse(payload);
-              const textChunk = extractGeminiCandidateText(parsed);
-              if (textChunk) {
-                yield { content: textChunk };
+        const hopPayload: GeminiRequestPayload = accumulatedText
+          ? {
+              ...basePayload,
+              contents: [
+                ...basePayload.contents,
+                { role: 'model', parts: [{ text: accumulatedText }] },
+                { role: 'user', parts: [{ text: GEMINI_CONTINUATION_PROMPT }] },
+              ],
+            }
+          : basePayload;
+
+        let activeBody: ReadableStream<Uint8Array>;
+        let activeController: AbortController;
+        try {
+          const opened = await fetchWithFallback(
+            hopPayload,
+            'streamGenerateContent',
+            models,
+            hop === 0 ? 2 : 1,
+          );
+          if (!opened.response.body) {
+            throw new Error('Gemini Stream returned empty response body');
+          }
+          activeBody = opened.response.body;
+          activeController = opened.controller;
+        } catch (err) {
+          if (accumulatedText.length === 0) {
+            throw err;
+          }
+          // We already delivered partial output; stop resuming and notify cleanly below
+          break;
+        }
+
+        const reader = activeBody.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        let finishReason: string | null = null;
+        let midStreamError: string | null = null;
+        let hopProducedChars = 0;
+
+        // Buffer only the opening ~90 chars on continuation hops to deduplicate any repeated prefix
+        let overlapResolved = hop === 0 || accumulatedText.length === 0;
+        let overlapBuffer = '';
+
+        const flushOverlapIfReady = (force: boolean): string => {
+          if (overlapResolved) return '';
+          if (!force && overlapBuffer.length < 90) return '';
+          overlapResolved = true;
+          const deduped = stripContinuationOverlap(
+            accumulatedText,
+            overlapBuffer,
+          );
+          overlapBuffer = '';
+          return deduped;
+        };
+
+        let idleTimer = setTimeout(() => activeController.abort(), 22_000);
+        const resetIdleTimer = () => {
+          clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => activeController.abort(), 22_000);
+        };
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            clearTimeout(idleTimer);
+            if (done) break;
+            resetIdleTimer();
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() ?? '';
+
+            for (const rawLine of lines) {
+              const line = rawLine.trim();
+              if (!line.startsWith('data:')) continue;
+              const payload = line.slice(5).trim();
+              if (!payload || payload === '[DONE]') continue;
+              try {
+                const parsed = JSON.parse(payload);
+                if (parsed?.error) {
+                  midStreamError =
+                    `${parsed.error.code ?? ''} ${parsed.error.status ?? parsed.error.message ?? 'STREAM_ERROR'}`.trim();
+                  break;
+                }
+                const candFinish = parsed?.candidates?.[0]?.finishReason;
+                if (typeof candFinish === 'string' && candFinish) {
+                  finishReason = candFinish;
+                }
+                const textChunk = extractGeminiCandidateText(parsed);
+                if (textChunk) {
+                  if (!overlapResolved) {
+                    overlapBuffer += textChunk;
+                    const ready = flushOverlapIfReady(false);
+                    if (ready) {
+                      accumulatedText += ready;
+                      hopProducedChars += ready.length;
+                      yield { content: ready };
+                    }
+                  } else {
+                    accumulatedText += textChunk;
+                    hopProducedChars += textChunk.length;
+                    yield { content: textChunk };
+                  }
+                }
+              } catch {
+                // Ignore incomplete or non-JSON SSE keepalive frames
               }
-            } catch {
-              // Ignore trailing partial frame
+            }
+
+            if (midStreamError) break;
+          }
+
+          // Flush any remaining decoded bytes at stream EOF
+          if (!midStreamError) {
+            const remaining = (buffer + decoder.decode()).trim();
+            if (remaining.startsWith('data:')) {
+              const payload = remaining.slice(5).trim();
+              if (payload && payload !== '[DONE]') {
+                try {
+                  const parsed = JSON.parse(payload);
+                  if (parsed?.error) {
+                    midStreamError =
+                      `${parsed.error.code ?? ''} ${parsed.error.status ?? parsed.error.message ?? 'STREAM_ERROR'}`.trim();
+                  } else {
+                    const candFinish = parsed?.candidates?.[0]?.finishReason;
+                    if (typeof candFinish === 'string' && candFinish) {
+                      finishReason = candFinish;
+                    }
+                    const textChunk = extractGeminiCandidateText(parsed);
+                    if (textChunk) {
+                      if (!overlapResolved) {
+                        overlapBuffer += textChunk;
+                      } else {
+                        accumulatedText += textChunk;
+                        hopProducedChars += textChunk.length;
+                        yield { content: textChunk };
+                      }
+                    }
+                  }
+                } catch {
+                  // Ignore trailing partial frame
+                }
+              }
             }
           }
+        } catch (streamErr: any) {
+          midStreamError = streamErr?.name || 'STREAM_READ_ERROR';
+        } finally {
+          clearTimeout(idleTimer);
+          reader.releaseLock();
         }
-      } finally {
-        reader.releaseLock();
+
+        const leftover = flushOverlapIfReady(true);
+        if (leftover) {
+          accumulatedText += leftover;
+          hopProducedChars += leftover.length;
+          yield { content: leftover };
+        }
+
+        if (
+          !midStreamError &&
+          finishReason &&
+          GEMINI_TERMINAL_FINISH_REASONS.has(finishReason)
+        ) {
+          isCompleted = true;
+          break;
+        }
+
+        // If the stream ended cleanly with text on a model that omitted finishReason
+        // AND it did not report an error AND already looks sentence-complete on a later hop, still retry if mid-sentence
+        if (hopProducedChars === 0 && accumulatedText.length === 0) {
+          await sleepMs(600);
+          continue;
+        }
+
+        // Mid-stream 503 / abrupt EOF / MAX_TOKENS -> wait briefly and seamlessly continue
+        if (hop + 1 < maxHops) {
+          await sleepMs(Math.min(500 * (hop + 1), 1500));
+        }
+      }
+
+      if (accumulatedText.length === 0) {
+        throw new Error(
+          'Gemini API không trả về nội dung nào sau nhiều lần thử lại.',
+        );
+      }
+
+      if (!isCompleted) {
+        yield { content: GEMINI_PARTIAL_FOOTER };
       }
     }
 

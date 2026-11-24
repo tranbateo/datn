@@ -75,9 +75,18 @@ export class ChatRagController {
     @UploadedFile() image?: Express.Multer.File,
   ) {
     const userId = req.user.id || req.user.userId;
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    // Keep Render/Netlify proxies alive during Gemini retry or auto-continuation hops
+    const heartbeat = setInterval(() => {
+      if (!res.writableEnded) {
+        res.write(': keepalive\n\n');
+      }
+    }, 4000);
 
     let imageBase64: string | undefined;
     if (image) {
@@ -90,26 +99,35 @@ export class ChatRagController {
         content,
         imageBase64,
         (chunk) => {
-          res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+          if (!res.writableEnded) {
+            res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+          }
         },
         userId,
       );
-      if (result.citations && result.citations.length > 0) {
+      if (!res.writableEnded) {
+        if (result.citations && result.citations.length > 0) {
+          res.write(
+            `data: ${JSON.stringify({ citations: result.citations, messageId: result.aiMsg.id })}\n\n`,
+          );
+        } else {
+          res.write(
+            `data: ${JSON.stringify({ messageId: result.aiMsg.id })}\n\n`,
+          );
+        }
+        res.write('data: [DONE]\n\n');
+      }
+    } catch (err: any) {
+      if (!res.writableEnded) {
         res.write(
-          `data: ${JSON.stringify({ citations: result.citations, messageId: result.aiMsg.id })}\n\n`,
-        );
-      } else {
-        res.write(
-          `data: ${JSON.stringify({ messageId: result.aiMsg.id })}\n\n`,
+          `data: ${JSON.stringify({ error: err?.message || 'Stream failed' })}\n\n`,
         );
       }
-      res.write('data: [DONE]\n\n');
-    } catch (err: any) {
-      res.write(
-        `data: ${JSON.stringify({ error: err?.message || 'Stream failed' })}\n\n`,
-      );
     } finally {
-      res.end();
+      clearInterval(heartbeat);
+      if (!res.writableEnded) {
+        res.end();
+      }
     }
   }
 

@@ -133,30 +133,56 @@ function sanitizeAndFormatAiContent(text: string): string {
     }
   }
 
-  // Định dạng công thức Toán học trực quan
+  // Định dạng công thức Toán học trực quan (chuyển LaTeX trước để không vỡ **bold** khi có ký tự *)
   return cleaned
     .trimStart()
-    .replace(/\$\$([\s\S]*?)\$\$/g, (_, expr) => `\n**${expr.trim()}**\n`)
-    .replace(/\$([^$\n]+)\$/g, (_, expr) => `**${expr.trim()}**`)
+    .replace(/\\mathbb\{N\}\s*\^\s*\{\*\}/g, "ℕ*")
+    .replace(/\\mathbb\{N\}\s*\^\s*\*/g, "ℕ*")
+    .replace(/\\mathbb\{N\}/g, "ℕ")
+    .replace(/\\mathbb\{Z\}/g, "ℤ")
+    .replace(/\\mathbb\{Q\}/g, "ℚ")
+    .replace(/\\mathbb\{R\}/g, "ℝ")
+    .replace(/\\mathbb\{C\}/g, "ℂ")
     .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1)/($2)")
     .replace(/\\sqrt\{([^{}]+)\}/g, "√($1)")
     .replace(/\\text\{([^{}]+)\}/g, "$1")
+    .replace(/\\mathrm\{([^{}]+)\}/g, "$1")
+    .replace(/\\mathbf\{([^{}]+)\}/g, "$1")
+    .replace(/\\left|\\right/g, "")
     .replace(/\\times/g, "×")
     .replace(/\\div/g, "÷")
     .replace(/\\cdot/g, "·")
     .replace(/\\Delta/g, "Δ")
-    .replace(/\\alpha/g, "α")
-    .replace(/\\beta/g, "β")
-    .replace(/\\pi/g, "π")
-    .replace(/\\neq/g, "≠")
-    .replace(/\\leq/g, "≤")
-    .replace(/\\geq/g, "≥")
-    .replace(/\\Leftrightarrow/g, "⇔")
-    .replace(/\\Rightarrow/g, "⇒")
+    .replace(/\\alpha\b/g, "α")
+    .replace(/\\beta\b/g, "β")
+    .replace(/\\pi\b/g, "π")
+    .replace(/\\neq|\\ne\b/g, "≠")
+    .replace(/\\leq|\\le\b/g, "≤")
+    .replace(/\\geq|\\ge\b/g, "≥")
+    .replace(/\\in\b/g, "∈")
+    .replace(/\\notin\b/g, "∉")
+    .replace(/\\subset\b/g, "⊂")
+    .replace(/\\cup\b/g, "∪")
+    .replace(/\\cap\b/g, "∩")
+    .replace(/\\ldots|\\dots/g, "…")
+    .replace(/\\Leftrightarrow|\\iff/g, "⇔")
+    .replace(/\\Rightarrow|\\implies/g, "⇒")
+    .replace(/\\rightarrow|\\to\b/g, "→")
     .replace(/\\approx/g, "≈")
     .replace(/\\pm/g, "±")
+    .replace(/\^\{2\}/g, "²")
+    .replace(/\^\{3\}/g, "³")
     .replace(/\^2\b/g, "²")
-    .replace(/\^3\b/g, "³");
+    .replace(/\^3\b/g, "³")
+    .replace(/\^\{([^{}]+)\}/g, "^($1)")
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, expr: string) => {
+      const inner = expr.trim();
+      return inner.includes("*") ? `\n\`${inner}\`\n` : `\n**${inner}**\n`;
+    })
+    .replace(/\$([^$\n]+)\$/g, (_, expr: string) => {
+      const inner = expr.trim();
+      return inner.includes("*") ? `\`${inner}\`` : `**${inner}**`;
+    });
 }
 
 const HAS_HTML_BR_REGEX = /<br\s*\/?>/i;

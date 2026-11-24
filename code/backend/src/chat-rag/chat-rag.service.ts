@@ -639,9 +639,9 @@ export class ChatRagService {
         ? `3. Mạch hội thoại: Đây là câu hỏi nối tiếp trong bài học môn ${subjectName}, hãy đi thẳng ngay vào nội dung giải đáp ngắn gọn, rõ ràng.`
         : `3. Mở đầu: Bắt đầu tự nhiên 1 câu khích lệ ngắn gọn, sau đó đi thẳng vào kiến thức chính.`,
       `4. PHẠM VI KHỐI LỚP BẮT BUỘC: Chỉ giảng giải và giải bài tập thuộc đúng chương trình **${subjectName} Lớp ${userGrade}** dựa trên tài liệu trong <context>. Nếu bài tập hoặc câu hỏi yêu cầu kiến thức của lớp cao hơn (không có trong <context> Lớp ${userGrade}), KHÔNG được giải bài mà hãy nhắc học sinh rằng kiến thức đó vượt quá chương trình Lớp ${userGrade}.`,
-      `5. Khi học sinh muốn tóm tắt chương trình hoặc bắt đầu học môn ${subjectName} lớp ${userGrade}: hãy liệt kê đầy đủ các chương/chủ đề trọng tâm từ <context>, giảng ngắn gọn khái niệm đầu tiên kèm ví dụ minh họa dễ hiểu và gợi ý 2–3 chủ đề để học tiếp.`,
+      `5. Khi học sinh muốn tóm tắt chương trình hoặc bắt đầu học môn ${subjectName} lớp ${userGrade}: hãy tóm tắt súc tích, đầy đủ các chương/chủ đề trọng tâm từ <context> (khoảng 250–450 từ mỗi lượt để học sinh dễ theo dõi), giảng ngắn gọn 1 khái niệm đầu tiên kèm ví dụ dễ hiểu và kết thúc trọn vẹn bằng gợi ý 2–3 chủ đề để học tiếp.`,
       `6. Khi học sinh hỏi bài tập đúng chương trình lớp ${userGrade}: xác định rõ đúng/sai, giải thích quy tắc/công thức chính xác từ <context> (ví dụ thì Hiện tại đơn chỉ thêm -s/-es với He/She/It, không thêm với I/You/We/They), trình bày từng bước và đưa câu sửa đúng kèm 1–2 câu luyện tập.`,
-      `7. Định dạng Markdown hiện đại: chia mục rõ ràng (### 1., ### 2.), dùng gạch đầu dòng in đậm từ khóa (- **Khái niệm:** ...) và dùng bảng Markdown (| Cột 1 | Cột 2 |) khi tổng hợp chương trình, công thức, từ vựng hoặc chia động từ. Tuyệt đối không dùng thẻ HTML (như <br>) trong bảng Markdown — khi có nhiều ý trong bảng, hãy tách thành các hàng riêng hoặc ngăn cách bằng dấu chấm phẩy (;). Dùng ký hiệu toán học trực quan (×, :, ², ³, √, Δ, ≠, ≤, ≥, ⇒, ⇔).`,
+      `7. Định dạng Markdown hiện đại: chia mục rõ ràng (### 1., ### 2.), dùng gạch đầu dòng in đậm từ khóa (- **Khái niệm:** ...) và dùng bảng Markdown (| Cột 1 | Cột 2 |) khi tổng hợp chương trình, công thức, từ vựng hoặc chia động từ. Tuyệt đối không dùng thẻ HTML (như <br>) trong bảng Markdown — khi có nhiều ý trong bảng, hãy tách thành các hàng riêng hoặc ngăn cách bằng dấu chấm phẩy (;). Dùng ký hiệu toán học Unicode trực quan (ℕ, ℕ*, ℤ, ×, ·, :, ², ³, √, Δ, ≠, ≤, ≥, ⇒, ⇔), KHÔNG viết cú pháp LaTeX thô như \\mathbb{N} hay a^{m+n}.`,
     ].join('\n');
   }
 
@@ -1312,41 +1312,70 @@ export class ChatRagService {
       if (guardrailMessage) {
         aiResponseText = guardrailMessage;
       } else {
-        const scoped = await this.retrieveScopedContext(
-          session.userId,
-          session.user?.schoolId || null,
-          resolved.subjectId,
-          content,
-        );
-
-        const higherGradeMsg = await this.checkHigherGradeDbCurriculum(
-          session.user?.schoolId || null,
-          subjectName,
-          numericGrade,
-          content,
-          scoped.bestLessonScore,
-        );
-
-        if (higherGradeMsg) {
-          aiResponseText = higherGradeMsg;
-          citations = [];
-        } else {
-          citations = scoped.citations;
-
-          const priorHistoryRaw = await this.prisma.chatMessage.findMany({
-            where: { sessionId, id: { not: userMsg.id } },
-            orderBy: { createdAt: 'desc' },
-            take: 6,
-          });
-          priorHistoryRaw.reverse();
-          const priorHistory = priorHistoryRaw.filter(
+        const priorHistoryRaw = await this.prisma.chatMessage.findMany({
+          where: { sessionId, id: { not: userMsg.id } },
+          orderBy: { createdAt: 'desc' },
+          take: 6,
+        });
+        priorHistoryRaw.reverse();
+        const priorHistory = priorHistoryRaw
+          .filter(
             (m) =>
               m.role === 'user' ||
               (!m.content.includes('gián đoạn kết nối') &&
                 !m.content.includes('chuyển sang phiên học môn') &&
                 !m.content.includes('vượt quá chương trình') &&
                 !m.content.includes('không nằm trong chương trình')),
+          )
+          .map((m) => ({
+            ...m,
+            content:
+              m.role === 'assistant'
+                ? m.content
+                    .replace(
+                      /\n*\*\(Lưu ý: Máy chủ Gemini đang quá tải[\s\S]*?\)\*/g,
+                      '',
+                    )
+                    .trim()
+                : m.content,
+          }));
+
+        const isContinuationRequest =
+          priorHistory.some((m) => m.role === 'assistant') &&
+          content.trim().length <= 40 &&
+          /^(tiếp tục|viết tiếp|nói tiếp|giảng tiếp|làm tiếp|tiếp đi|tiếp nhé|tiếp|continue)\b/i.test(
+            content.trim(),
           );
+        const lastPriorUserMsg = [...priorHistory]
+          .reverse()
+          .find((m) => m.role === 'user');
+        const ragQuery =
+          isContinuationRequest && lastPriorUserMsg
+            ? lastPriorUserMsg.content
+            : content;
+
+        const scoped = await this.retrieveScopedContext(
+          session.userId,
+          session.user?.schoolId || null,
+          resolved.subjectId,
+          ragQuery,
+        );
+
+        const higherGradeMsg = isContinuationRequest
+          ? null
+          : await this.checkHigherGradeDbCurriculum(
+              session.user?.schoolId || null,
+              subjectName,
+              numericGrade,
+              content,
+              scoped.bestLessonScore,
+            );
+
+        if (higherGradeMsg) {
+          aiResponseText = higherGradeMsg;
+          citations = [];
+        } else {
+          citations = scoped.citations;
           const isFollowUp = priorHistory.some((m) => m.role === 'assistant');
 
           const systemPrompt = this.buildPedagogicalSystemPrompt(
@@ -1354,11 +1383,14 @@ export class ChatRagService {
             userGrade,
             isFollowUp,
           );
+          const effectiveStudentQuestion = isContinuationRequest
+            ? `${content} (Hãy viết tiếp trực tiếp từ đúng ý đang dang dở hoặc phần tiếp theo ngay sau tin nhắn gần nhất của Thầy/Cô ở trên — KHÔNG nhảy sang chuyên đề khác và KHÔNG lặp lại nội dung đã viết.)`
+            : content;
           const promptText = this.buildPedagogicalRagPrompt(
             subjectName,
             userGrade,
             scoped.contextDocs,
-            content,
+            effectiveStudentQuestion,
           );
 
           const messageContent: any[] = [{ type: 'text', text: promptText }];
@@ -1518,21 +1550,65 @@ export class ChatRagService {
         aiResponseText = guardrailMessage;
         onChunk(guardrailMessage);
       } else {
+        const priorHistoryRaw = await this.prisma.chatMessage.findMany({
+          where: { sessionId, id: { not: userMsg.id } },
+          orderBy: { createdAt: 'desc' },
+          take: 6,
+        });
+        priorHistoryRaw.reverse();
+        const priorHistory = priorHistoryRaw
+          .filter(
+            (m) =>
+              m.role === 'user' ||
+              (!m.content.includes('gián đoạn kết nối') &&
+                !m.content.includes('chuyển sang phiên học môn') &&
+                !m.content.includes('vượt quá chương trình') &&
+                !m.content.includes('không nằm trong chương trình')),
+          )
+          .map((m) => ({
+            ...m,
+            content:
+              m.role === 'assistant'
+                ? m.content
+                    .replace(
+                      /\n*\*\(Lưu ý: Máy chủ Gemini đang quá tải[\s\S]*?\)\*/g,
+                      '',
+                    )
+                    .trim()
+                : m.content,
+          }));
+
+        const isContinuationRequest =
+          priorHistory.some((m) => m.role === 'assistant') &&
+          content.trim().length <= 40 &&
+          /^(tiếp tục|viết tiếp|nói tiếp|giảng tiếp|làm tiếp|tiếp đi|tiếp nhé|tiếp|continue)\b/i.test(
+            content.trim(),
+          );
+        const lastPriorUserMsg = [...priorHistory]
+          .reverse()
+          .find((m) => m.role === 'user');
+        const ragQuery =
+          isContinuationRequest && lastPriorUserMsg
+            ? lastPriorUserMsg.content
+            : content;
+
         // Enforce scoped vector search (BR-RAG-001)
         const scoped = await this.retrieveScopedContext(
           session.userId,
           session.user?.schoolId || null,
           resolved.subjectId,
-          content,
+          ragQuery,
         );
 
-        const higherGradeMsg = await this.checkHigherGradeDbCurriculum(
-          session.user?.schoolId || null,
-          subjectName,
-          numericGrade,
-          content,
-          scoped.bestLessonScore,
-        );
+        const higherGradeMsg = isContinuationRequest
+          ? null
+          : await this.checkHigherGradeDbCurriculum(
+              session.user?.schoolId || null,
+              subjectName,
+              numericGrade,
+              content,
+              scoped.bestLessonScore,
+            );
 
         if (higherGradeMsg) {
           aiResponseText = higherGradeMsg;
@@ -1540,21 +1616,6 @@ export class ChatRagService {
           onChunk(higherGradeMsg);
         } else {
           citations = scoped.citations;
-
-          const priorHistoryRaw = await this.prisma.chatMessage.findMany({
-            where: { sessionId, id: { not: userMsg.id } },
-            orderBy: { createdAt: 'desc' },
-            take: 6,
-          });
-          priorHistoryRaw.reverse();
-          const priorHistory = priorHistoryRaw.filter(
-            (m) =>
-              m.role === 'user' ||
-              (!m.content.includes('gián đoạn kết nối') &&
-                !m.content.includes('chuyển sang phiên học môn') &&
-                !m.content.includes('vượt quá chương trình') &&
-                !m.content.includes('không nằm trong chương trình')),
-          );
           const isFollowUp = priorHistory.some((m) => m.role === 'assistant');
 
           const systemPrompt = this.buildPedagogicalSystemPrompt(
@@ -1562,11 +1623,14 @@ export class ChatRagService {
             userGrade,
             isFollowUp,
           );
+          const effectiveStudentQuestion = isContinuationRequest
+            ? `${content} (Hãy viết tiếp trực tiếp từ đúng ý đang dang dở hoặc phần tiếp theo ngay sau tin nhắn gần nhất của Thầy/Cô ở trên — KHÔNG nhảy sang chuyên đề khác và KHÔNG lặp lại nội dung đã viết.)`
+            : content;
           const promptText = this.buildPedagogicalRagPrompt(
             subjectName,
             userGrade,
             scoped.contextDocs,
-            content,
+            effectiveStudentQuestion,
           );
 
           const messageContent: any[] = [{ type: 'text', text: promptText }];
