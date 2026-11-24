@@ -637,7 +637,9 @@ export class GeminiRestChatModel implements AiChatModelAdapter {
     this.apiKey = options.apiKey;
     this.model = options.model;
     this.temperature = options.temperature ?? 0.3;
-    this.maxOutputTokens = options.maxOutputTokens ?? 2048;
+    // Gemini 2.5/3.x counts hidden thoughtsTokenCount toward maxOutputTokens,
+    // so ensure >= 8192 to prevent mid-sentence MAX_TOKENS truncation.
+    this.maxOutputTokens = Math.max(options.maxOutputTokens ?? 8192, 8192);
   }
 
   private getCandidateModels(): string[] {
