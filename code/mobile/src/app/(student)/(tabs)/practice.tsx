@@ -22,7 +22,7 @@ import {
   type Subject,
 } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
-import { getCached, isCacheFresh, setCached } from '@/lib/ttl-cache';
+import { getCached, invalidateCache, isCacheFresh, setCached } from '@/lib/ttl-cache';
 import {
   Badge,
   Card,
@@ -146,6 +146,7 @@ export default function StudentPracticeScreen() {
         numQuestions: questionCount,
         topic: topic.trim() || undefined,
       });
+      invalidateCache('student:practice:');
       router.push({
         pathname: '/(student)/quiz/[quizId]',
         params: { quizId: created.id },

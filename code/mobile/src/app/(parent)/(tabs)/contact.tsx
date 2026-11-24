@@ -178,7 +178,13 @@ export default function ParentContactScreen() {
         .getMessages(teacherId)
         .then((msgs) => {
           if (Array.isArray(msgs)) {
-            setThread((prev) => (msgs.length !== prev.length ? msgs : prev));
+            setThread((prev) => {
+              const prevLastId = prev[prev.length - 1]?.id;
+              const nextLastId = msgs[msgs.length - 1]?.id;
+              return msgs.length !== prev.length || prevLastId !== nextLastId
+                ? msgs
+                : prev;
+            });
           }
         })
         .catch(() => undefined);
@@ -314,7 +320,7 @@ export default function ParentContactScreen() {
     setSendingMsg(true);
     try {
       const sent = await parentApi.sendMessage(activeTeacher.id, text);
-      setThread((prev) => [...prev, sent]);
+      setThread((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]));
       setTimeout(() => chatListRef.current?.scrollToEnd({ animated: true }), 80);
     } catch (err: unknown) {
       setMsgInput(text);
@@ -648,7 +654,7 @@ export default function ParentContactScreen() {
 
           <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
             {loadingThread ? (
               <View style={styles.center}>

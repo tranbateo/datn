@@ -510,7 +510,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  kpiCard: { width: '48%', alignItems: 'center', gap: 4, paddingVertical: 14 },
+  kpiCard: { flexBasis: '47%', flexGrow: 1, alignItems: 'center', gap: 4, paddingVertical: 14 },
   kpiLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   kpiVal: { fontSize: 24, fontWeight: '800' },
   secTitle: { fontSize: 16, fontWeight: '800', marginTop: 4 },

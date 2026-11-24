@@ -63,6 +63,7 @@ export default function StudentAiTutorScreen() {
 
   const [loadingInit, setLoadingInit] = useState(true);
   const [sending, setSending] = useState(false);
+  const [hasStreamedChunk, setHasStreamedChunk] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [activeCitation, setActiveCitation] = useState<RagCitation | null>(null);
   const [reportMsg, setReportMsg] = useState<ChatMessageItem | null>(null);
@@ -70,9 +71,31 @@ export default function StudentAiTutorScreen() {
   const [submittingReport, setSubmittingReport] = useState(false);
 
   const listRef = useRef<FlatList<ChatMessageItem>>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const streamSeqRef = useRef(0);
+
+  const cancelActiveStream = useCallback(() => {
+    streamSeqRef.current += 1;
+    if (streamAbortRef.current) {
+      streamAbortRef.current.abort();
+      streamAbortRef.current = null;
+    }
+    setSending(false);
+    setHasStreamedChunk(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (streamAbortRef.current) {
+        streamAbortRef.current.abort();
+        streamAbortRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (params.subjectId) {
+      cancelActiveStream();
       setSelectedSubjectId(params.subjectId);
       setActiveSessionId(null);
       setMessages([]);
@@ -80,7 +103,7 @@ export default function StudentAiTutorScreen() {
     if (params.prefill) {
       setInputText(params.prefill);
     }
-  }, [params.subjectId, params.prefill]);
+  }, [params.subjectId, params.prefill, cancelActiveStream]);
 
   const loadInitial = useCallback(async () => {
     setLoadingInit(true);
@@ -109,6 +132,7 @@ export default function StudentAiTutorScreen() {
   }, [loadInitial]);
 
   const openSession = async (sessionId: string) => {
+    cancelActiveStream();
     setShowSessions(false);
     try {
       const detail = await chatApi.getSessionHistory(sessionId);
@@ -125,6 +149,7 @@ export default function StudentAiTutorScreen() {
   };
 
   const handleNewChat = () => {
+    cancelActiveStream();
     setActiveSessionId(null);
     setMessages([]);
     setPickedImage(null);
@@ -170,10 +195,15 @@ export default function StudentAiTutorScreen() {
     };
 
     const imageToSend = pickedImage;
+    const mySeq = ++streamSeqRef.current;
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+
     setInputText('');
     setPickedImage(null);
     setMessages((prev) => [...prev, tempUserMsg]);
     setSending(true);
+    setHasStreamedChunk(false);
 
     try {
       let sid = activeSessionId;
@@ -183,6 +213,7 @@ export default function StudentAiTutorScreen() {
           title: promptText.slice(0, 50),
           subjectId: selectedSubjectId || undefined,
         });
+        if (streamSeqRef.current !== mySeq) return;
         sid = created.id;
         setActiveSessionId(sid);
         setSessions((prev) => [
@@ -200,7 +231,11 @@ export default function StudentAiTutorScreen() {
           promptText,
           imageToSend,
           (delta) => {
-            receivedStreamChunk = true;
+            if (streamSeqRef.current !== mySeq) return;
+            if (!receivedStreamChunk) {
+              receivedStreamChunk = true;
+              setHasStreamedChunk(true);
+            }
             setMessages((prev) => {
               const exists = prev.some((m) => m.id === tempAiId);
               if (!exists) {
@@ -220,7 +255,11 @@ export default function StudentAiTutorScreen() {
             });
             listRef.current?.scrollToEnd({ animated: false });
           },
+          false,
+          controller.signal,
         );
+
+        if (streamSeqRef.current !== mySeq) return;
 
         const finalText =
           streamed.content.trim() ||
@@ -241,6 +280,12 @@ export default function StudentAiTutorScreen() {
         });
         setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
       } catch (streamErr) {
+        if (
+          streamSeqRef.current !== mySeq ||
+          (streamErr instanceof Error && streamErr.name === 'AbortError')
+        ) {
+          return;
+        }
         // Never double-call on client/quota/auth errors (400, 401, 403, 429)
         const status = streamErr instanceof ApiError ? streamErr.status : 0;
         const isClientBusinessError = status >= 400 && status < 500 && status !== 404 && status !== 408;
@@ -248,6 +293,7 @@ export default function StudentAiTutorScreen() {
           throw streamErr;
         }
         const reply = await chatApi.sendMessage(sid, promptText, imageToSend);
+        if (streamSeqRef.current !== mySeq) return;
         setMessages((prev) => [
           ...prev.filter((m) => m.id !== tempUserMsg.id && m.id !== tempAiId),
           { ...reply.userMsg, imageUrl: imageToSend?.uri || reply.userMsg.imageUrl },
@@ -256,6 +302,12 @@ export default function StudentAiTutorScreen() {
         setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
       }
     } catch (err: unknown) {
+      if (
+        streamSeqRef.current !== mySeq ||
+        (err instanceof Error && err.name === 'AbortError')
+      ) {
+        return;
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -268,7 +320,13 @@ export default function StudentAiTutorScreen() {
         },
       ]);
     } finally {
-      setSending(false);
+      if (streamAbortRef.current === controller) {
+        streamAbortRef.current = null;
+      }
+      if (streamSeqRef.current === mySeq) {
+        setSending(false);
+        setHasStreamedChunk(false);
+      }
     }
   };
 
@@ -326,6 +384,7 @@ export default function StudentAiTutorScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 14 }}>
             <TouchableOpacity
               onPress={() => {
+                cancelActiveStream();
                 setSelectedSubjectId(null);
                 setActiveSessionId(null);
                 setMessages([]);
@@ -354,6 +413,7 @@ export default function StudentAiTutorScreen() {
                 <TouchableOpacity
                   key={sub.id}
                   onPress={() => {
+                    cancelActiveStream();
                     setSelectedSubjectId(sub.id);
                     setActiveSessionId(null);
                     setMessages([]);
@@ -378,7 +438,7 @@ export default function StudentAiTutorScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {loadingInit ? (
@@ -532,7 +592,7 @@ export default function StudentAiTutorScreen() {
               );
             }}
             ListFooterComponent={
-              sending ? (
+              sending && !hasStreamedChunk ? (
                 <View style={[styles.typingBox, { backgroundColor: p.card, borderColor: p.border }]}>
                   <ActivityIndicator size="small" color={p.primary} />
                   <Text style={{ color: p.textMuted, fontSize: 13 }}>

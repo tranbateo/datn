@@ -549,11 +549,19 @@ export const chatApi = {
     image: { uri: string; name?: string; type?: string } | null,
     onDelta: (chunk: string) => void,
     isRetry = false,
+    signal?: AbortSignal,
   ): Promise<{ content: string; citations: RagCitation[]; messageId?: string }> => {
     const token = useAuthStore.getState().token;
     const url = `${getApiBaseUrl()}${API_ENDPOINTS.CHAT.SEND_MESSAGE_STREAM(sessionId)}`;
 
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        const abortErr = new Error('Đã hủy luồng phản hồi.');
+        abortErr.name = 'AbortError';
+        reject(abortErr);
+        return;
+      }
+
       const xhr = new XMLHttpRequest();
       xhr.open('POST', url, true);
       xhr.timeout = 95_000;
@@ -568,8 +576,31 @@ export const chatApi = {
       let citations: RagCitation[] = [];
       let messageId: string | undefined;
       let streamError: string | null = null;
+      let settled = false;
+
+      const handleAbort = () => {
+        if (settled) return;
+        settled = true;
+        try {
+          xhr.abort();
+        } catch {
+          // ignore
+        }
+        const abortErr = new Error('Đã hủy luồng phản hồi.');
+        abortErr.name = 'AbortError';
+        reject(abortErr);
+      };
+
+      const cleanupSignal = () => {
+        signal?.removeEventListener('abort', handleAbort);
+      };
+
+      if (signal) {
+        signal.addEventListener('abort', handleAbort, { once: true });
+      }
 
       const parseSseBuffer = (chunkText: string) => {
+        if (settled || signal?.aborted) return;
         const combined = leftoverBuffer + chunkText;
         const lines = combined.split(/\r?\n/);
         leftoverBuffer = lines.pop() ?? '';
@@ -606,6 +637,7 @@ export const chatApi = {
       };
 
       xhr.onprogress = () => {
+        if (settled || signal?.aborted) return;
         const text = xhr.responseText || '';
         if (text.length > processedOffset) {
           const delta = text.slice(processedOffset);
@@ -615,6 +647,8 @@ export const chatApi = {
       };
 
       xhr.onload = async () => {
+        if (settled || signal?.aborted) return;
+        cleanupSignal();
         const text = xhr.responseText || '';
         if (text.length > processedOffset) {
           parseSseBuffer(text.slice(processedOffset));
@@ -626,6 +660,10 @@ export const chatApi = {
 
         if (xhr.status === 401 && !isRetry) {
           const nextToken = await attemptTokenRefresh();
+          if (signal?.aborted) {
+            handleAbort();
+            return;
+          }
           if (nextToken) {
             try {
               const retried = await chatApi.sendMessageStream(
@@ -634,13 +672,17 @@ export const chatApi = {
                 image,
                 onDelta,
                 true,
+                signal,
               );
+              settled = true;
               resolve(retried);
             } catch (retryErr) {
+              settled = true;
               reject(retryErr);
             }
             return;
           }
+          settled = true;
           reject(new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'));
           return;
         }
@@ -659,23 +701,41 @@ export const chatApi = {
               errMsg = text.trim().slice(0, 200);
             }
           }
+          settled = true;
           reject(new ApiError(translateBackendError(errMsg), xhr.status));
           return;
         }
 
         if (streamError && !accumulated) {
+          settled = true;
           reject(new ApiError(translateBackendError(streamError), 500));
           return;
         }
 
+        settled = true;
         resolve({ content: accumulated, citations, messageId });
       };
 
       xhr.onerror = () => {
+        if (settled) return;
+        settled = true;
+        cleanupSignal();
         reject(new ApiError('Không thể kết nối luồng Gia sư AI.', 0));
       };
 
+      xhr.onabort = () => {
+        if (settled) return;
+        settled = true;
+        cleanupSignal();
+        const abortErr = new Error('Đã hủy luồng phản hồi.');
+        abortErr.name = 'AbortError';
+        reject(abortErr);
+      };
+
       xhr.ontimeout = () => {
+        if (settled) return;
+        settled = true;
+        cleanupSignal();
         reject(
           new ApiError(
             'Gia sư AI phản hồi quá thời gian chờ. Em vui lòng thử lại nhé!',

@@ -902,7 +902,18 @@ export function QuizAttemptViewerModal({
   onClose: () => void;
 }) {
   const p = usePalette();
-  const [onlyWrong, setOnlyWrong] = useState(false);
+  const [onlyWrongState, setOnlyWrongState] = useState<{
+    attemptId: string;
+    value: boolean;
+  } | null>(null);
+
+  const currentAttemptId = detail?.attemptId ?? '';
+  const onlyWrong =
+    onlyWrongState && onlyWrongState.attemptId === currentAttemptId
+      ? onlyWrongState.value
+      : false;
+  const setOnlyWrong = (value: boolean) =>
+    setOnlyWrongState({ attemptId: currentAttemptId, value });
 
   const items = detail?.questionResults || [];
   const wrongCount = items.filter((q) => !q.isCorrect).length;

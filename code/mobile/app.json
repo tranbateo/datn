@@ -8,9 +8,12 @@
     "scheme": "aitutor",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.aitutor.mobile",
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.aitutor.mobile",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

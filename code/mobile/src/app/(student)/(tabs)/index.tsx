@@ -578,7 +578,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 17, fontWeight: '800' },
   subjectGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  subjectCard: { width: '48%', gap: 10, padding: 14 },
+  subjectCard: { width: '47.5%', gap: 10, padding: 14 },
   subjectTop: {
     flexDirection: 'row',
     alignItems: 'center',

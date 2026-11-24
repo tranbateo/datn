@@ -187,7 +187,13 @@ export default function TeacherCommunicationsScreen() {
         .getMessages(parentId)
         .then((msgs) => {
           if (Array.isArray(msgs)) {
-            setThread((prev) => (msgs.length !== prev.length ? msgs : prev));
+            setThread((prev) => {
+              const prevLastId = prev[prev.length - 1]?.id;
+              const nextLastId = msgs[msgs.length - 1]?.id;
+              return msgs.length !== prev.length || prevLastId !== nextLastId
+                ? msgs
+                : prev;
+            });
           }
         })
         .catch(() => undefined);
@@ -218,7 +224,7 @@ export default function TeacherCommunicationsScreen() {
     setSendingMsg(true);
     try {
       const sent = await teacherApi.sendMessage(chatParent.id, text);
-      setThread((prev) => [...prev, sent]);
+      setThread((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]));
       setTimeout(() => chatListRef.current?.scrollToEnd({ animated: true }), 80);
     } catch (err: unknown) {
       setMsgText(text);
@@ -736,7 +742,7 @@ export default function TeacherCommunicationsScreen() {
 
           <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
             {loadingThread ? (
               <View style={styles.center}>
