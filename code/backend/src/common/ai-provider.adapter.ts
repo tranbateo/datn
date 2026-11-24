@@ -3,10 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 
 import { Embeddings, EmbeddingsParams } from '@langchain/core/embeddings';
-import {
-  ChatGoogleGenerativeAI,
-  GoogleGenerativeAIEmbeddings,
-} from '@langchain/google-genai';
+import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 
 export interface AiChatResponse {
   content: string | Array<{ type?: string; text?: string }>;
@@ -508,6 +505,280 @@ export class OllamaEmbeddingsAdapter extends Embeddings {
   }
 }
 
+export interface GeminiRestChatModelOptions {
+  apiKey: string;
+  model: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+}
+
+interface GeminiInlinePart {
+  text?: string;
+  inlineData?: { mimeType: string; data: string };
+}
+
+interface GeminiContent {
+  role: 'user' | 'model';
+  parts: GeminiInlinePart[];
+}
+
+function extractGeminiPayload(
+  input: unknown,
+  temperature: number,
+  maxOutputTokens: number,
+): {
+  systemInstruction?: { parts: Array<{ text: string }> };
+  contents: GeminiContent[];
+  generationConfig: { temperature: number; maxOutputTokens: number };
+} {
+  const rawList = Array.isArray(input) ? input : [input];
+  const systemParts: string[] = [];
+  const contents: GeminiContent[] = [];
+
+  for (const msg of rawList) {
+    if (!msg) continue;
+    if (typeof msg === 'string') {
+      if (msg.trim()) {
+        contents.push({ role: 'user', parts: [{ text: msg }] });
+      }
+      continue;
+    }
+
+    const record = msg as Record<string, unknown>;
+    const role = resolveMessageRole(record);
+    const parts: GeminiInlinePart[] = [];
+
+    const content = record.content;
+    if (typeof content === 'string') {
+      if (content.trim()) parts.push({ text: content });
+    } else if (Array.isArray(content)) {
+      for (const item of content) {
+        if (
+          item?.type === 'text' &&
+          typeof item.text === 'string' &&
+          item.text
+        ) {
+          parts.push({ text: item.text });
+        } else if (
+          item?.type === 'image_url' &&
+          typeof item.image_url?.url === 'string'
+        ) {
+          const rawUrl: string = item.image_url.url;
+          const match = rawUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+          if (match) {
+            parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+          } else {
+            parts.push({
+              inlineData: { mimeType: 'image/jpeg', data: rawUrl },
+            });
+          }
+        }
+      }
+    }
+
+    if (parts.length === 0) continue;
+
+    if (role === 'system') {
+      const txt = parts
+        .map((p) => p.text || '')
+        .filter(Boolean)
+        .join('\n\n');
+      if (txt) systemParts.push(txt);
+      continue;
+    }
+
+    const geminiRole: 'user' | 'model' =
+      role === 'assistant' ? 'model' : 'user';
+    const prev = contents[contents.length - 1];
+    if (prev && prev.role === geminiRole) {
+      prev.parts.push(...parts);
+    } else {
+      contents.push({ role: geminiRole, parts });
+    }
+  }
+
+  if (contents.length === 0) {
+    contents.push({ role: 'user', parts: [{ text: '' }] });
+  }
+
+  return {
+    ...(systemParts.length > 0
+      ? { systemInstruction: { parts: [{ text: systemParts.join('\n\n') }] } }
+      : {}),
+    contents,
+    generationConfig: {
+      temperature,
+      maxOutputTokens,
+    },
+  };
+}
+
+function extractGeminiCandidateText(parsed: any): string {
+  const parts = parsed?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .filter((p: any) => typeof p?.text === 'string' && p?.thought !== true)
+    .map((p: any) => p.text as string)
+    .join('');
+}
+
+/**
+ * Adapter gọi trực tiếp Gemini REST API (:generateContent & :streamGenerateContent?alt=sse)
+ * bằng fetch chuẩn của Node — loại bỏ hoàn toàn lỗi "Failed to parse stream" và crash unhandled
+ * rejection từ SDK cũ @google/generative-ai khi stream Gemini 2.5/3.x.
+ */
+export class GeminiRestChatModel implements AiChatModelAdapter {
+  private readonly apiKey: string;
+  private readonly model: string;
+  private readonly temperature: number;
+  private readonly maxOutputTokens: number;
+
+  constructor(options: GeminiRestChatModelOptions) {
+    this.apiKey = options.apiKey;
+    this.model = options.model;
+    this.temperature = options.temperature ?? 0.3;
+    this.maxOutputTokens = options.maxOutputTokens ?? 2048;
+  }
+
+  private getCandidateModels(): string[] {
+    const candidates = [
+      this.model,
+      'gemini-flash-lite-latest',
+      'gemini-3.1-flash-lite',
+      'gemini-3-flash-preview',
+    ];
+    return Array.from(new Set(candidates.filter(Boolean)));
+  }
+
+  async invoke(input: unknown): Promise<AiChatResponse> {
+    const body = JSON.stringify(
+      extractGeminiPayload(input, this.temperature, this.maxOutputTokens),
+    );
+    const models = this.getCandidateModels();
+    let lastError = 'Gemini API error';
+
+    for (const modelName of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+
+      if (response.ok) {
+        const data: any = await response.json();
+        const text = extractGeminiCandidateText(data);
+        return { content: stripReasoningBlocks(text) };
+      }
+
+      const errText = await response.text().catch(() => '');
+      lastError = `Gemini API error (${response.status}, ${modelName}): ${errText.slice(0, 300)}`;
+      // Retry with fallback model on transient 503 high demand or deprecated 404
+      if (
+        response.status !== 503 &&
+        response.status !== 404 &&
+        response.status !== 429
+      ) {
+        throw new Error(lastError);
+      }
+    }
+
+    throw new Error(lastError);
+  }
+
+  async stream(input: unknown): Promise<AsyncIterable<AiChatResponse>> {
+    const body = JSON.stringify(
+      extractGeminiPayload(input, this.temperature, this.maxOutputTokens),
+    );
+    const models = this.getCandidateModels();
+    let response: Response | null = null;
+    let lastError = 'Gemini Stream API error';
+
+    for (const modelName of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(this.apiKey)}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body,
+      });
+
+      if (res.ok && res.body) {
+        response = res;
+        break;
+      }
+
+      const errText = await res.text().catch(() => '');
+      lastError = `Gemini Stream error (${res.status}, ${modelName}): ${errText.slice(0, 300)}`;
+      if (res.status !== 503 && res.status !== 404 && res.status !== 429) {
+        throw new Error(lastError);
+      }
+    }
+
+    if (!response || !response.body) {
+      throw new Error(lastError);
+    }
+
+    const activeBody = response.body;
+
+    async function* generateStream(): AsyncIterable<AiChatResponse> {
+      const reader = activeBody.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? '';
+
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(payload);
+              const textChunk = extractGeminiCandidateText(parsed);
+              if (textChunk) {
+                yield { content: textChunk };
+              }
+            } catch {
+              // Ignore incomplete or non-JSON SSE keepalive frames
+            }
+          }
+        }
+
+        // Flush any remaining decoded bytes/frame at stream EOF
+        const remaining = (buffer + decoder.decode()).trim();
+        if (remaining.startsWith('data:')) {
+          const payload = remaining.slice(5).trim();
+          if (payload && payload !== '[DONE]') {
+            try {
+              const parsed = JSON.parse(payload);
+              const textChunk = extractGeminiCandidateText(parsed);
+              if (textChunk) {
+                yield { content: textChunk };
+              }
+            } catch {
+              // Ignore trailing partial frame
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    }
+
+    return generateStream();
+  }
+}
+
 export function isSelfHostedAiEnabled(
   schoolAiProvider?: string | null,
 ): boolean {
@@ -588,8 +859,8 @@ export function createChatModelAdapter(options?: {
   const defaultGeminiModel = options?.isVisionTask
     ? process.env.GEMINI_VISION_MODEL ||
       process.env.GEMINI_MODEL ||
-      'gemini-3.1-flash-lite-preview'
-    : process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview';
+      'gemini-flash-lite-latest'
+    : process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
 
   const resolvedGeminiModel = isGeminiModelOverride
     ? schoolProvider
@@ -598,7 +869,7 @@ export function createChatModelAdapter(options?: {
   const resolvedApiKey =
     customKeyOrUrl || process.env.GEMINI_API_KEY || 'placeholder-key';
 
-  return new ChatGoogleGenerativeAI({
+  return new GeminiRestChatModel({
     model: resolvedGeminiModel,
     maxOutputTokens: options?.maxOutputTokens ?? 2048,
     temperature: options?.temperature ?? 0.3,
