@@ -1,6 +1,4 @@
-import { Platform } from 'react-native';
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
 import {
   API_ENDPOINTS,
   getApiBaseUrl,
@@ -8,6 +6,12 @@ import {
   resetApiBaseUrl,
   setApiBaseUrl,
 } from '@/constants/api';
+import {
+  getStorageDiagnostic,
+  secureDelete,
+  secureGet,
+  secureSet,
+} from '@/lib/secure-storage';
 import { clearAllCache } from '@/lib/ttl-cache';
 
 const KEYS = {
@@ -78,66 +82,30 @@ function sanitizeUserForStorage(user: MobileUser): string {
   return JSON.stringify(minimal);
 }
 
-// In-memory fallback ONLY for web preview (never AsyncStorage per BR-AUTH-002)
-const memoryFallback = new Map<string, string>();
+const BASE64_CHARS =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
-// Serialize SecureStore operations to prevent Android KeyStore race conditions
-// (especially on Xiaomi/HyperOS when multiple coroutines access KeyStore concurrently)
-let secureStoreQueue: Promise<unknown> = Promise.resolve();
+function decodeBase64UrlToUtf8(input: string): string {
+  const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+  const bytes: number[] = [];
 
-function enqueueSecureOp<T>(op: () => Promise<T>): Promise<T> {
-  const next = secureStoreQueue.then(op, op);
-  secureStoreQueue = next.then(
-    () => undefined,
-    () => undefined,
-  );
-  return next;
-}
-
-async function secureGet(key: string): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    return memoryFallback.get(key) ?? null;
+  for (let i = 0; i < padded.length; i += 4) {
+    const c1 = BASE64_CHARS.indexOf(padded[i]);
+    const c2 = BASE64_CHARS.indexOf(padded[i + 1]);
+    const c3 = padded[i + 2] === '=' ? -1 : BASE64_CHARS.indexOf(padded[i + 2]);
+    const c4 = padded[i + 3] === '=' ? -1 : BASE64_CHARS.indexOf(padded[i + 3]);
+    if (c1 < 0 || c2 < 0) break;
+    bytes.push((c1 << 2) | (c2 >> 4));
+    if (c3 >= 0) bytes.push(((c2 & 15) << 4) | (c3 >> 2));
+    if (c4 >= 0) bytes.push(((c3 & 3) << 6) | c4);
   }
-  return enqueueSecureOp(async () => {
-    try {
-      return await SecureStore.getItemAsync(key);
-    } catch {
-      return null;
-    }
-  });
-}
 
-async function secureSet(key: string, value: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    memoryFallback.set(key, value);
-    return;
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    out += String.fromCharCode(bytes[i]);
   }
-  await enqueueSecureOp(async () => {
-    try {
-      await SecureStore.setItemAsync(key, value);
-    } catch {
-      // Single retry for transient Android KeyStore initialization errors
-      try {
-        await SecureStore.setItemAsync(key, value);
-      } catch {
-        // Prevent native SecureStore size/keychain exceptions from crashing active UI flows
-      }
-    }
-  });
-}
-
-async function secureDelete(key: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    memoryFallback.delete(key);
-    return;
-  }
-  await enqueueSecureOp(async () => {
-    try {
-      await SecureStore.deleteItemAsync(key);
-    } catch {
-      // Ignore native Keystore cleanup errors
-    }
-  });
+  return out;
 }
 
 export interface MobileUser {
@@ -185,9 +153,7 @@ function isJwtExpired(token: string): boolean {
   try {
     const parts = token.split('.');
     if (parts.length < 2) return true;
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-    const decoded = JSON.parse(globalThis.atob(padded)) as { exp?: number };
+    const decoded = JSON.parse(decodeBase64UrlToUtf8(parts[1])) as { exp?: number };
     if (!decoded.exp) return false;
     return decoded.exp * 1000 <= Date.now() + 15_000;
   } catch {
@@ -211,6 +177,7 @@ interface AuthState {
   rememberMe: boolean;
   lastIdentifier: string;
   lastRole: LoginRoleOption;
+  sessionDiagnostic: string;
   isInitialized: boolean;
   hydrate: () => Promise<void>;
   setSession: (
@@ -224,7 +191,7 @@ interface AuthState {
   updateUser: (patch: Partial<MobileUser>) => Promise<void>;
   saveCustomApiUrl: (url: string) => Promise<void>;
   resetCustomApiUrl: () => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (reason?: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -236,6 +203,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   rememberMe: true,
   lastIdentifier: '',
   lastRole: 'student',
+  sessionDiagnostic: 'Đang khởi tạo...',
   isInitialized: false,
 
   hydrate: async () => {
@@ -294,6 +262,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           rememberMe,
           lastIdentifier: storedIdentifier,
           lastRole,
+          sessionDiagnostic: `Chưa có phiên lưu (${getStorageDiagnostic()})`,
           isInitialized: true,
         });
         return;
@@ -357,7 +326,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               }
             } else if (res.status === 401 || res.status === 403) {
               // Only wipe session on explicit auth rejection, NOT on transient 5xx/Render cold-start
-              await get().logout();
+              await get().logout('Phiên hết hạn hoặc tài khoản vừa đăng nhập ở thiết bị/Web khác');
               set({
                 rememberMe,
                 lastIdentifier: storedIdentifier,
@@ -396,6 +365,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           parsedUser.email ||
           '',
         lastRole: role,
+        sessionDiagnostic: `Khôi phục phiên OK (${getStorageDiagnostic()})`,
         isInitialized: true,
       });
     } catch {
@@ -405,6 +375,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user: null,
         role: null,
         mustChangePassword: false,
+        sessionDiagnostic: `Lỗi khôi phục (${getStorageDiagnostic()})`,
         isInitialized: true,
       });
     }
@@ -437,10 +408,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     clearAllCache();
     await secureSet(KEYS.REMEMBER_ME, shouldRemember ? 'true' : 'false');
 
+    let persistedOk = true;
     if (shouldRemember) {
-      // Sequential SecureStore writes to avoid Android KeyStore concurrency issues
-      await secureSet(KEYS.ACCESS_TOKEN, accessToken);
-      await secureSet(KEYS.USER_DATA, sanitizeUserForStorage(user));
+      // Sequential SecureStore writes with read-back verification + KeyStore alias fallback
+      const tokenOk = await secureSet(KEYS.ACCESS_TOKEN, accessToken);
+      const userOk = await secureSet(KEYS.USER_DATA, sanitizeUserForStorage(user));
       await secureSet(KEYS.MUST_CHANGE_PWD, mustChangePassword ? 'true' : 'false');
       if (refreshToken) {
         await secureSet(KEYS.REFRESH_TOKEN, refreshToken);
@@ -451,6 +423,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await secureSet(KEYS.LAST_IDENTIFIER, resolvedIdentifier);
       }
       await secureSet(KEYS.LAST_ROLE, nextLastRole);
+      persistedOk = tokenOk && userOk;
     } else {
       // Session-only login: clear persisted credentials so reopening app asks to sign in again
       await secureDelete(KEYS.ACCESS_TOKEN);
@@ -470,6 +443,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       rememberMe: shouldRemember,
       lastIdentifier: shouldRemember ? resolvedIdentifier : '',
       lastRole: shouldRemember ? nextLastRole : 'student',
+      sessionDiagnostic: shouldRemember
+        ? persistedOk
+          ? `Đã lưu phiên (${getStorageDiagnostic()})`
+          : `Không lưu được SecureStore (${getStorageDiagnostic()})`
+        : 'Phiên tạm (không lưu)',
       isInitialized: true,
     });
   },
@@ -510,7 +488,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await secureDelete(KEYS.API_URL_OVERRIDE);
   },
 
-  logout: async () => {
+  logout: async (reason) => {
     clearAllCache();
     const currentToken = get().token;
     if (currentToken) {
@@ -535,6 +513,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       user: null,
       role: null,
       mustChangePassword: false,
+      sessionDiagnostic: reason || 'Đã đăng xuất',
     });
   },
 }));

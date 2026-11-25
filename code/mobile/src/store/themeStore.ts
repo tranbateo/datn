@@ -1,11 +1,10 @@
 import { Appearance, Platform } from 'react-native';
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
+import { secureGet, secureSet } from '@/lib/secure-storage';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
 const THEME_STORAGE_KEY = 'aitutor_theme_mode';
-let webMemoryTheme: ThemePreference | null = null;
 
 function applyNativeColorScheme(pref: ThemePreference) {
   if (Platform.OS === 'web') return;
@@ -19,30 +18,15 @@ function applyNativeColorScheme(pref: ThemePreference) {
 }
 
 async function readSavedTheme(): Promise<ThemePreference | null> {
-  if (Platform.OS === 'web') {
-    return webMemoryTheme;
+  const raw = await secureGet(THEME_STORAGE_KEY);
+  if (raw === 'light' || raw === 'dark' || raw === 'system') {
+    return raw;
   }
-  try {
-    const raw = await SecureStore.getItemAsync(THEME_STORAGE_KEY);
-    if (raw === 'light' || raw === 'dark' || raw === 'system') {
-      return raw;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 async function saveTheme(pref: ThemePreference): Promise<void> {
-  if (Platform.OS === 'web') {
-    webMemoryTheme = pref;
-    return;
-  }
-  try {
-    await SecureStore.setItemAsync(THEME_STORAGE_KEY, pref);
-  } catch {
-    // Ignore SecureStore write errors
-  }
+  await secureSet(THEME_STORAGE_KEY, pref);
 }
 
 interface ThemeState {

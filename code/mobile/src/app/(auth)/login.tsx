@@ -35,6 +35,7 @@ export default function LoginScreen() {
     rememberMe: storedRememberMe,
     lastIdentifier,
     lastRole,
+    sessionDiagnostic,
   } = useAuthStore();
 
   const [draftRole, setDraftRole] = useState<LoginRole | null>(null);
@@ -556,6 +557,9 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
+              <Text style={{ fontSize: 11, color: p.textMuted }}>
+                Trạng thái phiên: {sessionDiagnostic}
+              </Text>
             </Card>
           ) : null}
         </ScrollView>

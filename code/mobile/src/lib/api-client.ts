@@ -76,7 +76,7 @@ export async function attemptTokenRefresh(): Promise<string | null> {
         // Only invalidate session when backend explicitly rejects the token (401/403).
         // Preserve session across transient 5xx / Render cold-start errors.
         if (res.status === 401 || res.status === 403) {
-          await logout();
+          await logout(`Phiên bị từ chối (${res.status}) — có thể đã đăng nhập ở thiết bị khác`);
         }
         return null;
       }
