@@ -32,6 +32,7 @@ import {
   ErrorView,
   NotificationSheet,
   SkeletonDashboard,
+  ThemeToggleButton,
   UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
@@ -226,6 +227,7 @@ export default function StudentHomeScreen() {
               Chào, {profile?.fullName || 'Học sinh'}!
             </Text>
           </View>
+          <ThemeToggleButton />
           <TouchableOpacity
             onPress={() => setShowNotifs(true)}
             style={[styles.bellBtn, { backgroundColor: p.card, borderColor: p.border }]}

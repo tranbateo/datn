@@ -18,6 +18,7 @@ import {
   Card,
   KeyboardSafeView,
   PrimaryButton,
+  ThemeSwitcherCard,
   UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
@@ -188,6 +189,8 @@ export default function TeacherSettingsScreen() {
             </Text>
           </View>
         </Card>
+
+        <ThemeSwitcherCard accentColor={p.emerald} />
 
         <Card style={{ gap: 12 }}>
           <Text style={[styles.secTitle, { color: p.text }]}>Thông tin cá nhân</Text>

@@ -10,11 +10,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/services/mobile.services';
 import { getApiBaseUrl, getDefaultApiBaseUrl } from '@/constants/api';
-import { Card, KeyboardSafeView, PrimaryButton, usePalette } from '@/components/ui/mobile-ui';
+import {
+  Card,
+  KeyboardSafeView,
+  PrimaryButton,
+  ThemeToggleButton,
+  usePalette,
+} from '@/components/ui/mobile-ui';
 
 type LoginRole = 'student' | 'teacher' | 'parent';
 
@@ -182,6 +189,11 @@ export default function LoginScreen() {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Top-right Light/Dark Theme Switch */}
+          <View style={styles.topUtilityRow}>
+            <ThemeToggleButton showLabel />
+          </View>
+
           {/* Brand Header */}
           <View style={styles.brandWrap}>
             <View style={[styles.logoBox, { backgroundColor: accentColor }]}>
@@ -494,6 +506,18 @@ export default function LoginScreen() {
               Máy chủ API: {getApiBaseUrl()}
             </Text>
           </TouchableOpacity>
+          {Updates.updateId ? (
+            <Text
+              style={{
+                textAlign: 'center',
+                fontSize: 11,
+                color: p.textMuted,
+                opacity: 0.75,
+              }}
+            >
+              Phiên bản OTA: {Updates.updateId.slice(0, 8)}
+            </Text>
+          ) : null}
 
           {showServerConfig ? (
             <Card style={{ marginTop: 8, gap: 10 }}>
@@ -546,6 +570,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
     justifyContent: 'center',
+  },
+  topUtilityRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 8,
   },
   brandWrap: {
     alignItems: 'center',

@@ -11,7 +11,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  type AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -268,6 +267,10 @@ export default function QuizExamScreen() {
   const examLockedRef = useRef(false);
   const isConfirmAlertOpenRef = useRef(false);
   const pendingAutoSubmitReasonRef = useRef<string | null>(null);
+  const leftExamAtRef = useRef<number | null>(null);
+  const submitStartedAtRef = useRef<number>(0);
+  const violationAlertShownRef = useRef(false);
+  const pendingViolationNoticeRef = useRef<string | null>(null);
   const answersRef = useRef<Record<string, string>>({});
   // BR-QUIZ-002: Stable client-side UUID guarantees idempotent submission even on retry
   const idempotentAttemptIdRef = useRef<string>(generateClientUuid());
@@ -324,19 +327,23 @@ export default function QuizExamScreen() {
   }, []);
 
   const submitExam = useCallback(
-    async (exitReason?: string, customNotice?: string) => {
-      if (submittedRef.current || !quiz) return;
+    async (exitReason?: string, customNotice?: string, forceRetry = false) => {
+      if ((submittedRef.current && !forceRetry) || !quiz) return;
       submittedRef.current = true;
       examLockedRef.current = true;
+      submitStartedAtRef.current = Date.now();
       setSubmitting(true);
       setAutoSubmitRetryNeeded(false);
 
+      const finalNotice =
+        customNotice ||
+        pendingViolationNoticeRef.current ||
+        'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do phát hiện thoát ứng dụng hoặc chuyển sang ứng dụng khác!';
+
       if (exitReason === 'AUTO_SUBMIT_ON_EXIT') {
+        pendingViolationNoticeRef.current = finalNotice;
         setLockedByAntiCheat(true);
-        setExitTerminationNotice(
-          customNotice ||
-            'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do phát hiện thoát ứng dụng hoặc chuyển sang ứng dụng khác!',
-        );
+        setExitTerminationNotice(finalNotice);
       } else if (exitReason === 'TIME_EXPIRED') {
         setLockedByAntiCheat(true);
         setExitTerminationNotice(
@@ -382,6 +389,17 @@ export default function QuizExamScreen() {
         setFilterMode('all');
         invalidateCache('student:');
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
+        if (
+          exitReason === 'AUTO_SUBMIT_ON_EXIT' &&
+          AppState.currentState === 'active' &&
+          !violationAlertShownRef.current
+        ) {
+          violationAlertShownRef.current = true;
+          Alert.alert(
+            'Bài thi đã tự động kết thúc!',
+            `${finalNotice}\n\nKết quả tạm tính: ${normScore}/100 điểm (${res.score}/${res.totalQuestions} câu đúng).`,
+          );
+        }
       } catch (err: unknown) {
         submittedRef.current = false;
         const isForcedTermination =
@@ -393,7 +411,7 @@ export default function QuizExamScreen() {
           if (AppState.currentState === 'active') {
             Alert.alert(
               'Mất kết nối khi tự động nộp bài',
-              'Bài thi đã bị khóa do rời khỏi phòng thi. Hãy bấm "Nộp bài ngay" khi có mạng để lưu kết quả.',
+              'Bài thi đã bị khóa do rời khỏi phòng thi. Hãy bấm "Gửi lại bài thi đã khóa" khi có mạng để lưu kết quả.',
             );
           }
         } else {
@@ -417,99 +435,147 @@ export default function QuizExamScreen() {
   const isExamActive = Boolean(!result && !attemptId && !loading && quiz && !lockedByAntiCheat);
 
   // Chế độ phòng thi nghiêm ngặt trên Mobile (tương đương chuyển tab trên Web):
-  // Thoát ra màn hình chính, chuyển sang ứng dụng khác, hoặc mở cửa sổ nổi/chia đôi màn hình
-  // sẽ lập tức khóa bài thi và tự động nộp bài chấm điểm ngay lập tức!
+  // Kết hợp 3 lớp độc lập:
+  // 1) AppState 'background' -> khóa & nộp bài NGAY LẬP TỨC (0ms)
+  // 2) Android 'blur' / 'inactive' -> phát hiện đa nhiệm, chia đôi màn hình, cửa sổ nổi (>= 500ms)
+  // 3) Kiểm tra đồng hồ thực (Date.now()) khi quay lại 'active'/'focus' -> miễn nhiễm hoàn toàn
+  //    với việc Xiaomi HyperOS / Android đóng băng setTimeout hoặc socket ở chế độ nền!
   useEffect(() => {
     if (loading || result || attemptId || !quiz) return;
 
-    let pendingBlurTimer: ReturnType<typeof setTimeout> | null = null;
-    let pendingInactiveTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastState: AppStateStatus = AppState.currentState;
+    let pendingLeaveTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const clearTimers = () => {
-      if (pendingBlurTimer) {
-        clearTimeout(pendingBlurTimer);
-        pendingBlurTimer = null;
-      }
-      if (pendingInactiveTimer) {
-        clearTimeout(pendingInactiveTimer);
-        pendingInactiveTimer = null;
+    const clearPendingTimer = () => {
+      if (pendingLeaveTimer) {
+        clearTimeout(pendingLeaveTimer);
+        pendingLeaveTimer = null;
       }
     };
 
     const triggerAppSwitchTermination = (notice: string) => {
-      clearTimers();
-      if (submittedRef.current || examLockedRef.current) return;
+      clearPendingTimer();
+      pendingViolationNoticeRef.current = notice;
+      if (examLockedRef.current) return;
+      examLockedRef.current = true;
+      setLockedByAntiCheat(true);
+      setExitTerminationNotice(notice);
       void submitExam('AUTO_SUBMIT_ON_EXIT', notice);
+    };
+
+    const handleReturnToExam = () => {
+      clearPendingTimer();
+      const leftAt = leftExamAtRef.current;
+      leftExamAtRef.current = null;
+      const awayMs = leftAt ? Date.now() - leftAt : 0;
+
+      // Wall-clock failsafe: catches app switch / Recent Apps peek even if OS froze JS timers
+      if (
+        !examLockedRef.current &&
+        !submittedRef.current &&
+        !isConfirmAlertOpenRef.current &&
+        awayMs >= 500
+      ) {
+        triggerAppSwitchTermination(
+          'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do phát hiện thoát ứng dụng hoặc chuyển sang ứng dụng khác!',
+        );
+        return;
+      }
+
+      if (examLockedRef.current && !result) {
+        const notice =
+          pendingViolationNoticeRef.current ||
+          'Bài thi đã tự động kết thúc do phát hiện rời khỏi ứng dụng khi đang làm bài!';
+        if (!violationAlertShownRef.current) {
+          violationAlertShownRef.current = true;
+          Alert.alert('Bài thi đã tự động kết thúc!', notice);
+        }
+        // Retry immediately if background network failed OR socket froze while backgrounded (>2.5s)
+        if (pendingAutoSubmitReasonRef.current && !submittedRef.current) {
+          void submitExam(pendingAutoSubmitReasonRef.current, notice);
+        } else if (
+          submittedRef.current &&
+          Date.now() - submitStartedAtRef.current >= 2500
+        ) {
+          void submitExam('AUTO_SUBMIT_ON_EXIT', notice, true);
+        }
+      }
+    };
+
+    const scheduleGraceTermination = (delayMs: number, notice: string) => {
+      if (isConfirmAlertOpenRef.current || examLockedRef.current || submittedRef.current) {
+        return;
+      }
+      if (!leftExamAtRef.current) {
+        leftExamAtRef.current = Date.now();
+      }
+      if (!pendingLeaveTimer) {
+        pendingLeaveTimer = setTimeout(() => {
+          pendingLeaveTimer = null;
+          if (!isConfirmAlertOpenRef.current && !examLockedRef.current) {
+            triggerAppSwitchTermination(notice);
+          }
+        }, delayMs);
+      }
     };
 
     const changeSub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        clearTimers();
-        // If OS paused network while backgrounded during auto-submit, finish submitting immediately on return
-        if (pendingAutoSubmitReasonRef.current && !submittedRef.current) {
-          const reason = pendingAutoSubmitReasonRef.current;
-          void submitExam(reason);
-        }
-      } else if (nextState === 'background' && lastState !== 'background') {
+        handleReturnToExam();
+      } else if (nextState === 'background') {
+        leftExamAtRef.current = leftExamAtRef.current ?? Date.now();
         triggerAppSwitchTermination(
           'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do phát hiện thoát ứng dụng hoặc chuyển sang ứng dụng khác!',
         );
-      } else if (
-        nextState === 'inactive' &&
-        Platform.OS === 'ios' &&
-        !isConfirmAlertOpenRef.current
-      ) {
-        // On iOS, switching apps / App Switcher triggers 'inactive' before 'background'
-        if (!pendingInactiveTimer) {
-          pendingInactiveTimer = setTimeout(() => {
-            if (AppState.currentState !== 'active' && !isConfirmAlertOpenRef.current) {
-              triggerAppSwitchTermination(
-                'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do rời khỏi màn hình phòng thi!',
-              );
-            }
-          }, 1200);
-        }
+      } else if (nextState === 'inactive') {
+        scheduleGraceTermination(
+          500,
+          'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do rời khỏi màn hình phòng thi!',
+        );
       }
-      lastState = nextState;
     });
 
-    // Android split-screen / floating window (Xiaomi HyperOS, Samsung Pop-up) fires 'blur' without 'background'
+    // Android Recent Apps (□), split-screen, and floating windows fire 'blur' immediately
     const blurSub =
       Platform.OS === 'android'
         ? AppState.addEventListener('blur', () => {
-            if (isConfirmAlertOpenRef.current || submittedRef.current || examLockedRef.current) {
-              return;
-            }
-            if (!pendingBlurTimer) {
-              pendingBlurTimer = setTimeout(() => {
-                if (!isConfirmAlertOpenRef.current) {
-                  triggerAppSwitchTermination(
-                    'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do phát hiện rời khỏi cửa sổ phòng thi (chia đôi màn hình / ứng dụng nổi)!',
-                  );
-                }
-              }, 1500);
-            }
+            scheduleGraceTermination(
+              600,
+              'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do phát hiện rời khỏi màn hình phòng thi (đa nhiệm / chia đôi màn hình / chuyển ứng dụng)!',
+            );
           })
         : null;
 
     const focusSub =
       Platform.OS === 'android'
         ? AppState.addEventListener('focus', () => {
-            if (pendingBlurTimer) {
-              clearTimeout(pendingBlurTimer);
-              pendingBlurTimer = null;
-            }
+            handleReturnToExam();
           })
         : null;
 
     return () => {
-      clearTimers();
+      clearPendingTimer();
       changeSub.remove();
       blurSub?.remove();
       focusSub?.remove();
     };
   }, [loading, result, attemptId, quiz, submitExam]);
+
+  // Show unmistakable alert once student returns to app even if auto-submit already completed while backgrounded
+  useEffect(() => {
+    if (!exitTerminationNotice || violationAlertShownRef.current) return;
+    const showIfActive = (state: string) => {
+      if (state === 'active' && !violationAlertShownRef.current) {
+        violationAlertShownRef.current = true;
+        Alert.alert('Bài thi đã tự động kết thúc!', exitTerminationNotice);
+      }
+    };
+    if (AppState.currentState === 'active') {
+      showIfActive('active');
+      return;
+    }
+    const sub = AppState.addEventListener('change', showIfActive);
+    return () => sub.remove();
+  }, [exitTerminationNotice]);
 
   const handleBack = useCallback(() => {
     if (isExamActive) {
@@ -661,9 +727,29 @@ export default function QuizExamScreen() {
           <Ionicons name="arrow-back" size={22} color={p.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }} numberOfLines={1}>
-            {quiz.title}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: p.text, flexShrink: 1 }} numberOfLines={1}>
+              {quiz.title}
+            </Text>
+            {isExamActive ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 3,
+                  backgroundColor: p.amberSoft,
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 999,
+                }}
+              >
+                <Ionicons name="shield-checkmark" size={11} color={p.amber} />
+                <Text style={{ fontSize: 10, fontWeight: '800', color: p.amber }}>
+                  Giám sát
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={{ fontSize: 12, color: p.textMuted }}>
             {result
               ? `Đúng ${result.score}/${result.total} câu • ${result.normalizedScore}/100 điểm`

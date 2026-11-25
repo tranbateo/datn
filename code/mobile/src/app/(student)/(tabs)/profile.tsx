@@ -27,6 +27,7 @@ import {
   KeyboardSafeView,
   LoadingView,
   PrimaryButton,
+  ThemeSwitcherCard,
   UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
@@ -314,6 +315,9 @@ export default function StudentProfileScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Appearance: Light / Dark / System */}
+        <ThemeSwitcherCard accentColor={p.primary} />
 
         {/* Parent Link Code Card (BR-LINK-001) */}
         <Card style={{ gap: 10 }}>

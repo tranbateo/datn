@@ -13,7 +13,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useColorScheme,
   View,
   type KeyboardEvent,
   type StyleProp,
@@ -21,6 +20,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeStore, type ThemePreference } from '@/store/themeStore';
 import type { NotificationItem, QuizAttemptDetail } from '@/services/mobile.services';
 
 export const ADAPTIVE_CONTENT_STYLE: ViewStyle = {
@@ -178,6 +179,140 @@ export function usePalette() {
       roseSoft: isDark ? 'rgba(225, 29, 72, 0.22)' : '#FFF1F2',
     }),
     [isDark],
+  );
+}
+
+/**
+ * Compact 1-tap Light / Dark toggle button for headers and login screen.
+ */
+export function ThemeToggleButton({
+  showLabel = false,
+}: {
+  showLabel?: boolean;
+}) {
+  const p = usePalette();
+  const setPreference = useThemeStore((s) => s.setPreference);
+
+  const handleToggle = () => {
+    void setPreference(p.isDark ? 'light' : 'dark');
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={handleToggle}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={p.isDark ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối'}
+      style={{
+        height: 40,
+        minWidth: 40,
+        paddingHorizontal: showLabel ? 12 : 0,
+        borderRadius: 20,
+        backgroundColor: p.card,
+        borderWidth: 1,
+        borderColor: p.border,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+      }}
+    >
+      <Ionicons
+        name={p.isDark ? 'sunny-outline' : 'moon-outline'}
+        size={19}
+        color={p.isDark ? '#FBBF24' : p.indigo}
+      />
+      {showLabel ? (
+        <Text style={{ fontSize: 12.5, fontWeight: '700', color: p.text }}>
+          {p.isDark ? 'Sáng' : 'Tối'}
+        </Text>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * Full 3-mode Appearance selector (Sáng / Tối / Theo máy) for Profile & Settings screens.
+ */
+export function ThemeSwitcherCard({ accentColor }: { accentColor?: string }) {
+  const p = usePalette();
+  const preference = useThemeStore((s) => s.preference);
+  const setPreference = useThemeStore((s) => s.setPreference);
+  const activeColor = accentColor || p.primary;
+
+  const options: {
+    key: ThemePreference;
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+  }[] = [
+    { key: 'light', label: 'Sáng', icon: 'sunny-outline' },
+    { key: 'dark', label: 'Tối', icon: 'moon-outline' },
+    { key: 'system', label: 'Theo máy', icon: 'phone-portrait-outline' },
+  ];
+
+  return (
+    <Card style={{ gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Ionicons
+          name={p.isDark ? 'moon' : 'sunny'}
+          size={19}
+          color={p.isDark ? '#FBBF24' : p.amber}
+        />
+        <Text style={{ fontSize: 16, fontWeight: '800', color: p.text }}>
+          Giao diện Sáng / Tối
+        </Text>
+      </View>
+      <Text style={{ fontSize: 12.5, color: p.textMuted, lineHeight: 18 }}>
+        Chọn chế độ hiển thị dễ nhìn nhất cho mắt khi học tập.
+      </Text>
+      <View
+        style={{
+          flexDirection: 'row',
+          backgroundColor: p.cardMuted,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: p.border,
+          padding: 4,
+          gap: 4,
+        }}
+      >
+        {options.map((opt) => {
+          const active = preference === opt.key;
+          return (
+            <TouchableOpacity
+              key={opt.key}
+              activeOpacity={0.8}
+              onPress={() => void setPreference(opt.key)}
+              style={{
+                flex: 1,
+                minHeight: 40,
+                borderRadius: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 5,
+                backgroundColor: active ? activeColor : 'transparent',
+              }}
+            >
+              <Ionicons
+                name={opt.icon}
+                size={15}
+                color={active ? '#FFFFFF' : p.textMuted}
+              />
+              <Text
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: '700',
+                  color: active ? '#FFFFFF' : p.textMuted,
+                }}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </Card>
   );
 }
 

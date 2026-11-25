@@ -18,6 +18,7 @@ import {
   Card,
   KeyboardSafeView,
   PrimaryButton,
+  ThemeSwitcherCard,
   UserAvatar,
   usePalette,
 } from '@/components/ui/mobile-ui';
@@ -186,6 +187,8 @@ export default function ParentSettingsScreen() {
             </Text>
           </View>
         </Card>
+
+        <ThemeSwitcherCard accentColor={p.indigo} />
 
         <Card style={{ gap: 12 }}>
           <Text style={[styles.secTitle, { color: p.text }]}>Hồ sơ Phụ huynh</Text>

@@ -2,18 +2,20 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  useColorScheme,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/store/authStore';
+import { useThemeStore } from '@/store/themeStore';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
   Slot,
   useRootNavigationState,
@@ -62,34 +64,71 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 
 function InitialLayout() {
   const { token, role, mustChangePassword, isInitialized, hydrate } = useAuthStore();
+  const hydrateTheme = useThemeStore((s) => s.hydrateTheme);
   const colorScheme = useColorScheme();
   const segments = useSegments() as string[];
+  const segmentsRef = useRef<string[]>(segments);
+  const updatePromptedRef = useRef(false);
   const router = useRouter();
   const rootNavigationState = useRootNavigationState();
   const isNavigationReady = Boolean(rootNavigationState?.key);
 
   useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
+    segmentsRef.current = segments;
+  }, [segments]);
 
-  // Silently fetch OTA updates in background when returning to app (applies on next relaunch without interrupting quizzes)
+  useEffect(() => {
+    void hydrateTheme();
+    void hydrate();
+  }, [hydrate, hydrateTheme]);
+
+  // Fetch OTA updates and offer 1-tap reload (never interrupts active quiz screen)
   useEffect(() => {
     if (__DEV__ || Platform.OS === 'web' || !Updates.isEnabled) return;
 
-    const checkInBackground = async () => {
+    const checkAndFetchUpdate = async () => {
+      if (segmentsRef.current.includes('quiz')) return;
       try {
         const result = await Updates.checkForUpdateAsync();
         if (result.isAvailable) {
-          await Updates.fetchUpdateAsync();
+          const fetched = await Updates.fetchUpdateAsync();
+          if (
+            fetched.isNew &&
+            !updatePromptedRef.current &&
+            !segmentsRef.current.includes('quiz')
+          ) {
+            updatePromptedRef.current = true;
+            Alert.alert(
+              'Đã có bản cập nhật mới',
+              'Ứng dụng đã tải xong bản cập nhật mới nhất. Bấm "Cập nhật ngay" để áp dụng.',
+              [
+                {
+                  text: 'Để sau',
+                  style: 'cancel',
+                  onPress: () => {
+                    updatePromptedRef.current = false;
+                  },
+                },
+                {
+                  text: 'Cập nhật ngay',
+                  onPress: () => {
+                    void Updates.reloadAsync().catch(() => {});
+                  },
+                },
+              ],
+            );
+          }
         }
       } catch {
         // Ignore offline or transient EAS Update errors
       }
     };
 
+    void checkAndFetchUpdate();
+
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        void checkInBackground();
+        void checkAndFetchUpdate();
       }
     });
 
