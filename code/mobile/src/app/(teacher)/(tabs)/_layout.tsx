@@ -10,6 +10,7 @@ export default function TeacherTabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: p.emerald,
         tabBarInactiveTintColor: p.textMuted,
         tabBarStyle: {

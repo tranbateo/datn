@@ -3,9 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -35,6 +33,7 @@ import {
   Card,
   EmptyView,
   ErrorView,
+  KeyboardSafeView,
   PrimaryButton,
   SkeletonDashboard,
   usePalette,
@@ -337,8 +336,10 @@ export default function TeacherCommunicationsScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+      <KeyboardSafeView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+          keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -711,7 +712,8 @@ export default function TeacherCommunicationsScreen() {
             ))}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardSafeView>
 
       {/* Parent Direct Chat Modal */}
       <Modal
@@ -740,10 +742,7 @@ export default function TeacherCommunicationsScreen() {
             </TouchableOpacity>
           </View>
 
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
+          <KeyboardSafeView style={{ flex: 1 }}>
             {loadingThread ? (
               <View style={styles.center}>
                 <ActivityIndicator size="large" color={p.emerald} />
@@ -753,6 +752,7 @@ export default function TeacherCommunicationsScreen() {
                 ref={chatListRef}
                 data={thread}
                 keyExtractor={(item) => item.id}
+                keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })}
                 contentContainerStyle={{ padding: 14, gap: 10, flexGrow: 1 }}
                 ListEmptyComponent={
@@ -822,7 +822,7 @@ export default function TeacherCommunicationsScreen() {
                 />
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
+          </KeyboardSafeView>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>

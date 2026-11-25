@@ -24,6 +24,7 @@ import {
   ADAPTIVE_CONTENT_STYLE,
   Badge,
   Card,
+  KeyboardSafeView,
   LoadingView,
   PrimaryButton,
   UserAvatar,
@@ -210,8 +211,10 @@ export default function StudentProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+      <KeyboardSafeView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+          keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -481,7 +484,8 @@ export default function StudentProfileScreen() {
           color={p.rose}
           onPress={handleConfirmLogout}
         />
-      </ScrollView>
+        </ScrollView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 }

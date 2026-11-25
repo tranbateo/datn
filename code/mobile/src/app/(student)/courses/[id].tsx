@@ -22,6 +22,7 @@ import {
   Card,
   EmptyView,
   ErrorView,
+  KeyboardSafeView,
   LoadingView,
   PrimaryButton,
   RichText,
@@ -283,7 +284,11 @@ export default function StudentCourseDetailScreen() {
             </View>
           </View>
 
-          <ScrollView contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}>
+          <KeyboardSafeView style={{ flex: 1 }}>
+            <ScrollView
+              contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+              keyboardShouldPersistTaps="handled"
+            >
             {readingDoc ? (
               <PrimaryButton
                 title="Hỏi Gia sư AI về tài liệu này"
@@ -343,7 +348,8 @@ export default function StudentCourseDetailScreen() {
                 description="Em vẫn có thể bấm nút phía trên để hỏi Gia sư AI hoặc xem bản PDF gốc đầy đủ trên Cổng Web."
               />
             )}
-          </ScrollView>
+            </ScrollView>
+          </KeyboardSafeView>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>

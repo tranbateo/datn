@@ -10,6 +10,7 @@ export default function ParentTabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: p.indigo,
         tabBarInactiveTintColor: p.textMuted,
         tabBarStyle: {

@@ -30,6 +30,7 @@ import {
   Card,
   EmptyView,
   ErrorView,
+  KeyboardSafeView,
   LoadingView,
   PrimaryButton,
   QuizAttemptViewerModal,
@@ -255,8 +256,10 @@ export default function TeacherStudentsScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+      <KeyboardSafeView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+          keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -373,7 +376,8 @@ export default function TeacherStudentsScreen() {
             ))}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardSafeView>
 
       {/* Student Detail Modal */}
       <Modal
@@ -497,9 +501,10 @@ export default function TeacherStudentsScreen() {
             transparent
             onRequestClose={() => setEditAttempt(null)}
           >
-            <Pressable style={styles.backdrop} onPress={() => setEditAttempt(null)}>
-              <Pressable onPress={() => undefined} style={{ width: '90%', maxWidth: 440 }}>
-                <Card style={{ gap: 12 }}>
+            <KeyboardSafeView style={{ flex: 1 }}>
+              <Pressable style={styles.backdrop} onPress={() => setEditAttempt(null)}>
+                <Pressable onPress={() => undefined} style={{ width: '90%', maxWidth: 440 }}>
+                  <Card style={{ gap: 12 }}>
                   <Text style={{ fontSize: 17, fontWeight: '800', color: p.text }}>
                     Chỉnh sửa điểm (Audit Log)
                   </Text>
@@ -547,9 +552,10 @@ export default function TeacherStudentsScreen() {
                       style={{ flex: 1 }}
                     />
                   </View>
-                </Card>
+                  </Card>
+                </Pressable>
               </Pressable>
-            </Pressable>
+            </KeyboardSafeView>
           </Modal>
         </SafeAreaView>
       </Modal>

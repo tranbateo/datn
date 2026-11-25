@@ -4,9 +4,8 @@ import {
   Alert,
   FlatList,
   Image,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,6 +32,7 @@ import { useAuthStore } from '@/store/authStore';
 import {
   Card,
   EmptyView,
+  KeyboardSafeView,
   PrimaryButton,
   RichText,
   usePalette,
@@ -350,6 +350,13 @@ export default function StudentAiTutorScreen() {
 
   const currentSubject = subjects.find((s) => s.id === selectedSubjectId);
 
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
       {/* Header */}
@@ -436,11 +443,7 @@ export default function StudentAiTutorScreen() {
         </View>
       ) : null}
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+      <KeyboardSafeView style={{ flex: 1 }} iosOffset={90}>
         {loadingInit ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={p.primary} />
@@ -450,6 +453,7 @@ export default function StudentAiTutorScreen() {
             ref={listRef}
             data={messages}
             keyExtractor={(item) => item.id}
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.chatList}
             ListEmptyComponent={
               <View style={{ paddingTop: 24, gap: 14 }}>
@@ -485,17 +489,26 @@ export default function StudentAiTutorScreen() {
                 <View style={[styles.msgRow, isUser ? styles.msgRowRight : styles.msgRowLeft]}>
                   <View
                     style={[
-                      styles.bubble,
+                      isUser ? styles.userBubble : styles.assistantCard,
                       isUser
                         ? { backgroundColor: p.primary, borderBottomRightRadius: 4 }
                         : {
                             backgroundColor: p.card,
                             borderColor: p.border,
                             borderWidth: 1,
-                            borderBottomLeftRadius: 4,
                           },
                     ]}
                   >
+                    {!isUser ? (
+                      <View style={styles.assistantHeader}>
+                        <View style={[styles.assistantIcon, { backgroundColor: p.primarySoft }]}>
+                          <Ionicons name="sparkles" size={13} color={p.primary} />
+                        </View>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: p.primary }}>
+                          Gia sư AI
+                        </Text>
+                      </View>
+                    ) : null}
                     {item.imageUrl && item.imageUrl !== 'uploaded' ? (
                       <Image
                         source={{ uri: item.imageUrl }}
@@ -533,11 +546,16 @@ export default function StudentAiTutorScreen() {
                       </View>
                     ) : null}
                     {isUser ? (
-                      <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 21 }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 14.5, lineHeight: 21 }}>
                         {item.content}
                       </Text>
                     ) : (
-                      <RichText content={item.content} color={p.text} boldColor={p.text} />
+                      <RichText
+                        content={item.content}
+                        color={p.text}
+                        boldColor={p.text}
+                        fontSize={14.5}
+                      />
                     )}
 
                     {/* Citations (BR-RAG-001) - Tappable to inspect source excerpt */}
@@ -662,7 +680,7 @@ export default function StudentAiTutorScreen() {
             />
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
 
       {/* Session History Modal */}
       <Modal
@@ -763,43 +781,50 @@ export default function StudentAiTutorScreen() {
         transparent
         onRequestClose={() => setReportMsg(null)}
       >
-        <Pressable style={styles.centerBackdrop} onPress={() => setReportMsg(null)}>
-          <Card style={{ width: '90%', gap: 12 }}>
-            <Text style={{ fontSize: 17, fontWeight: '800', color: p.text }}>
-              Báo cáo câu trả lời AI
-            </Text>
-            <Text style={{ fontSize: 13, color: p.textMuted }}>
-              Mô tả điểm chưa chính xác hoặc không phù hợp để giáo viên & nhà trường kiểm tra:
-            </Text>
-            <TextInput
-              style={[
-                styles.reportInput,
-                { backgroundColor: p.bg, borderColor: p.border, color: p.text },
-              ]}
-              placeholder="VD: Công thức giải chưa đúng với sách giáo khoa..."
-              placeholderTextColor={p.textMuted}
-              value={reportReason}
-              onChangeText={setReportReason}
-              multiline
-            />
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <PrimaryButton
-                title="Hủy"
-                color={p.textMuted}
-                onPress={() => setReportMsg(null)}
-                style={{ flex: 1 }}
-              />
-              <PrimaryButton
-                title="Gửi báo cáo"
-                color={p.rose}
-                loading={submittingReport}
-                disabled={!reportReason.trim()}
-                onPress={() => void handleSubmitReport()}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </Card>
-        </Pressable>
+        <KeyboardSafeView style={styles.centerBackdrop}>
+          <Pressable
+            style={styles.centerBackdropFill}
+            onPress={() => setReportMsg(null)}
+          >
+            <Pressable style={{ width: '92%', maxWidth: 480 }} onPress={() => undefined}>
+              <Card style={{ width: '100%', gap: 12 }}>
+                <Text style={{ fontSize: 17, fontWeight: '800', color: p.text }}>
+                  Báo cáo câu trả lời AI
+                </Text>
+                <Text style={{ fontSize: 13, color: p.textMuted }}>
+                  Mô tả điểm chưa chính xác hoặc không phù hợp để giáo viên & nhà trường kiểm tra:
+                </Text>
+                <TextInput
+                  style={[
+                    styles.reportInput,
+                    { backgroundColor: p.bg, borderColor: p.border, color: p.text },
+                  ]}
+                  placeholder="VD: Công thức giải chưa đúng với sách giáo khoa..."
+                  placeholderTextColor={p.textMuted}
+                  value={reportReason}
+                  onChangeText={setReportReason}
+                  multiline
+                />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <PrimaryButton
+                    title="Hủy"
+                    color={p.textMuted}
+                    onPress={() => setReportMsg(null)}
+                    style={{ flex: 1 }}
+                  />
+                  <PrimaryButton
+                    title="Gửi báo cáo"
+                    color={p.rose}
+                    loading={submittingReport}
+                    disabled={!reportReason.trim()}
+                    onPress={() => void handleSubmitReport()}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </Card>
+            </Pressable>
+          </Pressable>
+        </KeyboardSafeView>
       </Modal>
     </SafeAreaView>
   );
@@ -835,8 +860,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   chatList: {
-    padding: 14,
-    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    gap: 14,
     flexGrow: 1,
   },
   suggestionBtn: {
@@ -850,10 +876,29 @@ const styles = StyleSheet.create({
   msgRow: { width: '100%', flexDirection: 'row' },
   msgRowRight: { justifyContent: 'flex-end' },
   msgRowLeft: { justifyContent: 'flex-start' },
-  bubble: {
-    maxWidth: '86%',
-    padding: 13,
+  userBubble: {
+    maxWidth: '84%',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     borderRadius: 18,
+  },
+  assistantCard: {
+    width: '100%',
+    padding: 14,
+    borderRadius: 16,
+  },
+  assistantHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 8,
+  },
+  assistantIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   msgImage: {
     width: 200,
@@ -955,6 +1000,9 @@ const styles = StyleSheet.create({
   centerBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.55)',
+  },
+  centerBackdropFill: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },

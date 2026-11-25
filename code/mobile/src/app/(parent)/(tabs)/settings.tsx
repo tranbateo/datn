@@ -16,6 +16,7 @@ import { useAuthStore } from '@/store/authStore';
 import {
   ADAPTIVE_CONTENT_STYLE,
   Card,
+  KeyboardSafeView,
   PrimaryButton,
   UserAvatar,
   usePalette,
@@ -144,7 +145,11 @@ export default function ParentSettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
-      <ScrollView contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}>
+      <KeyboardSafeView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+          keyboardShouldPersistTaps="handled"
+        >
         <Text style={[styles.title, { color: p.text }]}>Cài đặt tài khoản</Text>
 
         <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
@@ -274,7 +279,8 @@ export default function ParentSettingsScreen() {
           color={p.rose}
           onPress={handleLogout}
         />
-      </ScrollView>
+        </ScrollView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 }

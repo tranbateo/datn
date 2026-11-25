@@ -1,8 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Dimensions,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -12,6 +15,8 @@ import {
   TouchableOpacity,
   useColorScheme,
   View,
+  type KeyboardEvent,
+  type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,6 +28,130 @@ export const ADAPTIVE_CONTENT_STYLE: ViewStyle = {
   maxWidth: 720,
   alignSelf: 'center',
 };
+
+/**
+ * Universal keyboard-safe container that works reliably on Android 15+ edge-to-edge
+ * (Xiaomi/HyperOS, Samsung, Pixel), older Android adjustResize, Tabs, Modals, and iOS.
+ */
+export function KeyboardSafeView({
+  children,
+  style,
+  iosOffset = 0,
+  extraAndroidPadding = 10,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  iosOffset?: number;
+  extraAndroidPadding?: number;
+}) {
+  const containerRef = useRef<View>(null);
+  const activeKbEventRef = useRef<KeyboardEvent | null>(null);
+  const [androidBottomPad, setAndroidBottomPad] = useState(0);
+
+  const measureOverlap = useCallback(
+    (event: KeyboardEvent | null) => {
+      if (Platform.OS !== 'android') return;
+      if (!event) {
+        setAndroidBottomPad(0);
+        return;
+      }
+
+      const kbHeight = event.endCoordinates?.height || 0;
+      const kbTop = event.endCoordinates?.screenY || 0;
+      const winHeight = Dimensions.get('window').height;
+
+      if (containerRef.current && typeof containerRef.current.measureInWindow === 'function') {
+        containerRef.current.measureInWindow((_x, y, _w, h) => {
+          if (h > 0 && kbTop > 0) {
+            const overlap = Math.round(y + h - kbTop);
+            if (overlap > 0) {
+              setAndroidBottomPad(overlap + extraAndroidPadding);
+              return;
+            }
+            // If older Android already resized the root window below the keyboard, avoid double padding
+            if (y + h <= winHeight - kbHeight * 0.45) {
+              setAndroidBottomPad(0);
+              return;
+            }
+          }
+          if (kbHeight > 0) {
+            setAndroidBottomPad(Math.round(kbHeight) + extraAndroidPadding);
+          }
+        });
+      } else if (kbHeight > 0) {
+        setAndroidBottomPad(Math.round(kbHeight) + extraAndroidPadding);
+      }
+    },
+    [extraAndroidPadding],
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const handleShow = (e: KeyboardEvent) => {
+      activeKbEventRef.current = e;
+      measureOverlap(e);
+      // Re-measure right after tabBarHideOnKeyboard or Modal layout settles
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => {
+        if (activeKbEventRef.current) {
+          measureOverlap(activeKbEventRef.current);
+        }
+      }, 90);
+    };
+
+    const handleHide = () => {
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      activeKbEventRef.current = null;
+      setAndroidBottomPad(0);
+    };
+
+    const showSub = Keyboard.addListener('keyboardDidShow', handleShow);
+    const hideSub = Keyboard.addListener('keyboardDidHide', handleHide);
+
+    return () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [measureOverlap]);
+
+  if (Platform.OS === 'ios') {
+    return (
+      <KeyboardAvoidingView
+        style={[{ flex: 1 }, style]}
+        behavior="padding"
+        keyboardVerticalOffset={iosOffset}
+      >
+        {children}
+      </KeyboardAvoidingView>
+    );
+  }
+
+  return (
+    <View
+      ref={containerRef}
+      collapsable={false}
+      onLayout={() => {
+        if (activeKbEventRef.current) {
+          measureOverlap(activeKbEventRef.current);
+        }
+      }}
+      style={[
+        { flex: 1 },
+        style,
+        androidBottomPad > 0 ? { paddingBottom: androidBottomPad } : null,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
 
 export function usePalette() {
   const scheme = useColorScheme();
@@ -226,15 +355,19 @@ export function formatReadableMath(raw: string): string {
     .replace(/\\subset\b/g, '⊂')
     .replace(/\\cup\b/g, '∪')
     .replace(/\\cap\b/g, '∩')
+    .replace(/\\forall\b/g, '∀')
+    .replace(/\\exists\b/g, '∃')
+    .replace(/\\setminus\b/g, '\\')
     .replace(/\\Leftrightarrow|\\iff/g, '⇔')
     .replace(/\\Rightarrow|\\implies/g, '⇒')
     .replace(/\\rightarrow|\\to\b/g, '→')
     .replace(/\\deg|\\circ/g, '°');
 
-  // Exponents & subscripts: x^{2}, x^2, x_{1}, x_1
+  // Exponents & subscripts: x^{2}, x^2, x_{1}, x_1, a^{m+n}
   text = text
     .replace(/\^\{([0-9+\-n]+)\}/g, (_, g: string) => toSuperscript(g))
     .replace(/\^([0-9])\b/g, (_, g: string) => toSuperscript(g))
+    .replace(/\^\{([^{}]+)\}/g, '^($1)')
     .replace(/_\{([0-9]+)\}/g, (_, g: string) => toSubscript(g))
     .replace(/_([0-9])\b/g, (_, g: string) => toSubscript(g));
 
@@ -373,15 +506,21 @@ export function RichText({
         j++;
       }
 
-      elements.push(
-        <ScrollView
-          key={`tbl-${i}`}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ marginVertical: 4 }}
-        >
+      // Use full-width 2-column grid only for genuinely compact 2-column tables;
+      // otherwise render readable vertical cards so students NEVER have clipped text or sideways scrolling!
+      const isCompactTwoCol =
+        headers.length === 2 &&
+        rows.every(
+          (r) => (r[0] || '').length <= 28 && (r[0] || '').length + (r[1] || '').length <= 85,
+        );
+
+      if (isCompactTwoCol) {
+        elements.push(
           <View
+            key={`tbl-${i}`}
             style={{
+              width: '100%',
+              marginVertical: 6,
               borderWidth: 1,
               borderColor: p.border,
               borderRadius: 12,
@@ -389,7 +528,6 @@ export function RichText({
               backgroundColor: p.bg,
             }}
           >
-            {/* Table Header */}
             <View
               style={{
                 flexDirection: 'row',
@@ -402,17 +540,16 @@ export function RichText({
                 <View
                   key={`th-${hIdx}`}
                   style={{
-                    minWidth: 112,
-                    maxWidth: 200,
+                    flex: hIdx === 0 ? 0.9 : 1.5,
                     paddingHorizontal: 10,
                     paddingVertical: 8,
-                    borderRightWidth: hIdx < headers.length - 1 ? 1 : 0,
+                    borderRightWidth: hIdx === 0 ? 1 : 0,
                     borderRightColor: p.border,
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: Math.max(12, fontSize - 1),
+                      fontSize: Math.max(12.5, fontSize - 1),
                       fontWeight: '800',
                       color: p.primary,
                       lineHeight: fontSize + 5,
@@ -423,7 +560,6 @@ export function RichText({
                 </View>
               ))}
             </View>
-            {/* Table Rows */}
             {rows.map((row, rIdx) => (
               <View
                 key={`tr-${rIdx}`}
@@ -438,19 +574,19 @@ export function RichText({
                   <View
                     key={`td-${rIdx}-${cIdx}`}
                     style={{
-                      minWidth: 112,
-                      maxWidth: 200,
+                      flex: cIdx === 0 ? 0.9 : 1.5,
                       paddingHorizontal: 10,
-                      paddingVertical: 8,
-                      borderRightWidth: cIdx < headers.length - 1 ? 1 : 0,
+                      paddingVertical: 9,
+                      borderRightWidth: cIdx === 0 ? 1 : 0,
                       borderRightColor: p.border,
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: Math.max(12, fontSize - 1),
+                        fontSize: Math.max(13, fontSize - 0.5),
                         color: textColor,
-                        lineHeight: fontSize + 5,
+                        lineHeight: fontSize + 6,
+                        fontWeight: cIdx === 0 ? '700' : '400',
                       }}
                     >
                       {renderInlineStyled(row[cIdx] || '', textColor, strongColor)}
@@ -459,9 +595,93 @@ export function RichText({
                 ))}
               </View>
             ))}
-          </View>
-        </ScrollView>,
-      );
+          </View>,
+        );
+      } else {
+        // Mobile-first stacked cards: 100% readable, zero clipping, zero horizontal scroll
+        const firstColIsIndex =
+          headers.length >= 3 &&
+          (/^(stt|#|tt|số)$/i.test(headers[0].replace(/\*/g, '').trim()) ||
+            rows.every((r) => /^\d+[.)]?$/.test((r[0] || '').replace(/\*/g, '').trim())));
+
+        elements.push(
+          <View key={`tbl-${i}`} style={{ width: '100%', gap: 10, marginVertical: 6 }}>
+            {rows.map((row, rIdx) => {
+              const titleText = firstColIsIndex
+                ? `${(row[0] || '').replace(/\*/g, '').trim()}. ${row[1] || ''}`.trim()
+                : row[0] || `${headers[0] || 'Mục'} ${rIdx + 1}`;
+              const detailStartIdx = firstColIsIndex ? 2 : 1;
+
+              return (
+                <View
+                  key={`tcard-${rIdx}`}
+                  style={{
+                    width: '100%',
+                    borderWidth: 1,
+                    borderColor: p.border,
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    backgroundColor: p.bg,
+                  }}
+                >
+                  <View
+                    style={{
+                      backgroundColor: p.primarySoft,
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                      borderBottomWidth: 1,
+                      borderBottomColor: p.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize,
+                        fontWeight: '800',
+                        color: p.primary,
+                        lineHeight: fontSize + 6,
+                      }}
+                    >
+                      {renderInlineStyled(titleText, p.primary, p.primary)}
+                    </Text>
+                  </View>
+
+                  <View style={{ padding: 12, gap: 10 }}>
+                    {headers.slice(detailStartIdx).map((hdr, offset) => {
+                      const colIdx = detailStartIdx + offset;
+                      const cellVal = (row[colIdx] || '').trim();
+                      if (!cellVal) return null;
+                      return (
+                        <View key={`tfield-${rIdx}-${colIdx}`} style={{ gap: 3 }}>
+                          <Text
+                            style={{
+                              fontSize: 11.5,
+                              fontWeight: '800',
+                              color: p.textMuted,
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.3,
+                            }}
+                          >
+                            {hdr.replace(/\*\*/g, '')}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize,
+                              color: textColor,
+                              lineHeight: fontSize + 7,
+                            }}
+                          >
+                            {renderInlineStyled(cellVal, textColor, strongColor)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
+          </View>,
+        );
+      }
 
       i = j;
       continue;

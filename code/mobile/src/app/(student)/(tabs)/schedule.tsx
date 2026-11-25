@@ -21,6 +21,7 @@ import {
   Card,
   EmptyView,
   ErrorView,
+  KeyboardSafeView,
   LoadingView,
   PrimaryButton,
   usePalette,
@@ -453,14 +454,23 @@ export default function StudentScheduleScreen() {
         transparent
         onRequestClose={() => setShowAdd(false)}
       >
-        <Pressable style={styles.backdrop} onPress={() => setShowAdd(false)}>
-          <Pressable
-            style={[styles.modalCard, { backgroundColor: p.card, borderColor: p.border }]}
-            onPress={() => undefined}
-          >
-            <Text style={{ fontSize: 18, fontWeight: '800', color: p.text }}>
-              Thêm lịch học mới
-            </Text>
+        <KeyboardSafeView style={{ flex: 1 }}>
+          <Pressable style={styles.backdrop} onPress={() => setShowAdd(false)}>
+            <Pressable
+              style={[
+                styles.modalCard,
+                { backgroundColor: p.card, borderColor: p.border, maxHeight: '88%' },
+              ]}
+              onPress={() => undefined}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: 12 }}
+              >
+                <Text style={{ fontSize: 18, fontWeight: '800', color: p.text }}>
+                  Thêm lịch học mới
+                </Text>
 
             <TextInput
               style={[styles.input, { backgroundColor: p.bg, borderColor: p.border, color: p.text }]}
@@ -603,15 +613,17 @@ export default function StudentScheduleScreen() {
                 onPress={() => setShowAdd(false)}
                 style={{ flex: 1 }}
               />
-              <PrimaryButton
-                title="Lưu lịch"
-                loading={saving}
-                onPress={() => void handleCreateEvent()}
-                style={{ flex: 1 }}
-              />
-            </View>
+                  <PrimaryButton
+                    title="Lưu lịch"
+                    loading={saving}
+                    onPress={() => void handleCreateEvent()}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </ScrollView>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardSafeView>
       </Modal>
     </SafeAreaView>
   );

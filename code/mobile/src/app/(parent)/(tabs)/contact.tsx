@@ -3,9 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -33,6 +31,7 @@ import {
   Card,
   EmptyView,
   ErrorView,
+  KeyboardSafeView,
   PrimaryButton,
   SkeletonDashboard,
   UserAvatar,
@@ -376,8 +375,10 @@ export default function ParentContactScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+      <KeyboardSafeView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+          keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -623,7 +624,8 @@ export default function ParentContactScreen() {
             })}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardSafeView>
 
       {/* Direct Chat Modal */}
       <Modal
@@ -652,10 +654,7 @@ export default function ParentContactScreen() {
             </TouchableOpacity>
           </View>
 
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
+          <KeyboardSafeView style={{ flex: 1 }}>
             {loadingThread ? (
               <View style={styles.center}>
                 <ActivityIndicator size="large" color={p.indigo} />
@@ -665,6 +664,7 @@ export default function ParentContactScreen() {
                 ref={chatListRef}
                 data={thread}
                 keyExtractor={(item) => item.id}
+                keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })}
                 contentContainerStyle={{ padding: 14, gap: 10, flexGrow: 1 }}
                 ListEmptyComponent={
@@ -734,7 +734,7 @@ export default function ParentContactScreen() {
                 />
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
+          </KeyboardSafeView>
         </SafeAreaView>
       </Modal>
 
@@ -745,14 +745,23 @@ export default function ParentContactScreen() {
         transparent
         onRequestClose={() => setShowProposalModal(false)}
       >
-        <Pressable style={styles.backdrop} onPress={() => setShowProposalModal(false)}>
-          <Pressable
-            style={[styles.modalCard, { backgroundColor: p.card, borderColor: p.border }]}
-            onPress={() => undefined}
-          >
-            <Text style={{ fontSize: 18, fontWeight: '800', color: p.text }}>
-              Gửi Đề xuất / Đơn xin phép
-            </Text>
+        <KeyboardSafeView style={{ flex: 1 }}>
+          <Pressable style={styles.backdrop} onPress={() => setShowProposalModal(false)}>
+            <Pressable
+              style={[
+                styles.modalCard,
+                { backgroundColor: p.card, borderColor: p.border, maxHeight: '88%' },
+              ]}
+              onPress={() => undefined}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: 12 }}
+              >
+                <Text style={{ fontSize: 18, fontWeight: '800', color: p.text }}>
+                  Gửi Đề xuất / Đơn xin phép
+                </Text>
 
             {children.length > 0 ? (
               <>
@@ -850,16 +859,18 @@ export default function ParentContactScreen() {
                 onPress={() => setShowProposalModal(false)}
                 style={{ flex: 1 }}
               />
-              <PrimaryButton
-                title="Gửi đơn"
-                color={p.indigo}
-                loading={submittingProp}
-                onPress={() => void handleCreateProposal()}
-                style={{ flex: 1 }}
-              />
-            </View>
+                  <PrimaryButton
+                    title="Gửi đơn"
+                    color={p.indigo}
+                    loading={submittingProp}
+                    onPress={() => void handleCreateProposal()}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </ScrollView>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardSafeView>
       </Modal>
     </SafeAreaView>
   );

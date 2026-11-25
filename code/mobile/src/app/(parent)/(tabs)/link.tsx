@@ -23,6 +23,7 @@ import {
   Badge,
   Card,
   EmptyView,
+  KeyboardSafeView,
   PrimaryButton,
   usePalette,
 } from '@/components/ui/mobile-ui';
@@ -118,8 +119,10 @@ export default function ParentLinkStudentScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+      <KeyboardSafeView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+          keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -233,7 +236,8 @@ export default function ParentLinkStudentScreen() {
             ))}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 }

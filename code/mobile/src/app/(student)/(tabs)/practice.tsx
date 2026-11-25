@@ -28,6 +28,7 @@ import {
   Card,
   EmptyView,
   ErrorView,
+  KeyboardSafeView,
   PrimaryButton,
   SkeletonDashboard,
   usePalette,
@@ -178,8 +179,10 @@ export default function StudentPracticeScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
+      <KeyboardSafeView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -409,7 +412,8 @@ export default function StudentPracticeScreen() {
             })}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 }

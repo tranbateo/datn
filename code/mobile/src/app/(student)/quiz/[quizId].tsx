@@ -3,7 +3,6 @@ import {
   Alert,
   BackHandler,
   FlatList,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -30,6 +29,7 @@ import {
   Badge,
   Card,
   ErrorView,
+  KeyboardSafeView,
   LoadingView,
   PrimaryButton,
   RichText,
@@ -596,10 +596,7 @@ export default function QuizExamScreen() {
         ) : null}
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeView style={{ flex: 1 }}>
         <FlatList
           ref={listRef}
           data={displayedQuestions}
@@ -680,7 +677,7 @@ export default function QuizExamScreen() {
             </View>
           }
         />
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 }

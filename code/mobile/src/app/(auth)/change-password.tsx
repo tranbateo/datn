@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { authApi } from '@/services/mobile.services';
 import { useAuthStore } from '@/store/authStore';
-import { Card, PrimaryButton, usePalette } from '@/components/ui/mobile-ui';
+import { Card, KeyboardSafeView, PrimaryButton, usePalette } from '@/components/ui/mobile-ui';
 
 export default function ChangePasswordScreen() {
   const p = usePalette();
@@ -63,10 +61,7 @@ export default function ChangePasswordScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeView style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <View style={[styles.iconBox, { backgroundColor: p.amberSoft }]}>
@@ -141,7 +136,7 @@ export default function ChangePasswordScreen() {
             </TouchableOpacity>
           </Card>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 }

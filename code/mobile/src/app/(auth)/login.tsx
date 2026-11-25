@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/services/mobile.services';
 import { getApiBaseUrl } from '@/constants/api';
-import { Card, PrimaryButton, usePalette } from '@/components/ui/mobile-ui';
+import { Card, KeyboardSafeView, PrimaryButton, usePalette } from '@/components/ui/mobile-ui';
 
 type LoginRole = 'student' | 'teacher' | 'parent';
 
@@ -151,10 +149,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: p.bg }]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeView style={{ flex: 1 }}>
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
@@ -466,7 +461,7 @@ export default function LoginScreen() {
             </Card>
           ) : null}
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 }

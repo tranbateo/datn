@@ -10,6 +10,7 @@ export default function StudentTabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: p.primary,
         tabBarInactiveTintColor: p.textMuted,
         tabBarStyle: {

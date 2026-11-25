@@ -32,6 +32,7 @@ import {
   Card,
   EmptyView,
   ErrorView,
+  KeyboardSafeView,
   PrimaryButton,
   QuizAttemptViewerModal,
   RichText,
@@ -646,14 +647,23 @@ export default function TeacherContentScreen() {
         transparent
         onRequestClose={() => setShowAiBuilder(false)}
       >
-        <Pressable style={styles.backdrop} onPress={() => setShowAiBuilder(false)}>
-          <Pressable
-            style={[styles.sheetCard, { backgroundColor: p.card, borderColor: p.border }]}
-            onPress={() => undefined}
-          >
-            <Text style={{ fontSize: 18, fontWeight: '800', color: p.text }}>
-              AI Sinh đề kiểm tra (Bản nháp)
-            </Text>
+        <KeyboardSafeView style={{ flex: 1 }}>
+          <Pressable style={styles.backdrop} onPress={() => setShowAiBuilder(false)}>
+            <Pressable
+              style={[
+                styles.sheetCard,
+                { backgroundColor: p.card, borderColor: p.border, maxHeight: '88%' },
+              ]}
+              onPress={() => undefined}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: 12 }}
+              >
+                <Text style={{ fontSize: 18, fontWeight: '800', color: p.text }}>
+                  AI Sinh đề kiểm tra (Bản nháp)
+                </Text>
             <Text style={{ fontSize: 12, color: p.textMuted }}>
               Đề do AI tạo luôn ở trạng thái DRAFT để giáo viên duyệt trước khi giao (BR-QUIZ-001).
             </Text>
@@ -732,17 +742,19 @@ export default function TeacherContentScreen() {
                 onPress={() => setShowAiBuilder(false)}
                 style={{ flex: 1 }}
               />
-              <PrimaryButton
-                title={buildingAiQuiz ? 'AI đang soạn...' : 'Sinh đề nháp'}
-                icon="sparkles"
-                color={p.indigo}
-                loading={buildingAiQuiz}
-                onPress={() => void handleAiBuildQuiz()}
-                style={{ flex: 1 }}
-              />
-            </View>
+                  <PrimaryButton
+                    title={buildingAiQuiz ? 'AI đang soạn...' : 'Sinh đề nháp'}
+                    icon="sparkles"
+                    color={p.indigo}
+                    loading={buildingAiQuiz}
+                    onPress={() => void handleAiBuildQuiz()}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </ScrollView>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardSafeView>
       </Modal>
 
       {/* Course Lessons Manager Modal */}
@@ -784,7 +796,11 @@ export default function TeacherContentScreen() {
               <ActivityIndicator size="large" color={p.emerald} />
             </View>
           ) : activeCourse ? (
-            <ScrollView contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}>
+            <KeyboardSafeView style={{ flex: 1 }}>
+              <ScrollView
+                contentContainerStyle={[styles.scroll, ADAPTIVE_CONTENT_STYLE]}
+                keyboardShouldPersistTaps="handled"
+              >
               <Card style={{ gap: 10 }}>
                 <View style={styles.rowBetween}>
                   <Text style={{ fontSize: 15, fontWeight: '800', color: p.text }}>
@@ -881,7 +897,8 @@ export default function TeacherContentScreen() {
                   </Card>
                 ))
               )}
-            </ScrollView>
+              </ScrollView>
+            </KeyboardSafeView>
           ) : null}
         </SafeAreaView>
       </Modal>
