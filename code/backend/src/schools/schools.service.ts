@@ -174,7 +174,7 @@ export class SchoolsService {
     const activeModel = usingSelfHosted
       ? process.env.OLLAMA_MODEL || 'qwen3-8b-ai-tutor-vn'
       : usingGroq
-        ? process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+        ? process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
         : process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
     return {

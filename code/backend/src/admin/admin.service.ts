@@ -199,7 +199,7 @@ export class AdminService {
     const activeProviderLabel = usingSelfHosted
       ? `Ollama (${process.env.OLLAMA_MODEL || 'qwen3-8b-ai-tutor-vn'})`
       : usingGroq
-        ? `Groq (${process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'})`
+        ? `Groq (${process.env.GROQ_MODEL || 'openai/gpt-oss-120b'})`
         : schoolRecord?.aiProvider === 'BYOK'
           ? `Gemini BYOK (${process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'})`
           : `Gemini (${process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'})`;
@@ -2171,7 +2171,7 @@ export class AdminService {
       aiModel: usingSelfHosted
         ? process.env.OLLAMA_MODEL || 'qwen3-8b-ai-tutor-vn'
         : usingGroq
-          ? process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+          ? process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
           : process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
     };
   }

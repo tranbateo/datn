@@ -190,8 +190,9 @@ Bài toán $2x^2 - 7x + 3 = 0$ thuộc dạng phương trình bậc hai một �
     it('detects GROQ provider via env, model prefix, or gsk_ BYOK key', () => {
       process.env.AI_PROVIDER = 'GROQ';
       expect(isGroqAiEnabled('SYSTEM')).toBe(true);
-      expect(isSelfHostedAiEnabled('qwen/qwen3-32b')).toBe(false);
-      expect(isGroqAiEnabled('qwen/qwen3-32b')).toBe(true);
+      expect(isSelfHostedAiEnabled('qwen/qwen3.8-27b')).toBe(false);
+      expect(isGroqAiEnabled('qwen/qwen3.8-27b')).toBe(true);
+      expect(isGroqAiEnabled('openai/gpt-oss-120b')).toBe(true);
 
       process.env.AI_PROVIDER = 'GEMINI';
       expect(isGroqAiEnabled('BYOK', 'gsk_test_123456')).toBe(true);
@@ -205,26 +206,17 @@ Bài toán $2x^2 - 7x + 3 = 0$ thuộc dạng phương trình bậc hai một �
       expect(adapter).toBeInstanceOf(GroqChatModel);
     });
 
-    it('invokes Groq chat completions and auto-switches to vision model on image_url', async () => {
-      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [
-              {
-                message: {
-                  content:
-                    '<think>Đọc thời khóa biểu...</think>[{"title":"Toán"}]',
-                },
-              },
-            ],
-          }),
-      } as unknown as Response);
+    it('invokes Groq chat completions and auto-delegates image_url to vision fallback when GROQ_VISION_MODEL is empty', async () => {
+      const visionFallback = {
+        invoke: jest.fn().mockResolvedValue({ content: '[{"title":"Toán"}]' }),
+        stream: jest.fn(),
+      };
 
       const model = new GroqChatModel({
         apiKey: 'gsk_test_key',
-        model: 'llama-3.3-70b-versatile',
-        visionModel: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        model: 'openai/gpt-oss-120b',
+        visionModel: '',
+        visionFallbackAdapter: visionFallback,
       });
 
       const res = await model.invoke([
@@ -238,13 +230,7 @@ Bài toán $2x^2 - 7x + 3 = 0$ thuộc dạng phương trình bậc hai một �
       ]);
 
       expect(res.content).toBe('[{"title":"Toán"}]');
-      const [, init] = fetchSpy.mock.calls[0];
-      const sentBody = JSON.parse((init as RequestInit).body as string) as {
-        model: string;
-      };
-      expect(sentBody.model).toBe('meta-llama/llama-4-scout-17b-16e-instruct');
-
-      fetchSpy.mockRestore();
+      expect(visionFallback.invoke).toHaveBeenCalledTimes(1);
     });
 
     it('streams Groq SSE chunks and strips <think> blocks cleanly', async () => {
@@ -279,7 +265,7 @@ Bài toán $2x^2 - 7x + 3 = 0$ thuộc dạng phương trình bậc hai một �
 
       const model = new GroqChatModel({
         apiKey: 'gsk_test_key',
-        model: 'qwen/qwen3-32b',
+        model: 'qwen/qwen3.8-27b',
       });
 
       const stream = await model.stream('Số nguyên tố là gì?');
