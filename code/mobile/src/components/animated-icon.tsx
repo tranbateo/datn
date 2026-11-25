@@ -1,72 +1,82 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as SplashScreen from 'expo-splash-screen';
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, Keyframe } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
-const DURATION = 500;
+const DURATION = 450;
 
 export function AnimatedSplashOverlay() {
-  const [animate, setAnimate] = useState(false);
   const [visible, setVisible] = useState(true);
+  const [opacity] = useState(() => new Animated.Value(1));
+  const [scale] = useState(() => new Animated.Value(1));
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    const fallbackTimer = setTimeout(() => {
+      void SplashScreen.hideAsync().catch(() => {});
+      setVisible(false);
+    }, 2500);
+    return () => clearTimeout(fallbackTimer);
+  }, []);
 
   if (!visible) return null;
 
-  const splashKeyframe = new Keyframe({
-    0: {
-      transform: [{ scale: 1 }],
-      opacity: 1,
-    },
-    30: {
-      opacity: 1,
-    },
-    100: {
-      opacity: 0,
-      transform: [{ scale: 1.06 }],
-      easing: Easing.out(Easing.cubic),
-    },
-  });
+  const handleLayout = () => {
+    if (startedRef.current) return;
+    startedRef.current = true;
 
-  const brand = (
-    <View style={styles.brandCenter}>
-      <View style={styles.logoBadge}>
-        <Ionicons name="school" size={44} color="#2563EB" />
-      </View>
-      <Text style={styles.brandTitle}>AI Tutor</Text>
-      <Text style={styles.brandSub}>Trợ giảng học tập thông minh K-12</Text>
-    </View>
-  );
-
-  return animate ? (
-    <Animated.View
-      entering={splashKeyframe.duration(DURATION).withCallback((finished) => {
-        'worklet';
-        if (finished) {
-          scheduleOnRN(setVisible, false);
-        }
-      })}
-      style={styles.splashOverlay}
-    >
-      {brand}
-    </Animated.View>
-  ) : (
-    <View
-      onLayout={() => {
-        SplashScreen.hideAsync().finally(() => {
-          setAnimate(true);
+    void SplashScreen.hideAsync()
+      .catch(() => {})
+      .finally(() => {
+        Animated.parallel([
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: DURATION,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scale, {
+            toValue: 1.06,
+            duration: DURATION,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          setVisible(false);
         });
-      }}
-      style={styles.splashOverlay}
+      });
+  };
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      onLayout={handleLayout}
+      style={[
+        styles.splashOverlay,
+        {
+          opacity,
+          transform: [{ scale }],
+        },
+      ]}
     >
-      {brand}
-    </View>
+      <View style={styles.brandCenter}>
+        <View style={styles.logoBadge}>
+          <Ionicons name="school" size={44} color="#2563EB" />
+        </View>
+        <Text style={styles.brandTitle}>AI Tutor</Text>
+        <Text style={styles.brandSub}>Trợ giảng học tập thông minh K-12</Text>
+      </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   splashOverlay: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',

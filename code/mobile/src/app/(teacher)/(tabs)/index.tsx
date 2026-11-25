@@ -57,6 +57,7 @@ export default function TeacherDashboardScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async (force = false) => {
+    if (!useAuthStore.getState().token) return;
     if (!force && isCacheFresh(TEACHER_DASH_CACHE_KEY)) {
       const snap = getCached<TeacherDashSnapshot>(TEACHER_DASH_CACHE_KEY);
       if (snap) {

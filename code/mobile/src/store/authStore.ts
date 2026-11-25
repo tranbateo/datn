@@ -76,7 +76,11 @@ async function secureGet(key: string): Promise<string | null> {
   if (Platform.OS === 'web') {
     return memoryFallback.get(key) ?? null;
   }
-  return SecureStore.getItemAsync(key);
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch {
+    return null;
+  }
 }
 
 async function secureSet(key: string, value: string): Promise<void> {
@@ -96,7 +100,11 @@ async function secureDelete(key: string): Promise<void> {
     memoryFallback.delete(key);
     return;
   }
-  await SecureStore.deleteItemAsync(key);
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch {
+    // Ignore native Keystore cleanup errors
+  }
 }
 
 export interface MobileUser {

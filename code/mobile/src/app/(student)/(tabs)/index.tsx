@@ -73,6 +73,7 @@ export default function StudentHomeScreen() {
 
   const loadData = useCallback(
     async (force = false) => {
+      if (!useAuthStore.getState().token) return;
       if (!force && isCacheFresh(STUDENT_HOME_CACHE_KEY)) {
         const snap = getCached<StudentHomeSnapshot>(STUDENT_HOME_CACHE_KEY);
         if (snap) {

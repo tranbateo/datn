@@ -96,6 +96,7 @@ export default function ParentDashboardScreen() {
   };
 
   const loadData = useCallback(async (force = false) => {
+    if (!useAuthStore.getState().token) return;
     if (!force && isCacheFresh(PARENT_DASH_CACHE_KEY)) {
       const snap = getCached<ParentDashSnapshot>(PARENT_DASH_CACHE_KEY);
       if (snap) {
