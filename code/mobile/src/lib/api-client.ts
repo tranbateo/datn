@@ -58,14 +58,26 @@ export async function attemptTokenRefresh(): Promise<string | null> {
     }
 
     try {
-      const res = await fetch(`${getApiBaseUrl()}${API_ENDPOINTS.AUTH.REFRESH}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20_000);
+      let res: Response;
+      try {
+        res = await fetch(`${getApiBaseUrl()}${API_ENDPOINTS.AUTH.REFRESH}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (!res.ok) {
-        await logout();
+        // Only invalidate session when backend explicitly rejects the token (401/403).
+        // Preserve session across transient 5xx / Render cold-start errors.
+        if (res.status === 401 || res.status === 403) {
+          await logout();
+        }
         return null;
       }
 

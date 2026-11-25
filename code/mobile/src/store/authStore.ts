@@ -1,7 +1,13 @@
 import { Platform } from 'react-native';
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
-import { API_ENDPOINTS, getApiBaseUrl, setApiBaseUrl } from '@/constants/api';
+import {
+  API_ENDPOINTS,
+  getApiBaseUrl,
+  isLocalLoopbackApiUrl,
+  resetApiBaseUrl,
+  setApiBaseUrl,
+} from '@/constants/api';
 import { clearAllCache } from '@/lib/ttl-cache';
 
 const KEYS = {
@@ -10,6 +16,9 @@ const KEYS = {
   USER_DATA: 'aitutor_user_data',
   MUST_CHANGE_PWD: 'aitutor_must_change_pwd',
   API_URL_OVERRIDE: 'aitutor_api_url',
+  REMEMBER_ME: 'aitutor_remember_me',
+  LAST_IDENTIFIER: 'aitutor_last_identifier',
+  LAST_ROLE: 'aitutor_last_role',
 } as const;
 
 // Expo SecureStore has a 2048-byte limit per value on iOS/Android.
@@ -72,15 +81,30 @@ function sanitizeUserForStorage(user: MobileUser): string {
 // In-memory fallback ONLY for web preview (never AsyncStorage per BR-AUTH-002)
 const memoryFallback = new Map<string, string>();
 
+// Serialize SecureStore operations to prevent Android KeyStore race conditions
+// (especially on Xiaomi/HyperOS when multiple coroutines access KeyStore concurrently)
+let secureStoreQueue: Promise<unknown> = Promise.resolve();
+
+function enqueueSecureOp<T>(op: () => Promise<T>): Promise<T> {
+  const next = secureStoreQueue.then(op, op);
+  secureStoreQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
 async function secureGet(key: string): Promise<string | null> {
   if (Platform.OS === 'web') {
     return memoryFallback.get(key) ?? null;
   }
-  try {
-    return await SecureStore.getItemAsync(key);
-  } catch {
-    return null;
-  }
+  return enqueueSecureOp(async () => {
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch {
+      return null;
+    }
+  });
 }
 
 async function secureSet(key: string, value: string): Promise<void> {
@@ -88,11 +112,18 @@ async function secureSet(key: string, value: string): Promise<void> {
     memoryFallback.set(key, value);
     return;
   }
-  try {
-    await SecureStore.setItemAsync(key, value);
-  } catch {
-    // Prevent native SecureStore size/keychain exceptions from crashing active UI flows
-  }
+  await enqueueSecureOp(async () => {
+    try {
+      await SecureStore.setItemAsync(key, value);
+    } catch {
+      // Single retry for transient Android KeyStore initialization errors
+      try {
+        await SecureStore.setItemAsync(key, value);
+      } catch {
+        // Prevent native SecureStore size/keychain exceptions from crashing active UI flows
+      }
+    }
+  });
 }
 
 async function secureDelete(key: string): Promise<void> {
@@ -100,11 +131,13 @@ async function secureDelete(key: string): Promise<void> {
     memoryFallback.delete(key);
     return;
   }
-  try {
-    await SecureStore.deleteItemAsync(key);
-  } catch {
-    // Ignore native Keystore cleanup errors
-  }
+  await enqueueSecureOp(async () => {
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch {
+      // Ignore native Keystore cleanup errors
+    }
+  });
 }
 
 export interface MobileUser {
@@ -162,12 +195,22 @@ function isJwtExpired(token: string): boolean {
   }
 }
 
+export type LoginRoleOption = 'student' | 'teacher' | 'parent';
+
+export interface SetSessionOptions {
+  rememberMe?: boolean;
+  identifier?: string;
+}
+
 interface AuthState {
   token: string | null;
   refreshToken: string | null;
   user: MobileUser | null;
   role: MobileRole;
   mustChangePassword: boolean;
+  rememberMe: boolean;
+  lastIdentifier: string;
+  lastRole: LoginRoleOption;
   isInitialized: boolean;
   hydrate: () => Promise<void>;
   setSession: (
@@ -175,10 +218,12 @@ interface AuthState {
     user: MobileUser | null,
     refreshToken?: string | null,
     mustChangePassword?: boolean,
+    options?: SetSessionOptions,
   ) => Promise<void>;
   updateTokens: (accessToken: string, refreshToken?: string | null) => Promise<void>;
   updateUser: (patch: Partial<MobileUser>) => Promise<void>;
   saveCustomApiUrl: (url: string) => Promise<void>;
+  resetCustomApiUrl: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -188,22 +233,56 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   role: null,
   mustChangePassword: false,
+  rememberMe: true,
+  lastIdentifier: '',
+  lastRole: 'student',
   isInitialized: false,
 
   hydrate: async () => {
     try {
       const savedApiUrl = await secureGet(KEYS.API_URL_OVERRIDE);
       if (savedApiUrl) {
-        setApiBaseUrl(savedApiUrl);
+        if (!__DEV__ && isLocalLoopbackApiUrl(savedApiUrl)) {
+          // Clear accidental emulator/localhost override in release/OTA builds
+          await secureDelete(KEYS.API_URL_OVERRIDE);
+          resetApiBaseUrl();
+        } else {
+          setApiBaseUrl(savedApiUrl);
+        }
       }
 
-      const [storedToken, storedRefresh, storedUserRaw, storedMustChange] =
-        await Promise.all([
-          secureGet(KEYS.ACCESS_TOKEN),
-          secureGet(KEYS.REFRESH_TOKEN),
-          secureGet(KEYS.USER_DATA),
-          secureGet(KEYS.MUST_CHANGE_PWD),
-        ]);
+      const storedRemember = await secureGet(KEYS.REMEMBER_ME);
+      const rememberMe = storedRemember !== 'false';
+      const storedIdentifier = rememberMe
+        ? (await secureGet(KEYS.LAST_IDENTIFIER)) ?? ''
+        : '';
+      const storedLastRoleRaw = rememberMe ? await secureGet(KEYS.LAST_ROLE) : null;
+      const lastRole: LoginRoleOption =
+        normalizeRole(storedLastRoleRaw) ?? 'student';
+
+      if (!rememberMe) {
+        await secureDelete(KEYS.ACCESS_TOKEN);
+        await secureDelete(KEYS.REFRESH_TOKEN);
+        await secureDelete(KEYS.USER_DATA);
+        await secureDelete(KEYS.MUST_CHANGE_PWD);
+        set({
+          token: null,
+          refreshToken: null,
+          user: null,
+          role: null,
+          mustChangePassword: false,
+          rememberMe: false,
+          lastIdentifier: '',
+          lastRole: 'student',
+          isInitialized: true,
+        });
+        return;
+      }
+
+      const storedToken = await secureGet(KEYS.ACCESS_TOKEN);
+      const storedRefresh = await secureGet(KEYS.REFRESH_TOKEN);
+      const storedUserRaw = await secureGet(KEYS.USER_DATA);
+      const storedMustChange = await secureGet(KEYS.MUST_CHANGE_PWD);
 
       if (!storedToken || !storedUserRaw) {
         set({
@@ -212,6 +291,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           user: null,
           role: null,
           mustChangePassword: false,
+          rememberMe,
+          lastIdentifier: storedIdentifier,
+          lastRole,
           isInitialized: true,
         });
         return;
@@ -221,7 +303,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const role = normalizeRole(parsedUser.role);
       if (!role) {
         await get().logout();
-        set({ isInitialized: true });
+        set({
+          rememberMe,
+          lastIdentifier: storedIdentifier,
+          lastRole,
+          isInitialized: true,
+        });
         return;
       }
 
@@ -232,11 +319,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (isJwtExpired(storedToken)) {
         if (storedRefresh) {
           try {
-            const res = await fetch(`${getApiBaseUrl()}${API_ENDPOINTS.AUTH.REFRESH}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refreshToken: storedRefresh }),
-            });
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15_000);
+            let res: Response;
+            try {
+              res = await fetch(`${getApiBaseUrl()}${API_ENDPOINTS.AUTH.REFRESH}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken: storedRefresh }),
+                signal: controller.signal,
+              });
+            } finally {
+              clearTimeout(timeout);
+            }
+
             if (res.ok) {
               const refreshed = (await res.json()) as {
                 accessToken?: string;
@@ -251,20 +347,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 }
               } else {
                 await get().logout();
-                set({ isInitialized: true });
+                set({
+                  rememberMe,
+                  lastIdentifier: storedIdentifier,
+                  lastRole: role,
+                  isInitialized: true,
+                });
                 return;
               }
-            } else {
+            } else if (res.status === 401 || res.status === 403) {
+              // Only wipe session on explicit auth rejection, NOT on transient 5xx/Render cold-start
               await get().logout();
-              set({ isInitialized: true });
+              set({
+                rememberMe,
+                lastIdentifier: storedIdentifier,
+                lastRole: role,
+                isInitialized: true,
+              });
               return;
             }
           } catch {
-            // Keep existing token offline; next API call will refresh or redirect
+            // Keep existing session offline or while server wakes up; next API call will refresh
           }
         } else {
           await get().logout();
-          set({ isInitialized: true });
+          set({
+            rememberMe,
+            lastIdentifier: storedIdentifier,
+            lastRole: role,
+            isInitialized: true,
+          });
           return;
         }
       }
@@ -276,6 +388,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         role,
         mustChangePassword:
           storedMustChange === 'true' || Boolean(parsedUser.mustChangePassword),
+        rememberMe,
+        lastIdentifier:
+          storedIdentifier ||
+          parsedUser.studentCode ||
+          parsedUser.phone ||
+          parsedUser.email ||
+          '',
+        lastRole: role,
         isInitialized: true,
       });
     } catch {
@@ -290,22 +410,56 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  setSession: async (accessToken, user, refreshToken = null, mustChangePassword = false) => {
+  setSession: async (
+    accessToken,
+    user,
+    refreshToken = null,
+    mustChangePassword = false,
+    options,
+  ) => {
     if (!accessToken || !user) {
       await get().logout();
       return;
     }
 
     const role = normalizeRole(user.role);
+    const shouldRemember = options?.rememberMe ?? get().rememberMe;
+    const resolvedIdentifier = (
+      options?.identifier ||
+      user.studentCode ||
+      user.phone ||
+      user.email ||
+      get().lastIdentifier ||
+      ''
+    ).trim();
+    const nextLastRole: LoginRoleOption = role ?? get().lastRole;
+
     clearAllCache();
-    await Promise.all([
-      secureSet(KEYS.ACCESS_TOKEN, accessToken),
-      secureSet(KEYS.USER_DATA, sanitizeUserForStorage(user)),
-      secureSet(KEYS.MUST_CHANGE_PWD, mustChangePassword ? 'true' : 'false'),
-      refreshToken
-        ? secureSet(KEYS.REFRESH_TOKEN, refreshToken)
-        : secureDelete(KEYS.REFRESH_TOKEN),
-    ]);
+    await secureSet(KEYS.REMEMBER_ME, shouldRemember ? 'true' : 'false');
+
+    if (shouldRemember) {
+      // Sequential SecureStore writes to avoid Android KeyStore concurrency issues
+      await secureSet(KEYS.ACCESS_TOKEN, accessToken);
+      await secureSet(KEYS.USER_DATA, sanitizeUserForStorage(user));
+      await secureSet(KEYS.MUST_CHANGE_PWD, mustChangePassword ? 'true' : 'false');
+      if (refreshToken) {
+        await secureSet(KEYS.REFRESH_TOKEN, refreshToken);
+      } else {
+        await secureDelete(KEYS.REFRESH_TOKEN);
+      }
+      if (resolvedIdentifier) {
+        await secureSet(KEYS.LAST_IDENTIFIER, resolvedIdentifier);
+      }
+      await secureSet(KEYS.LAST_ROLE, nextLastRole);
+    } else {
+      // Session-only login: clear persisted credentials so reopening app asks to sign in again
+      await secureDelete(KEYS.ACCESS_TOKEN);
+      await secureDelete(KEYS.REFRESH_TOKEN);
+      await secureDelete(KEYS.USER_DATA);
+      await secureDelete(KEYS.MUST_CHANGE_PWD);
+      await secureDelete(KEYS.LAST_IDENTIFIER);
+      await secureDelete(KEYS.LAST_ROLE);
+    }
 
     set({
       token: accessToken,
@@ -313,14 +467,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       user,
       role,
       mustChangePassword,
+      rememberMe: shouldRemember,
+      lastIdentifier: shouldRemember ? resolvedIdentifier : '',
+      lastRole: shouldRemember ? nextLastRole : 'student',
       isInitialized: true,
     });
   },
 
   updateTokens: async (accessToken, refreshToken) => {
-    await secureSet(KEYS.ACCESS_TOKEN, accessToken);
-    if (refreshToken) {
-      await secureSet(KEYS.REFRESH_TOKEN, refreshToken);
+    if (get().rememberMe) {
+      await secureSet(KEYS.ACCESS_TOKEN, accessToken);
+      if (refreshToken) {
+        await secureSet(KEYS.REFRESH_TOKEN, refreshToken);
+      }
     }
     set((state) => ({
       token: accessToken,
@@ -333,7 +492,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!current) return;
     const nextUser = { ...current, ...patch };
     set({ user: nextUser });
-    await secureSet(KEYS.USER_DATA, sanitizeUserForStorage(nextUser));
+    if (get().rememberMe) {
+      await secureSet(KEYS.USER_DATA, sanitizeUserForStorage(nextUser));
+    }
   },
 
   saveCustomApiUrl: async (url) => {
@@ -342,6 +503,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       setApiBaseUrl(cleaned);
       await secureSet(KEYS.API_URL_OVERRIDE, cleaned);
     }
+  },
+
+  resetCustomApiUrl: async () => {
+    resetApiBaseUrl();
+    await secureDelete(KEYS.API_URL_OVERRIDE);
   },
 
   logout: async () => {
@@ -358,12 +524,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
 
-    await Promise.all([
-      secureDelete(KEYS.ACCESS_TOKEN),
-      secureDelete(KEYS.REFRESH_TOKEN),
-      secureDelete(KEYS.USER_DATA),
-      secureDelete(KEYS.MUST_CHANGE_PWD),
-    ]);
+    await secureDelete(KEYS.ACCESS_TOKEN);
+    await secureDelete(KEYS.REFRESH_TOKEN);
+    await secureDelete(KEYS.USER_DATA);
+    await secureDelete(KEYS.MUST_CHANGE_PWD);
 
     set({
       token: null,

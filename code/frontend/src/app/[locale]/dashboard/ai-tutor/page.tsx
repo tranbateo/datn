@@ -101,6 +101,249 @@ const FRONTEND_CJK_MAP: Array<[RegExp, string]> = [
   [/主语/g, " chủ ngữ "],
 ];
 
+const WEB_SUPERSCRIPT_MAP: Record<string, string> = {
+  "0": "⁰",
+  "1": "¹",
+  "2": "²",
+  "3": "³",
+  "4": "⁴",
+  "5": "⁵",
+  "6": "⁶",
+  "7": "⁷",
+  "8": "⁸",
+  "9": "⁹",
+  "+": "⁺",
+  "-": "⁻",
+  "=": "⁼",
+  "(": "⁽",
+  ")": "⁾",
+  n: "ⁿ",
+  i: "ⁱ",
+};
+
+const WEB_SUBSCRIPT_MAP: Record<string, string> = {
+  "0": "₀",
+  "1": "₁",
+  "2": "₂",
+  "3": "₃",
+  "4": "₄",
+  "5": "₅",
+  "6": "₆",
+  "7": "₇",
+  "8": "₈",
+  "9": "₉",
+  "+": "₊",
+  "-": "₋",
+  "=": "₌",
+  "(": "₍",
+  ")": "₎",
+  n: "ₙ",
+  i: "ᵢ",
+};
+
+function webConvertMap(str: string, map: Record<string, string>): string | null {
+  if (!str) return null;
+  let out = "";
+  for (const ch of str) {
+    if (!(ch in map)) return null;
+    out += map[ch];
+  }
+  return out;
+}
+
+function webWrapMathAtom(expr: string): string {
+  const trimmed = expr.trim();
+  if (!trimmed) return "";
+  if (/^[a-zA-Z0-9πΔℕℤℚℝℂ⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉.]+$/.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("(") && trimmed.endsWith(")")) return trimmed;
+  return `(${trimmed})`;
+}
+
+function convertLatexBodyToUnicode(raw: string, isMathBlock: boolean): string {
+  let text = raw;
+
+  text = text.replace(
+    /\\begin\{d?cases\}([\s\S]*?)\\end\{d?cases\}/g,
+    (_, body: string) => {
+      const rows = body
+        .replace(/\\\\(?:\[[^\]]*\])?/g, "\n")
+        .split("\n")
+        .map((r) => r.replace(/\s*&\s*/g, ", ").replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+      return rows.map((r) => `• ${r}`).join("\n");
+    },
+  );
+
+  text = text.replace(
+    /\\begin\{([pbBvV]?matrix)\}([\s\S]*?)\\end\{\1\}/g,
+    (_, env: string, body: string) => {
+      const open = env.startsWith("p") ? "(" : env.startsWith("v") || env.startsWith("V") ? "|" : "[";
+      const close = env.startsWith("p") ? ")" : env.startsWith("v") || env.startsWith("V") ? "|" : "]";
+      const rows = body
+        .replace(/\\\\(?:\[[^\]]*\])?/g, "\n")
+        .split("\n")
+        .map((r) => r.split("&").map((c) => c.trim()).join("  "))
+        .filter(Boolean);
+      return rows.map((r) => `${open} ${r} ${close}`).join("\n");
+    },
+  );
+
+  text = text
+    .replace(/\\begin\{array\}(?:\[[^\]]*\])?\{[^}]*\}/g, "")
+    .replace(/\\begin\{[a-zA-Z*]+\}(?:\[[^\]]*\])?/g, "")
+    .replace(/\\end\{[a-zA-Z*]+\}/g, "");
+
+  if (isMathBlock) {
+    text = text.replace(/\\{2}\*?(?:\[[^\]]*\])?/g, "\n");
+  } else {
+    text = text.replace(/\\{2}\*?(?:\[[^\]]*\])?(?=\s*(?:\n|$))/g, "\n");
+  }
+
+  text = text.replace(
+    /\s*&\s*(=|<|>|\\neq|\\ne\b|\\leq|\\le\b|\\leqslant|\\geq|\\ge\b|\\geqslant|\\approx|\\equiv|\\Rightarrow|\\Leftrightarrow|\\rightarrow|\\implies|\\iff)/g,
+    " $1",
+  );
+  if (isMathBlock) {
+    text = text.replace(/\s*&\s*/g, " ");
+  }
+
+  for (let pass = 0; pass < 4; pass++) {
+    const prev = text;
+    text = text
+      .replace(/\\mathbb\{N\}\s*\^\s*\{\*\}/g, "ℕ*")
+      .replace(/\\mathbb\{N\}\s*\^\s*\*/g, "ℕ*")
+      .replace(/\\mathbb\{N\}/g, "ℕ")
+      .replace(/\\mathbb\{Z\}/g, "ℤ")
+      .replace(/\\mathbb\{Q\}/g, "ℚ")
+      .replace(/\\mathbb\{R\}/g, "ℝ")
+      .replace(/\\mathbb\{C\}/g, "ℂ")
+      .replace(/\\boxed\{([^{}]+)\}/g, "[$1]")
+      .replace(
+        /\\(?:text|textbf|textit|textrm|mathrm|mathbf|mathit|mathsf|mathtt|operatorname)\{([^{}]+)\}/g,
+        "$1",
+      )
+      .replace(/\\(?:overline|underline)\{([^{}]+)\}/g, "$1")
+      .replace(/\\(?:widehat|hat)\{([A-Z]{1,3})\}/g, "∠$1")
+      .replace(/\\(?:widehat|hat)\{([^{}]+)\}/g, "$1")
+      .replace(/\\(?:overrightarrow|vec)\{([^{}]+)\}/g, "$1⃗")
+      .replace(/\\phantom\{([^{}]+)\}/g, "")
+      .replace(/\\tag\{([^{}]+)\}/g, " ($1)")
+      .replace(/\\binom\{([^{}]+)\}\{([^{}]+)\}/g, "C($1, $2)")
+      .replace(/\\sqrt\[([^\]]+)\]\{([^{}]+)\}/g, (_, deg: string, inner: string) => {
+        const sup = webConvertMap(deg.trim(), WEB_SUPERSCRIPT_MAP) ?? deg.trim();
+        return `${sup}√${webWrapMathAtom(inner)}`;
+      })
+      .replace(/\\sqrt\{([^{}]+)\}/g, (_, inner: string) => `√${webWrapMathAtom(inner)}`)
+      .replace(
+        /\\(?:d|t)?frac\{([^{}]+)\}\{([^{}]+)\}/g,
+        (_, num: string, den: string) => `${webWrapMathAtom(num)}/${webWrapMathAtom(den)}`,
+      );
+    if (text === prev) break;
+  }
+
+  text = text
+    .replace(/\^\s*\{\s*\\circ\s*\}/g, "°")
+    .replace(/\^\s*\\circ\b/g, "°")
+    .replace(/\\degree\b/g, "°")
+    .replace(/\\(?:left|right)\s*\./g, "")
+    .replace(/\\(?:left|right|bigl|bigr|Bigl|Bigr|biggl|biggr|Biggl|Biggr|big|Big|bigg|Bigg)\b/g, "")
+    .replace(/\\(?:displaystyle|textstyle|scriptstyle|limits|nolimits|notag|nonumber)\b/g, "")
+    .replace(/\\(?:qquad|quad)\b/g, "  ")
+    .replace(/\\[,;:! ]/g, " ")
+    .replace(/\\\{/g, "{")
+    .replace(/\\\}/g, "}")
+    .replace(/\\\|/g, "‖")
+    .replace(/\\%/g, "%")
+    .replace(/\\_/g, "_")
+    .replace(/\\cdots\b/g, "···")
+    .replace(/\\ldots\b|\\dots\b/g, "…")
+    .replace(/\\times\b/g, "×")
+    .replace(/\\div\b/g, "÷")
+    .replace(/\\cdot\b/g, "·")
+    .replace(/\\pm\b/g, "±")
+    .replace(/\\mp\b/g, "∓")
+    .replace(/\\Delta\b/g, "Δ")
+    .replace(/\\delta\b/g, "δ")
+    .replace(/\\alpha\b/g, "α")
+    .replace(/\\beta\b/g, "β")
+    .replace(/\\gamma\b/g, "γ")
+    .replace(/\\theta\b|\\vartheta\b/g, "θ")
+    .replace(/\\lambda\b/g, "λ")
+    .replace(/\\mu\b/g, "μ")
+    .replace(/\\pi\b/g, "π")
+    .replace(/\\sigma\b/g, "σ")
+    .replace(/\\Sigma\b|\\sum\b/g, "Σ")
+    .replace(/\\phi\b|\\varphi\b/g, "φ")
+    .replace(/\\omega\b/g, "ω")
+    .replace(/\\Omega\b/g, "Ω")
+    .replace(/\\infty\b/g, "∞")
+    .replace(/\\neq\b|\\ne\b/g, "≠")
+    .replace(/\\leqslant\b|\\leq\b|\\le\b/g, "≤")
+    .replace(/\\geqslant\b|\\geq\b|\\ge\b/g, "≥")
+    .replace(/\\approx\b/g, "≈")
+    .replace(/\\equiv\b/g, "≡")
+    .replace(/\\cong\b/g, "≅")
+    .replace(/\\sim\b/g, "∼")
+    .replace(/\\angle\b|\\measuredangle\b/g, "∠")
+    .replace(/\\perp\b/g, "⊥")
+    .replace(/\\parallel\b/g, "∥")
+    .replace(/\\triangle\b|\\bigtriangleup\b/g, "△")
+    .replace(/\\notin\b/g, "∉")
+    .replace(/\\in\b/g, "∈")
+    .replace(/\\subseteq\b/g, "⊆")
+    .replace(/\\subset\b/g, "⊂")
+    .replace(/\\cup\b/g, "∪")
+    .replace(/\\cap\b/g, "∩")
+    .replace(/\\emptyset\b|\\varnothing\b/g, "∅")
+    .replace(/\\forall\b/g, "∀")
+    .replace(/\\exists\b/g, "∃")
+    .replace(/\\Longleftrightarrow\b|\\Leftrightarrow\b|\\iff\b/g, "⇔")
+    .replace(/\\Longrightarrow\b|\\Rightarrow\b|\\implies\b/g, "⇒")
+    .replace(/\\Longleftarrow\b|\\Leftarrow\b/g, "⇐")
+    .replace(/\\leftrightarrow\b/g, "↔")
+    .replace(/\\rightarrow\b|\\to\b/g, "→")
+    .replace(/\\leftarrow\b/g, "←")
+    .replace(/\\circ\b/g, "°")
+    .replace(
+      /\\(sin|cos|tan|cot|sec|csc|arcsin|arccos|arctan|log|ln|lg|exp|lim|max|min|gcd|lcm|det|deg|mod)\b/g,
+      "$1",
+    )
+    .replace(/\^\{([^{}]+)\}/g, (_, g: string) => {
+      const clean = g.trim();
+      return webConvertMap(clean, WEB_SUPERSCRIPT_MAP) ?? `^(${clean})`;
+    })
+    .replace(/\^([0-9])(?![0-9])/g, (_, g: string) => WEB_SUPERSCRIPT_MAP[g] ?? `^${g}`)
+    .replace(/_\{([^{}]+)\}/g, (_, g: string) => {
+      const clean = g.trim();
+      return webConvertMap(clean, WEB_SUBSCRIPT_MAP) ?? `_${clean}`;
+    })
+    .replace(/_([0-9])(?![0-9])/g, (_, g: string) => WEB_SUBSCRIPT_MAP[g] ?? `_${g}`);
+
+  if (isMathBlock) {
+    text = text
+      .replace(/~/g, " ")
+      .split("\n")
+      .map((line) => line.replace(/[ \t]{2,}/g, " ").trim())
+      .filter(Boolean)
+      .join("\n");
+  }
+  return text;
+}
+
+function formatDisplayMathBlockForMarkdown(rawExpr: string): string {
+  const inner = convertLatexBodyToUnicode(rawExpr, true);
+  if (!inner) return "";
+  const lines = inner.split("\n").filter(Boolean);
+  if (lines.length > 1) {
+    const quoted = lines
+      .map((l) => (l.includes("*") ? `> \`${l}\`` : `> **${l}**`))
+      .join("\n");
+    return `\n\n${quoted}\n\n`;
+  }
+  const single = lines[0];
+  return single.includes("*") ? `\n\n> \`${single}\`\n\n` : `\n\n> **${single}**\n\n`;
+}
+
 function sanitizeAndFormatAiContent(text: string): string {
   if (!text) return "";
 
@@ -133,56 +376,30 @@ function sanitizeAndFormatAiContent(text: string): string {
     }
   }
 
-  // Định dạng công thức Toán học trực quan (chuyển LaTeX trước để không vỡ **bold** khi có ký tự *)
-  return cleaned
+  // Định dạng khối công thức LaTeX đa dòng (\[...\], $$...$$, \begin{aligned}...) và inline (\(...\), $...$)
+  cleaned = cleaned
     .trimStart()
-    .replace(/\\mathbb\{N\}\s*\^\s*\{\*\}/g, "ℕ*")
-    .replace(/\\mathbb\{N\}\s*\^\s*\*/g, "ℕ*")
-    .replace(/\\mathbb\{N\}/g, "ℕ")
-    .replace(/\\mathbb\{Z\}/g, "ℤ")
-    .replace(/\\mathbb\{Q\}/g, "ℚ")
-    .replace(/\\mathbb\{R\}/g, "ℝ")
-    .replace(/\\mathbb\{C\}/g, "ℂ")
-    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1)/($2)")
-    .replace(/\\sqrt\{([^{}]+)\}/g, "√($1)")
-    .replace(/\\text\{([^{}]+)\}/g, "$1")
-    .replace(/\\mathrm\{([^{}]+)\}/g, "$1")
-    .replace(/\\mathbf\{([^{}]+)\}/g, "$1")
-    .replace(/\\left|\\right/g, "")
-    .replace(/\\times/g, "×")
-    .replace(/\\div/g, "÷")
-    .replace(/\\cdot/g, "·")
-    .replace(/\\Delta/g, "Δ")
-    .replace(/\\alpha\b/g, "α")
-    .replace(/\\beta\b/g, "β")
-    .replace(/\\pi\b/g, "π")
-    .replace(/\\neq|\\ne\b/g, "≠")
-    .replace(/\\leq|\\le\b/g, "≤")
-    .replace(/\\geq|\\ge\b/g, "≥")
-    .replace(/\\in\b/g, "∈")
-    .replace(/\\notin\b/g, "∉")
-    .replace(/\\subset\b/g, "⊂")
-    .replace(/\\cup\b/g, "∪")
-    .replace(/\\cap\b/g, "∩")
-    .replace(/\\ldots|\\dots/g, "…")
-    .replace(/\\Leftrightarrow|\\iff/g, "⇔")
-    .replace(/\\Rightarrow|\\implies/g, "⇒")
-    .replace(/\\rightarrow|\\to\b/g, "→")
-    .replace(/\\approx/g, "≈")
-    .replace(/\\pm/g, "±")
-    .replace(/\^\{2\}/g, "²")
-    .replace(/\^\{3\}/g, "³")
-    .replace(/\^2\b/g, "²")
-    .replace(/\^3\b/g, "³")
-    .replace(/\^\{([^{}]+)\}/g, "^($1)")
-    .replace(/\$\$([\s\S]*?)\$\$/g, (_, expr: string) => {
-      const inner = expr.trim();
-      return inner.includes("*") ? `\n\`${inner}\`\n` : `\n**${inner}**\n`;
-    })
-    .replace(/\$([^$\n]+)\$/g, (_, expr: string) => {
-      const inner = expr.trim();
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, expr: string) =>
+      formatDisplayMathBlockForMarkdown(expr),
+    )
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, expr: string) =>
+      formatDisplayMathBlockForMarkdown(expr),
+    )
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, expr: string) => {
+      const inner = convertLatexBodyToUnicode(expr, true);
+      if (!inner) return "";
       return inner.includes("*") ? `\`${inner}\`` : `**${inner}**`;
-    });
+    })
+    .replace(/\$(?!\s)([^$\n]+?)(?<!\s)\$/g, (_, expr: string) => {
+      const inner = convertLatexBodyToUnicode(expr, true);
+      if (!inner) return "";
+      return inner.includes("*") ? `\`${inner}\`` : `**${inner}**`;
+    })
+    // Dọn dấu mở/đóng LaTeX rời rạc khi đang stream dở
+    .replace(/\\\[|\\\]|\\\(|\\\)/g, "")
+    .replace(/^\s*\$\$\s*$/gm, "");
+
+  return convertLatexBodyToUnicode(cleaned, false);
 }
 
 const HAS_HTML_BR_REGEX = /<br\s*\/?>/i;

@@ -275,7 +275,11 @@ const SUPERSCRIPT_MAP: Record<string, string> = {
   '9': '⁹',
   '+': '⁺',
   '-': '⁻',
+  '=': '⁼',
+  '(': '⁽',
+  ')': '⁾',
   n: 'ⁿ',
+  i: 'ⁱ',
 };
 
 const SUBSCRIPT_MAP: Record<string, string> = {
@@ -289,6 +293,13 @@ const SUBSCRIPT_MAP: Record<string, string> = {
   '7': '₇',
   '8': '₈',
   '9': '₉',
+  '+': '₊',
+  '-': '₋',
+  '=': '₌',
+  '(': '₍',
+  ')': '₎',
+  n: 'ₙ',
+  i: 'ᵢ',
 };
 
 function toSuperscript(str: string): string {
@@ -305,80 +316,290 @@ function toSubscript(str: string): string {
     .join('');
 }
 
-export function formatReadableMath(raw: string): string {
-  if (!raw) return '';
+function canConvertAll(str: string, map: Record<string, string>): boolean {
+  return str.length > 0 && str.split('').every((ch) => ch in map);
+}
+
+function wrapMathAtom(expr: string): string {
+  const trimmed = expr.trim();
+  if (!trimmed) return '';
+  if (/^[a-zA-Z0-9πΔℕℤℚℝℂ⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉.]+$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
+    return trimmed;
+  }
+  return `(${trimmed})`;
+}
+
+/**
+ * Converts a LaTeX math expression or environment body into clean, student-friendly Unicode math.
+ */
+function convertLatexFragment(raw: string, isInsideMathBlock: boolean): string {
   let text = raw;
 
-  // Strip LaTeX math delimiters cleanly: $$...$$, $...$, \[...\], \(...\)
-  text = text
-    .replace(/\$\$([\s\S]*?)\$\$/g, '$1')
-    .replace(/\\\[([\s\S]*?)\\\]/g, '$1')
-    .replace(/\\\(([\s\S]*?)\\\)/g, '$1')
-    .replace(/\$([^$\n]+?)\$/g, '$1');
+  // Handle \begin{cases}...\end{cases} (piecewise functions / systems of equations)
+  text = text.replace(
+    /\\begin\{d?cases\}([\s\S]*?)\\end\{d?cases\}/g,
+    (_, body: string) => {
+      const rows = body
+        .replace(/\\\\(?:\[[^\]]*\])?/g, '\n')
+        .split('\n')
+        .map((row) =>
+          row
+            .replace(/\s*&\s*/g, ', ')
+            .replace(/\s+/g, ' ')
+            .trim(),
+        )
+        .filter(Boolean);
+      return rows.map((r) => `• ${r}`).join('\n');
+    },
+  );
 
-  // Common LaTeX commands -> crisp Unicode math
+  // Handle matrix environments
+  text = text.replace(
+    /\\begin\{([pbBvV]?matrix)\}([\s\S]*?)\\end\{\1\}/g,
+    (_, env: string, body: string) => {
+      const open = env.startsWith('p') ? '(' : env.startsWith('v') || env.startsWith('V') ? '|' : '[';
+      const close = env.startsWith('p') ? ')' : env.startsWith('v') || env.startsWith('V') ? '|' : ']';
+      const rows = body
+        .replace(/\\\\(?:\[[^\]]*\])?/g, '\n')
+        .split('\n')
+        .map((r) =>
+          r
+            .split('&')
+            .map((cell) => cell.trim())
+            .join('  '),
+        )
+        .filter(Boolean);
+      return rows.map((r) => `${open} ${r} ${close}`).join('\n');
+    },
+  );
+
+  // Strip other LaTeX environment wrappers (aligned, align*, equation, gather, split, array, ...)
   text = text
-    .replace(/\\mathbb\{N\}\s*\^\s*\{\*\}/g, 'ℕ*')
-    .replace(/\\mathbb\{N\}\s*\^\s*\*/g, 'ℕ*')
-    .replace(/\\mathbb\{N\}/g, 'ℕ')
-    .replace(/\\mathbb\{Z\}/g, 'ℤ')
-    .replace(/\\mathbb\{Q\}/g, 'ℚ')
-    .replace(/\\mathbb\{R\}/g, 'ℝ')
-    .replace(/\\mathbb\{C\}/g, 'ℂ')
-    .replace(/\\ldots|\\dots/g, '…')
-    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)')
-    .replace(/\\sqrt\{([^{}]+)\}/g, '√($1)')
-    .replace(/\\text\{([^{}]+)\}/g, '$1')
-    .replace(/\\mathrm\{([^{}]+)\}/g, '$1')
-    .replace(/\\mathbf\{([^{}]+)\}/g, '$1')
-    .replace(/\\left|\\right/g, '')
-    .replace(/\\times/g, '×')
-    .replace(/\\cdot/g, '·')
-    .replace(/\\div/g, '÷')
-    .replace(/\\pm/g, '±')
-    .replace(/\\neq|\\ne\b/g, '≠')
-    .replace(/\\leq|\\le\b/g, '≤')
-    .replace(/\\geq|\\ge\b/g, '≥')
-    .replace(/\\approx/g, '≈')
-    .replace(/\\infty/g, '∞')
-    .replace(/\\Delta/g, 'Δ')
-    .replace(/\\pi\b/g, 'π')
+    .replace(/\\begin\{array\}(?:\[[^\]]*\])?\{[^}]*\}/g, '')
+    .replace(/\\begin\{[a-zA-Z*]+\}(?:\[[^\]]*\])?/g, '')
+    .replace(/\\end\{[a-zA-Z*]+\}/g, '');
+
+  // LaTeX line breaks inside math blocks (\\ or \\[4pt] or \\*)
+  if (isInsideMathBlock) {
+    text = text.replace(/\\{2}\*?(?:\[[^\]]*\])?/g, '\n');
+  } else {
+    text = text.replace(/\\{2}\*?(?:\[[^\]]*\])?(?=\s*(?:\n|$))/g, '\n');
+  }
+
+  // Alignment tabs: &= -> =, &\le -> ≤, etc.; inside math blocks remove all standalone &
+  text = text.replace(
+    /\s*&\s*(=|<|>|\\neq|\\ne\b|\\leq|\\le\b|\\leqslant|\\geq|\\ge\b|\\geqslant|\\approx|\\equiv|\\Rightarrow|\\Leftrightarrow|\\rightarrow|\\implies|\\iff)/g,
+    ' $1',
+  );
+  if (isInsideMathBlock) {
+    text = text.replace(/\s*&\s*/g, ' ');
+  }
+
+  // Unwrap nested brace commands iteratively (handles nested \frac, \sqrt, \text, etc.)
+  for (let pass = 0; pass < 4; pass++) {
+    const prev = text;
+    text = text
+      .replace(/\\mathbb\{N\}\s*\^\s*\{\*\}/g, 'ℕ*')
+      .replace(/\\mathbb\{N\}\s*\^\s*\*/g, 'ℕ*')
+      .replace(/\\mathbb\{N\}/g, 'ℕ')
+      .replace(/\\mathbb\{Z\}/g, 'ℤ')
+      .replace(/\\mathbb\{Q\}/g, 'ℚ')
+      .replace(/\\mathbb\{R\}/g, 'ℝ')
+      .replace(/\\mathbb\{C\}/g, 'ℂ')
+      .replace(/\\boxed\{([^{}]+)\}/g, '[$1]')
+      .replace(
+        /\\(?:text|textbf|textit|textrm|mathrm|mathbf|mathit|mathsf|mathtt|operatorname)\{([^{}]+)\}/g,
+        '$1',
+      )
+      .replace(/\\(?:overline|underline)\{([^{}]+)\}/g, '$1')
+      .replace(/\\(?:widehat|hat)\{([A-Z]{1,3})\}/g, '∠$1')
+      .replace(/\\(?:widehat|hat)\{([^{}]+)\}/g, '$1')
+      .replace(/\\(?:overrightarrow|vec)\{([^{}]+)\}/g, '$1⃗')
+      .replace(/\\phantom\{([^{}]+)\}/g, '')
+      .replace(/\\tag\{([^{}]+)\}/g, ' ($1)')
+      .replace(/\\binom\{([^{}]+)\}\{([^{}]+)\}/g, 'C($1, $2)')
+      .replace(/\\sqrt\[([^\]]+)\]\{([^{}]+)\}/g, (_, deg: string, inner: string) => {
+        const cleanDeg = deg.trim();
+        const prefix = canConvertAll(cleanDeg, SUPERSCRIPT_MAP)
+          ? toSuperscript(cleanDeg)
+          : `${cleanDeg}`;
+        return `${prefix}√${wrapMathAtom(inner)}`;
+      })
+      .replace(/\\sqrt\{([^{}]+)\}/g, (_, inner: string) => `√${wrapMathAtom(inner)}`)
+      .replace(
+        /\\(?:d|t)?frac\{([^{}]+)\}\{([^{}]+)\}/g,
+        (_, num: string, den: string) => `${wrapMathAtom(num)}/${wrapMathAtom(den)}`,
+      );
+    if (text === prev) break;
+  }
+
+  // Degree notation: 90^\circ, 90^{\circ}, \degree
+  text = text
+    .replace(/\^\s*\{\s*\\circ\s*\}/g, '°')
+    .replace(/\^\s*\\circ\b/g, '°')
+    .replace(/\\degree\b/g, '°');
+
+  // Sizing, display hints, spacing & escaped punctuation
+  text = text
+    .replace(/\\(?:left|right)\s*\./g, '')
+    .replace(/\\(?:left|right|bigl|bigr|Bigl|Bigr|biggl|biggr|Biggl|Biggr|big|Big|bigg|Bigg)\b/g, '')
+    .replace(/\\(?:displaystyle|textstyle|scriptstyle|limits|nolimits|notag|nonumber)\b/g, '')
+    .replace(/\\(?:qquad|quad)\b/g, '  ')
+    .replace(/\\[,;:! ]/g, ' ')
+    .replace(/\\\{/g, '{')
+    .replace(/\\\}/g, '}')
+    .replace(/\\\|/g, '‖')
+    .replace(/\\%/g, '%')
+    .replace(/\\_/g, '_')
+    .replace(/\\#/g, '#')
+    .replace(/\\\$/g, '$');
+
+  // Symbols, relations, Greek letters & standard math functions
+  text = text
+    .replace(/\\cdots\b/g, '···')
+    .replace(/\\ldots\b|\\dots\b/g, '…')
+    .replace(/\\vdots\b/g, '⋮')
+    .replace(/\\ddots\b/g, '⋱')
+    .replace(/\\times\b/g, '×')
+    .replace(/\\cdot\b/g, '·')
+    .replace(/\\div\b/g, '÷')
+    .replace(/\\pm\b/g, '±')
+    .replace(/\\mp\b/g, '∓')
+    .replace(/\\neq\b|\\ne\b/g, '≠')
+    .replace(/\\leqslant\b|\\leq\b|\\le\b/g, '≤')
+    .replace(/\\geqslant\b|\\geq\b|\\ge\b/g, '≥')
+    .replace(/\\approx\b/g, '≈')
+    .replace(/\\equiv\b/g, '≡')
+    .replace(/\\simeq\b/g, '≃')
+    .replace(/\\cong\b/g, '≅')
+    .replace(/\\sim\b/g, '∼')
+    .replace(/\\propto\b/g, '∝')
+    .replace(/\\infty\b/g, '∞')
+    .replace(/\\nmid\b/g, '∤')
+    .replace(/\\mid\b/g, '∣')
+    .replace(/\\Delta\b/g, 'Δ')
+    .replace(/\\delta\b/g, 'δ')
     .replace(/\\alpha\b/g, 'α')
     .replace(/\\beta\b/g, 'β')
     .replace(/\\gamma\b/g, 'γ')
-    .replace(/\\angle/g, '∠')
-    .replace(/\\perp/g, '⊥')
-    .replace(/\\parallel/g, '∥')
-    .replace(/\\triangle/g, '△')
-    .replace(/\\in\b/g, '∈')
+    .replace(/\\varepsilon\b|\\epsilon\b/g, 'ε')
+    .replace(/\\vartheta\b|\\theta\b/g, 'θ')
+    .replace(/\\lambda\b/g, 'λ')
+    .replace(/\\mu\b/g, 'μ')
+    .replace(/\\pi\b/g, 'π')
+    .replace(/\\Pi\b/g, 'Π')
+    .replace(/\\rho\b/g, 'ρ')
+    .replace(/\\sigma\b/g, 'σ')
+    .replace(/\\Sigma\b/g, 'Σ')
+    .replace(/\\tau\b/g, 'τ')
+    .replace(/\\varphi\b|\\phi\b/g, 'φ')
+    .replace(/\\Phi\b/g, 'Φ')
+    .replace(/\\omega\b/g, 'ω')
+    .replace(/\\Omega\b/g, 'Ω')
+    .replace(/\\sum\b/g, 'Σ')
+    .replace(/\\prod\b/g, 'Π')
+    .replace(/\\int\b/g, '∫')
+    .replace(/\\partial\b/g, '∂')
+    .replace(/\\nabla\b/g, '∇')
+    .replace(/\\measuredangle\b|\\angle\b/g, '∠')
+    .replace(/\\perp\b/g, '⊥')
+    .replace(/\\parallel\b/g, '∥')
+    .replace(/\\bigtriangleup\b|\\triangle\b/g, '△')
+    .replace(/\\square\b/g, '□')
+    .replace(/\\therefore\b/g, '∴')
+    .replace(/\\because\b/g, '∵')
     .replace(/\\notin\b/g, '∉')
+    .replace(/\\in\b/g, '∈')
+    .replace(/\\subseteq\b/g, '⊆')
     .replace(/\\subset\b/g, '⊂')
+    .replace(/\\supseteq\b/g, '⊇')
+    .replace(/\\supset\b/g, '⊃')
     .replace(/\\cup\b/g, '∪')
     .replace(/\\cap\b/g, '∩')
+    .replace(/\\emptyset\b|\\varnothing\b/g, '∅')
     .replace(/\\forall\b/g, '∀')
     .replace(/\\exists\b/g, '∃')
+    .replace(/\\neg\b|\\lnot\b/g, '¬')
+    .replace(/\\land\b|\\wedge\b/g, '∧')
+    .replace(/\\lor\b|\\vee\b/g, '∨')
     .replace(/\\setminus\b/g, '\\')
-    .replace(/\\Leftrightarrow|\\iff/g, '⇔')
-    .replace(/\\Rightarrow|\\implies/g, '⇒')
-    .replace(/\\rightarrow|\\to\b/g, '→')
-    .replace(/\\deg|\\circ/g, '°');
+    .replace(/\\Longleftrightarrow\b|\\Leftrightarrow\b|\\iff\b/g, '⇔')
+    .replace(/\\Longrightarrow\b|\\Rightarrow\b|\\implies\b/g, '⇒')
+    .replace(/\\Longleftarrow\b|\\Leftarrow\b/g, '⇐')
+    .replace(/\\leftrightarrow\b/g, '↔')
+    .replace(/\\rightarrow\b|\\to\b/g, '→')
+    .replace(/\\leftarrow\b/g, '←')
+    .replace(/\\mapsto\b/g, '↦')
+    .replace(/\\circ\b/g, '°')
+    .replace(
+      /\\(sin|cos|tan|cot|sec|csc|arcsin|arccos|arctan|sinh|cosh|tanh|log|ln|lg|exp|lim|max|min|sup|inf|gcd|lcm|det|deg|mod|bmod|pmod)\b/g,
+      '$1',
+    );
 
-  // Exponents & subscripts: x^{2}, x^2, x_{1}, x_1, a^{m+n}
+  // Exponents & subscripts: x^{2}, 10^{-3}, x^{2n}, x^2, x_{1}, a^{m+n}
   text = text
-    .replace(/\^\{([0-9+\-n]+)\}/g, (_, g: string) => toSuperscript(g))
-    .replace(/\^([0-9])\b/g, (_, g: string) => toSuperscript(g))
-    .replace(/\^\{([^{}]+)\}/g, '^($1)')
-    .replace(/_\{([0-9]+)\}/g, (_, g: string) => toSubscript(g))
-    .replace(/_([0-9])\b/g, (_, g: string) => toSubscript(g));
+    .replace(/\^\{([^{}]+)\}/g, (_, g: string) => {
+      const clean = g.trim();
+      if (canConvertAll(clean, SUPERSCRIPT_MAP)) return toSuperscript(clean);
+      return `^(${clean})`;
+    })
+    .replace(/\^([0-9])(?![0-9])/g, (_, g: string) => toSuperscript(g))
+    .replace(/_\{([^{}]+)\}/g, (_, g: string) => {
+      const clean = g.trim();
+      if (canConvertAll(clean, SUBSCRIPT_MAP)) return toSubscript(clean);
+      return `_${clean}`;
+    })
+    .replace(/_([0-9])(?![0-9])/g, (_, g: string) => toSubscript(g));
 
   // Plain ASCII arrows & comparisons
-  return text
+  text = text
     .replace(/<=>/g, '⇔')
     .replace(/=>/g, '⇒')
     .replace(/->/g, '→')
     .replace(/>=/g, '≥')
     .replace(/<=/g, '≤')
     .replace(/!=/g, '≠');
+
+  if (isInsideMathBlock) {
+    text = text
+      .replace(/~/g, ' ')
+      .split('\n')
+      .map((line) => line.replace(/[ \t]{2,}/g, ' ').trim())
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  return text;
+}
+
+export function formatReadableMath(raw: string): string {
+  if (!raw) return '';
+  let text = raw;
+
+  // Convert complete LaTeX math blocks first so internal & and \\ are safely cleaned
+  text = text
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, inner: string) =>
+      convertLatexFragment(inner, true),
+    )
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, inner: string) =>
+      convertLatexFragment(inner, true),
+    )
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, inner: string) =>
+      convertLatexFragment(inner, true),
+    )
+    .replace(/\$(?!\s)([^$\n]+?)(?<!\s)\$/g, (_, inner: string) =>
+      convertLatexFragment(inner, true),
+    );
+
+  // Strip any orphan/mid-stream delimiters (e.g. while SSE is still streaming)
+  text = text
+    .replace(/\\\[|\\\]|\\\(|\\\)/g, '')
+    .replace(/^\s*\$\$\s*$/gm, '');
+
+  return convertLatexFragment(text, false);
 }
 
 function normalizeHtmlBreaks(text: string): string {
@@ -489,6 +710,123 @@ export function RichText({
     if (!trimmed) {
       elements.push(<View key={`sp-${i}`} style={{ height: 4 }} />);
       i++;
+      continue;
+    }
+
+    // Fenced Code block (```...```)
+    if (trimmed.startsWith('```')) {
+      const codeLines: string[] = [];
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim().startsWith('```')) {
+        codeLines.push(lines[j]);
+        j++;
+      }
+      elements.push(
+        <View
+          key={`code-${i}`}
+          style={{
+            width: '100%',
+            backgroundColor: p.cardMuted,
+            borderColor: p.border,
+            borderWidth: 1,
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            marginVertical: 4,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: Platform.select({
+                ios: 'Menlo',
+                android: 'monospace',
+                default: 'monospace',
+              }),
+              fontSize: Math.max(12.5, fontSize - 1),
+              lineHeight: fontSize + 5,
+              color: textColor,
+            }}
+          >
+            {codeLines.join('\n')}
+          </Text>
+        </View>,
+      );
+      i = j < lines.length ? j + 1 : j;
+      continue;
+    }
+
+    // Multi-line or standalone Display Math block (\[ ... \] or $$ ... $$ or \begin{aligned}...)
+    const startsBracketMath = trimmed.startsWith('\\[');
+    const startsDollarMath = trimmed.startsWith('$$');
+    const startsEnvMath = /^\\begin\{(?:aligned|align\*?|equation\*?|gather\*?|split|eqnarray\*?|cases|dcases|[pbBvV]?matrix|array)\}/.test(
+      trimmed,
+    );
+    if (startsBracketMath || startsDollarMath || startsEnvMath) {
+      const mathLines: string[] = [lines[i]];
+      let j = i;
+      const endsSameLine =
+        (startsBracketMath && trimmed.length > 2 && trimmed.includes('\\]')) ||
+        (startsDollarMath && trimmed.length > 2 && trimmed.slice(2).includes('$$')) ||
+        (startsEnvMath && /\\end\{[a-zA-Z*]+\}/.test(trimmed));
+
+      if (!endsSameLine) {
+        j = i + 1;
+        while (j < lines.length) {
+          const cur = lines[j].trim();
+          mathLines.push(lines[j]);
+          if (
+            (startsBracketMath && cur.includes('\\]')) ||
+            (startsDollarMath && cur.includes('$$')) ||
+            (startsEnvMath && /\\end\{[a-zA-Z*]+\}/.test(cur))
+          ) {
+            break;
+          }
+          j++;
+        }
+      }
+
+      const rawBlock = mathLines.join('\n');
+      const cleanedMath = convertLatexFragment(
+        rawBlock
+          .replace(/\\\[|\\\]/g, '')
+          .replace(/\$\$/g, ''),
+        true,
+      );
+
+      if (cleanedMath) {
+        elements.push(
+          <View
+            key={`math-${i}`}
+            style={{
+              width: '100%',
+              borderLeftWidth: 3,
+              borderLeftColor: p.primary,
+              backgroundColor: p.cardMuted,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderRadius: 10,
+              marginVertical: 4,
+              gap: 4,
+            }}
+          >
+            {cleanedMath.split('\n').map((mLine, mIdx) => (
+              <Text
+                key={`ml-${i}-${mIdx}`}
+                style={{
+                  fontSize,
+                  lineHeight: fontSize + 8,
+                  color: strongColor,
+                  fontWeight: '600',
+                }}
+              >
+                {mLine}
+              </Text>
+            ))}
+          </View>,
+        );
+      }
+
+      i = j + 1;
       continue;
     }
 

@@ -1,6 +1,15 @@
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
-import { AppState, Platform, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
+import {
+  ActivityIndicator,
+  AppState,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useColorScheme,
+} from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { useEffect } from 'react';
@@ -53,6 +62,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 
 function InitialLayout() {
   const { token, role, mustChangePassword, isInitialized, hydrate } = useAuthStore();
+  const colorScheme = useColorScheme();
   const segments = useSegments() as string[];
   const router = useRouter();
   const rootNavigationState = useRootNavigationState();
@@ -116,7 +126,36 @@ function InitialLayout() {
     }
   }, [token, role, mustChangePassword, isInitialized, isNavigationReady, segments, router]);
 
-  return <Slot />;
+  return (
+    <View style={{ flex: 1 }}>
+      <Slot />
+      {!isInitialized ? (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: colorScheme === 'dark' ? '#0F172A' : '#F8FAFC',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+              zIndex: 500,
+            },
+          ]}
+        >
+          <ActivityIndicator size="large" color="#2563EB" />
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: '600',
+              color: colorScheme === 'dark' ? '#94A3B8' : '#64748B',
+            }}
+          >
+            Đang khôi phục phiên đăng nhập...
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 export default function RootLayout() {

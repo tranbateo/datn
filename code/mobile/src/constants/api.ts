@@ -1,16 +1,49 @@
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-const DEFAULT_API_URL = Platform.select({
+function readConfiguredApiUrl(): string | undefined {
+  const fromExpoConfig = Constants.expoConfig?.extra?.apiUrl;
+  if (typeof fromExpoConfig === 'string' && fromExpoConfig.trim()) {
+    return fromExpoConfig.trim();
+  }
+  const fromManifest2 = (
+    Constants.manifest2?.extra as
+      | { expoClient?: { extra?: { apiUrl?: unknown } } }
+      | undefined
+  )?.expoClient?.extra?.apiUrl;
+  if (typeof fromManifest2 === 'string' && fromManifest2.trim()) {
+    return fromManifest2.trim();
+  }
+  return undefined;
+}
+
+const DEV_FALLBACK_API_URL = Platform.select({
   android: 'http://10.0.2.2:3001',
   ios: 'http://localhost:3001',
   default: 'http://localhost:3001',
 });
 
-let runtimeApiBaseUrl: string = (
+const CONFIGURED_API_URL = readConfiguredApiUrl();
+
+const DEFAULT_API_URL: string = (
   process.env.EXPO_PUBLIC_API_URL ||
-  DEFAULT_API_URL ||
+  (!__DEV__ && CONFIGURED_API_URL ? CONFIGURED_API_URL : undefined) ||
+  DEV_FALLBACK_API_URL ||
+  CONFIGURED_API_URL ||
   'http://localhost:3001'
 ).replace(/\/+$/, '');
+
+let runtimeApiBaseUrl: string = DEFAULT_API_URL;
+
+export function isLocalLoopbackApiUrl(url: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2)(:\d+)?(\/|$)/i.test(
+    url.trim(),
+  );
+}
+
+export function getDefaultApiBaseUrl(): string {
+  return DEFAULT_API_URL;
+}
 
 export function getApiBaseUrl(): string {
   return runtimeApiBaseUrl;
@@ -21,6 +54,10 @@ export function setApiBaseUrl(url: string): void {
   if (cleaned) {
     runtimeApiBaseUrl = cleaned;
   }
+}
+
+export function resetApiBaseUrl(): void {
+  runtimeApiBaseUrl = DEFAULT_API_URL;
 }
 
 export const API_ENDPOINTS = {

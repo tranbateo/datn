@@ -15,7 +15,17 @@ const mergedEnv = {
 };
 
 const isWin = process.platform === 'win32';
-const args = ['eas-cli', 'update', '--branch', branch];
+const validEnvs = new Set(['development', 'preview', 'production']);
+const easEnv = validEnvs.has(branch) ? branch : 'preview';
+const args = [
+  'eas-cli',
+  'update',
+  '--branch',
+  branch,
+  '--environment',
+  easEnv,
+  '--clear-cache',
+];
 if (customMessage) {
   const safeMsg = isWin
     ? `"${customMessage.replace(/"/g, '\\"')}"`

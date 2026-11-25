@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  AppState,
   BackHandler,
   FlatList,
   Platform,
@@ -10,10 +11,11 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  type AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import {
   generateClientUuid,
   matchesQuizOption,
@@ -29,6 +31,7 @@ import {
   Badge,
   Card,
   ErrorView,
+  formatReadableMath,
   KeyboardSafeView,
   LoadingView,
   PrimaryButton,
@@ -200,7 +203,7 @@ const QuestionCard = React.memo(function QuestionCard({
                   {letter}.
                 </Text>
                 <Text style={{ flex: 1, color: p.text, fontSize: 14, lineHeight: 20 }}>
-                  {opt}
+                  {formatReadableMath(opt)}
                 </Text>
               </TouchableOpacity>
             );
@@ -211,11 +214,11 @@ const QuestionCard = React.memo(function QuestionCard({
       {qr ? (
         <View style={[styles.explainBox, { backgroundColor: p.cardMuted, gap: 6 }]}>
           <Text style={{ fontSize: 12, fontWeight: '800', color: p.emerald }}>
-            Đáp án đúng: {qr.correctOption}
+            Đáp án đúng: {formatReadableMath(qr.correctOption)}
           </Text>
           {qr.errorAnalysis ? (
             <Text style={{ fontSize: 12, color: p.rose, lineHeight: 18 }}>
-              Phân tích lỗi: {qr.errorAnalysis}
+              Phân tích lỗi: {formatReadableMath(qr.errorAnalysis)}
             </Text>
           ) : null}
           {qr.correction || qr.explanation ? (
@@ -235,6 +238,7 @@ const QuestionCard = React.memo(function QuestionCard({
 export default function QuizExamScreen() {
   const p = usePalette();
   const router = useRouter();
+  const navigation = useNavigation();
   const { quizId, attemptId } = useLocalSearchParams<{
     quizId: string;
     attemptId?: string;
@@ -247,6 +251,9 @@ export default function QuizExamScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lockedByAntiCheat, setLockedByAntiCheat] = useState(false);
+  const [exitTerminationNotice, setExitTerminationNotice] = useState<string | null>(null);
+  const [autoSubmitRetryNeeded, setAutoSubmitRetryNeeded] = useState(false);
 
   const [result, setResult] = useState<{
     score: number;
@@ -258,6 +265,9 @@ export default function QuizExamScreen() {
 
   const listRef = useRef<FlatList<{ q: Question; idx: number }>>(null);
   const submittedRef = useRef(false);
+  const examLockedRef = useRef(false);
+  const isConfirmAlertOpenRef = useRef(false);
+  const pendingAutoSubmitReasonRef = useRef<string | null>(null);
   const answersRef = useRef<Record<string, string>>({});
   // BR-QUIZ-002: Stable client-side UUID guarantees idempotent submission even on retry
   const idempotentAttemptIdRef = useRef<string>(generateClientUuid());
@@ -307,16 +317,32 @@ export default function QuizExamScreen() {
   }, [loadQuiz]);
 
   const handleAnswerChange = useCallback((questionId: string, value: string) => {
+    if (examLockedRef.current || submittedRef.current) return;
     setAnswers((prev) =>
       prev[questionId] === value ? prev : { ...prev, [questionId]: value },
     );
   }, []);
 
   const submitExam = useCallback(
-    async (exitReason?: string) => {
+    async (exitReason?: string, customNotice?: string) => {
       if (submittedRef.current || !quiz) return;
       submittedRef.current = true;
+      examLockedRef.current = true;
       setSubmitting(true);
+      setAutoSubmitRetryNeeded(false);
+
+      if (exitReason === 'AUTO_SUBMIT_ON_EXIT') {
+        setLockedByAntiCheat(true);
+        setExitTerminationNotice(
+          customNotice ||
+            'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do phát hiện thoát ứng dụng hoặc chuyển sang ứng dụng khác!',
+        );
+      } else if (exitReason === 'TIME_EXPIRED') {
+        setLockedByAntiCheat(true);
+        setExitTerminationNotice(
+          'Đã hết thời gian làm bài! Hệ thống tự động thu bài và trả kết quả ngay lập tức.',
+        );
+      }
 
       const questionsList = quiz.questions || [];
       const payload = questionsList.map((q) => {
@@ -336,6 +362,7 @@ export default function QuizExamScreen() {
           exitReason,
           idempotentAttemptIdRef.current,
         );
+        pendingAutoSubmitReasonRef.current = null;
         const map: Record<string, QuestionResult> = {};
         for (const qr of res.questionResults || []) {
           map[qr.questionId] = qr;
@@ -357,10 +384,25 @@ export default function QuizExamScreen() {
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       } catch (err: unknown) {
         submittedRef.current = false;
-        Alert.alert(
-          'Lỗi nộp bài',
-          err instanceof Error ? err.message : 'Không thể nộp bài. Vui lòng thử lại.',
-        );
+        const isForcedTermination =
+          exitReason === 'AUTO_SUBMIT_ON_EXIT' || exitReason === 'TIME_EXPIRED';
+        if (isForcedTermination) {
+          // Keep exam permanently locked; auto-retry when app returns to foreground or user taps retry
+          pendingAutoSubmitReasonRef.current = exitReason;
+          setAutoSubmitRetryNeeded(true);
+          if (AppState.currentState === 'active') {
+            Alert.alert(
+              'Mất kết nối khi tự động nộp bài',
+              'Bài thi đã bị khóa do rời khỏi phòng thi. Hãy bấm "Nộp bài ngay" khi có mạng để lưu kết quả.',
+            );
+          }
+        } else {
+          examLockedRef.current = false;
+          Alert.alert(
+            'Lỗi nộp bài',
+            err instanceof Error ? err.message : 'Không thể nộp bài. Vui lòng thử lại.',
+          );
+        }
       } finally {
         setSubmitting(false);
       }
@@ -372,34 +414,165 @@ export default function QuizExamScreen() {
     void submitExam('TIME_EXPIRED');
   }, [submitExam]);
 
+  const isExamActive = Boolean(!result && !attemptId && !loading && quiz && !lockedByAntiCheat);
+
+  // Chế độ phòng thi nghiêm ngặt trên Mobile (tương đương chuyển tab trên Web):
+  // Thoát ra màn hình chính, chuyển sang ứng dụng khác, hoặc mở cửa sổ nổi/chia đôi màn hình
+  // sẽ lập tức khóa bài thi và tự động nộp bài chấm điểm ngay lập tức!
+  useEffect(() => {
+    if (loading || result || attemptId || !quiz) return;
+
+    let pendingBlurTimer: ReturnType<typeof setTimeout> | null = null;
+    let pendingInactiveTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastState: AppStateStatus = AppState.currentState;
+
+    const clearTimers = () => {
+      if (pendingBlurTimer) {
+        clearTimeout(pendingBlurTimer);
+        pendingBlurTimer = null;
+      }
+      if (pendingInactiveTimer) {
+        clearTimeout(pendingInactiveTimer);
+        pendingInactiveTimer = null;
+      }
+    };
+
+    const triggerAppSwitchTermination = (notice: string) => {
+      clearTimers();
+      if (submittedRef.current || examLockedRef.current) return;
+      void submitExam('AUTO_SUBMIT_ON_EXIT', notice);
+    };
+
+    const changeSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        clearTimers();
+        // If OS paused network while backgrounded during auto-submit, finish submitting immediately on return
+        if (pendingAutoSubmitReasonRef.current && !submittedRef.current) {
+          const reason = pendingAutoSubmitReasonRef.current;
+          void submitExam(reason);
+        }
+      } else if (nextState === 'background' && lastState !== 'background') {
+        triggerAppSwitchTermination(
+          'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do phát hiện thoát ứng dụng hoặc chuyển sang ứng dụng khác!',
+        );
+      } else if (
+        nextState === 'inactive' &&
+        Platform.OS === 'ios' &&
+        !isConfirmAlertOpenRef.current
+      ) {
+        // On iOS, switching apps / App Switcher triggers 'inactive' before 'background'
+        if (!pendingInactiveTimer) {
+          pendingInactiveTimer = setTimeout(() => {
+            if (AppState.currentState !== 'active' && !isConfirmAlertOpenRef.current) {
+              triggerAppSwitchTermination(
+                'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do rời khỏi màn hình phòng thi!',
+              );
+            }
+          }, 1200);
+        }
+      }
+      lastState = nextState;
+    });
+
+    // Android split-screen / floating window (Xiaomi HyperOS, Samsung Pop-up) fires 'blur' without 'background'
+    const blurSub =
+      Platform.OS === 'android'
+        ? AppState.addEventListener('blur', () => {
+            if (isConfirmAlertOpenRef.current || submittedRef.current || examLockedRef.current) {
+              return;
+            }
+            if (!pendingBlurTimer) {
+              pendingBlurTimer = setTimeout(() => {
+                if (!isConfirmAlertOpenRef.current) {
+                  triggerAppSwitchTermination(
+                    'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do phát hiện rời khỏi cửa sổ phòng thi (chia đôi màn hình / ứng dụng nổi)!',
+                  );
+                }
+              }, 1500);
+            }
+          })
+        : null;
+
+    const focusSub =
+      Platform.OS === 'android'
+        ? AppState.addEventListener('focus', () => {
+            if (pendingBlurTimer) {
+              clearTimeout(pendingBlurTimer);
+              pendingBlurTimer = null;
+            }
+          })
+        : null;
+
+    return () => {
+      clearTimers();
+      changeSub.remove();
+      blurSub?.remove();
+      focusSub?.remove();
+    };
+  }, [loading, result, attemptId, quiz, submitExam]);
+
   const handleBack = useCallback(() => {
-    if (!result && !attemptId && !loading && quiz) {
+    if (isExamActive) {
+      isConfirmAlertOpenRef.current = true;
       Alert.alert(
-        'Thoát phòng thi?',
-        'Bài làm chưa nộp sẽ không được lưu nếu em thoát ngay bây giờ.',
+        'Chế độ phòng thi nghiêm ngặt',
+        'Khi đang làm bài kiểm tra không thể thoát tự do. Nếu rời khỏi phòng thi lúc này, hệ thống sẽ kết thúc và chấm điểm ngay bài làm hiện tại.',
         [
-          { text: 'Ở lại', style: 'cancel' },
-          { text: 'Nộp bài luôn', onPress: () => void submitExam('AUTO_SUBMIT_ON_EXIT') },
-          { text: 'Thoát', style: 'destructive', onPress: () => router.back() },
+          {
+            text: 'Tiếp tục làm bài',
+            style: 'cancel',
+            onPress: () => {
+              isConfirmAlertOpenRef.current = false;
+            },
+          },
+          {
+            text: 'Kết thúc & Nộp bài ngay',
+            style: 'destructive',
+            onPress: () => {
+              isConfirmAlertOpenRef.current = false;
+              void submitExam(
+                'AUTO_SUBMIT_ON_EXIT',
+                'Bài thi đã tự động kết thúc và chấm điểm ngay lập tức do thao tác rời khỏi phòng thi!',
+              );
+            },
+          },
         ],
+        {
+          cancelable: true,
+          onDismiss: () => {
+            isConfirmAlertOpenRef.current = false;
+          },
+        },
       );
       return;
     }
     router.back();
-  }, [result, attemptId, loading, quiz, submitExam, router]);
+  }, [isExamActive, submitExam, router]);
 
-  // Intercept Android hardware back button during active exam so student cannot accidentally lose progress
+  // Intercept Android hardware back button during active exam
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!result && !attemptId && !loading && quiz) {
+      if (isExamActive) {
         handleBack();
         return true;
       }
       return false;
     });
     return () => sub.remove();
-  }, [result, attemptId, loading, quiz, handleBack]);
+  }, [isExamActive, handleBack]);
+
+  // Intercept gesture swipe-back navigation during active exam
+  useEffect(() => {
+    if (!isExamActive) return;
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (!examLockedRef.current && !submittedRef.current) {
+        e.preventDefault();
+        handleBack();
+      }
+    });
+    return unsubscribe;
+  }, [navigation, isExamActive, handleBack]);
 
   const questions = useMemo(() => quiz?.questions || [], [quiz]);
 
@@ -423,13 +596,32 @@ export default function QuizExamScreen() {
     const answered = Object.values(answersRef.current).filter(
       (v) => v.trim().length > 0,
     ).length;
+    isConfirmAlertOpenRef.current = true;
     Alert.alert(
       'Xác nhận nộp bài',
       `Em đã trả lời ${answered}/${total} câu hỏi. Chắc chắn muốn nộp bài ngay?`,
       [
-        { text: 'Làm tiếp', style: 'cancel' },
-        { text: 'Nộp bài', onPress: () => void submitExam('USER_SUBMIT') },
+        {
+          text: 'Làm tiếp',
+          style: 'cancel',
+          onPress: () => {
+            isConfirmAlertOpenRef.current = false;
+          },
+        },
+        {
+          text: 'Nộp bài',
+          onPress: () => {
+            isConfirmAlertOpenRef.current = false;
+            void submitExam('USER_SUBMIT');
+          },
+        },
       ],
+      {
+        cancelable: true,
+        onDismiss: () => {
+          isConfirmAlertOpenRef.current = false;
+        },
+      },
     );
   }, [questions.length, submitExam]);
 
@@ -482,7 +674,7 @@ export default function QuizExamScreen() {
           <ExamTimer
             key={`${quiz.id}-${initialDurationSec}`}
             initialSeconds={initialDurationSec}
-            active={!loading && !result && !attemptId}
+            active={!loading && !result && !attemptId && !lockedByAntiCheat}
             onExpire={handleTimeExpire}
           />
         ) : (
@@ -614,28 +806,113 @@ export default function QuizExamScreen() {
             });
           }}
           ListHeaderComponent={
-            result ? (
-              <Card
-                style={{
-                  backgroundColor:
-                    result.normalizedScore >= 50 ? p.emeraldSoft : p.roseSoft,
-                  borderColor: result.normalizedScore >= 50 ? p.emerald : p.rose,
-                  gap: 8,
-                }}
-              >
-                <Text style={{ fontSize: 19, fontWeight: '800', color: p.text }}>
-                  {attemptId ? 'Xem lại bài làm đã lưu' : 'Đã hoàn thành bài kiểm tra!'}
-                </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  <Badge
-                    label={`Điểm: ${result.normalizedScore}/100`}
-                    tone={result.normalizedScore >= 50 ? 'emerald' : 'rose'}
+            <View style={{ gap: 10 }}>
+              {/* Banner Cảnh báo Chế độ Phòng thi Nghiêm ngặt khi đang làm bài */}
+              {!result && !attemptId && !lockedByAntiCheat ? (
+                <Card
+                  style={{
+                    backgroundColor: p.amberSoft,
+                    borderColor: p.amber,
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    padding: 12,
+                  }}
+                >
+                  <Ionicons
+                    name="shield-checkmark"
+                    size={20}
+                    color={p.amber}
+                    style={{ marginTop: 1 }}
                   />
-                  <Badge label={`Đúng: ${result.score}/${result.total} câu`} tone="blue" />
-                  {result.xp > 0 ? <Badge label={`+${result.xp} XP`} tone="amber" /> : null}
-                </View>
-              </Card>
-            ) : null
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: 12.5,
+                      lineHeight: 18,
+                      color: p.text,
+                    }}
+                  >
+                    <Text style={{ fontWeight: '800', color: p.amber }}>
+                      Chế độ phòng thi nghiêm ngặt đang bật:{' '}
+                    </Text>
+                    Nếu em thoát ứng dụng, chuyển sang ứng dụng khác hoặc chia đôi màn hình khi đang làm bài, hệ thống sẽ{' '}
+                    <Text style={{ fontWeight: '800' }}>
+                      kết thúc bài thi ngay lập tức
+                    </Text>{' '}
+                    và chấm điểm các câu đã làm!
+                  </Text>
+                </Card>
+              ) : null}
+
+              {/* Thông báo kết thúc tự động do vi phạm quy chế / hết giờ */}
+              {exitTerminationNotice ? (
+                <Card
+                  style={{
+                    backgroundColor: p.roseSoft,
+                    borderColor: p.rose,
+                    gap: 10,
+                    padding: 12,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                    <Ionicons
+                      name="warning"
+                      size={20}
+                      color={p.rose}
+                      style={{ marginTop: 1 }}
+                    />
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontSize: 13,
+                        fontWeight: '700',
+                        lineHeight: 19,
+                        color: p.rose,
+                      }}
+                    >
+                      {exitTerminationNotice}
+                    </Text>
+                  </View>
+                  {autoSubmitRetryNeeded && !result ? (
+                    <PrimaryButton
+                      title={submitting ? 'Đang nộp bài...' : 'Gửi lại bài thi đã khóa'}
+                      icon="cloud-upload-outline"
+                      color={p.rose}
+                      loading={submitting}
+                      onPress={() =>
+                        void submitExam(
+                          pendingAutoSubmitReasonRef.current || 'AUTO_SUBMIT_ON_EXIT',
+                        )
+                      }
+                    />
+                  ) : null}
+                </Card>
+              ) : null}
+
+              {result ? (
+                <Card
+                  style={{
+                    backgroundColor:
+                      result.normalizedScore >= 50 ? p.emeraldSoft : p.roseSoft,
+                    borderColor: result.normalizedScore >= 50 ? p.emerald : p.rose,
+                    gap: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 19, fontWeight: '800', color: p.text }}>
+                    {attemptId ? 'Xem lại bài làm đã lưu' : 'Đã hoàn thành bài kiểm tra!'}
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    <Badge
+                      label={`Điểm: ${result.normalizedScore}/100`}
+                      tone={result.normalizedScore >= 50 ? 'emerald' : 'rose'}
+                    />
+                    <Badge label={`Đúng: ${result.score}/${result.total} câu`} tone="blue" />
+                    {result.xp > 0 ? <Badge label={`+${result.xp} XP`} tone="amber" /> : null}
+                  </View>
+                </Card>
+              ) : null}
+            </View>
           }
           ListEmptyComponent={
             <Card style={{ alignItems: 'center', paddingVertical: 24, gap: 6 }}>
@@ -653,7 +930,7 @@ export default function QuizExamScreen() {
               idx={item.idx}
               selected={answers[item.q.id] || ''}
               qr={result?.resultsMap[item.q.id]}
-              hasResult={Boolean(result)}
+              hasResult={Boolean(result) || lockedByAntiCheat}
               onAnswerChange={handleAnswerChange}
             />
           )}
@@ -661,10 +938,26 @@ export default function QuizExamScreen() {
             <View style={{ paddingTop: 4 }}>
               {!result ? (
                 <PrimaryButton
-                  title={submitting ? 'Đang chấm điểm...' : 'Nộp bài kiểm tra'}
+                  title={
+                    submitting
+                      ? lockedByAntiCheat
+                        ? 'Đang tự động nộp bài...'
+                        : 'Đang chấm điểm...'
+                      : lockedByAntiCheat
+                        ? 'Nộp bài thi đã khóa'
+                        : 'Nộp bài kiểm tra'
+                  }
                   icon="checkmark-done-outline"
+                  color={lockedByAntiCheat ? p.rose : p.primary}
                   loading={submitting}
-                  onPress={confirmSubmit}
+                  onPress={
+                    lockedByAntiCheat
+                      ? () =>
+                          void submitExam(
+                            pendingAutoSubmitReasonRef.current || 'AUTO_SUBMIT_ON_EXIT',
+                          )
+                      : confirmSubmit
+                  }
                 />
               ) : (
                 <PrimaryButton

@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/services/mobile.services';
-import { getApiBaseUrl } from '@/constants/api';
+import { getApiBaseUrl, getDefaultApiBaseUrl } from '@/constants/api';
 import { Card, KeyboardSafeView, PrimaryButton, usePalette } from '@/components/ui/mobile-ui';
 
 type LoginRole = 'student' | 'teacher' | 'parent';
@@ -21,10 +21,23 @@ type LoginRole = 'student' | 'teacher' | 'parent';
 export default function LoginScreen() {
   const p = usePalette();
   const router = useRouter();
-  const { setSession, saveCustomApiUrl } = useAuthStore();
+  const {
+    setSession,
+    saveCustomApiUrl,
+    resetCustomApiUrl,
+    rememberMe: storedRememberMe,
+    lastIdentifier,
+    lastRole,
+  } = useAuthStore();
 
-  const [role, setRole] = useState<LoginRole>('student');
-  const [identifier, setIdentifier] = useState('');
+  const [draftRole, setDraftRole] = useState<LoginRole | null>(null);
+  const [draftIdentifier, setDraftIdentifier] = useState<string | null>(null);
+  const [draftRememberMe, setDraftRememberMe] = useState<boolean | null>(null);
+
+  const role: LoginRole = draftRole ?? (storedRememberMe ? lastRole : 'student');
+  const identifier = draftIdentifier ?? (storedRememberMe ? lastIdentifier : '');
+  const rememberMe = draftRememberMe ?? storedRememberMe;
+
   const [password, setPassword] = useState('');
   const [schoolCode, setSchoolCode] = useState('');
   const [showSchoolCode, setShowSchoolCode] = useState(false);
@@ -84,6 +97,7 @@ export default function LoginScreen() {
         data.user,
         data.refreshToken ?? null,
         Boolean(data.mustChangePassword || data.user?.mustChangePassword),
+        { rememberMe, identifier: trimmed },
       );
     } catch (err: unknown) {
       setErrorMsg(
@@ -117,6 +131,7 @@ export default function LoginScreen() {
         data.user,
         data.refreshToken ?? null,
         Boolean(data.mustChangePassword || data.user?.mustChangePassword),
+        { rememberMe, identifier: identifier.trim() || otpEmail },
       );
     } catch (err: unknown) {
       setErrorMsg(
@@ -136,7 +151,20 @@ export default function LoginScreen() {
       return;
     }
     await saveCustomApiUrl(serverUrl);
+    setServerUrl(getApiBaseUrl());
+    setErrorMsg('');
     Alert.alert('Đã lưu máy chủ', `Ứng dụng sẽ kết nối tới:\n${getApiBaseUrl()}`);
+    setShowServerConfig(false);
+  };
+
+  const handleResetServerUrl = async () => {
+    await resetCustomApiUrl();
+    setServerUrl(getApiBaseUrl());
+    setErrorMsg('');
+    Alert.alert(
+      'Đã khôi phục mặc định',
+      `Ứng dụng sẽ kết nối tới:\n${getApiBaseUrl()}`,
+    );
     setShowServerConfig(false);
   };
 
@@ -250,7 +278,7 @@ export default function LoginScreen() {
                         active && { backgroundColor: tab.color },
                       ]}
                       onPress={() => {
-                        setRole(tab.key);
+                        setDraftRole(tab.key);
                         setErrorMsg('');
                       }}
                     >
@@ -322,7 +350,7 @@ export default function LoginScreen() {
                     }
                     placeholderTextColor={p.textMuted}
                     value={identifier}
-                    onChangeText={setIdentifier}
+                    onChangeText={setDraftIdentifier}
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="next"
@@ -363,15 +391,34 @@ export default function LoginScreen() {
                 </View>
               </View>
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              {/* Remember Me + Forgot Password */}
+              <View style={styles.optionsRow}>
                 <TouchableOpacity
-                  onPress={() => setShowSchoolCode((v) => !v)}
-                  style={{ paddingVertical: 2 }}
+                  onPress={() => setDraftRememberMe(!rememberMe)}
+                  style={styles.rememberBtn}
+                  activeOpacity={0.75}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: rememberMe }}
+                  accessibilityLabel="Ghi nhớ đăng nhập"
                 >
-                  <Text style={{ color: p.textMuted, fontSize: 12, fontWeight: '600' }}>
-                    {showSchoolCode ? 'Ẩn mã trường' : '+ Nhập mã trường (nếu có)'}
+                  <View
+                    style={[
+                      styles.checkboxBox,
+                      {
+                        borderColor: rememberMe ? accentColor : p.border,
+                        backgroundColor: rememberMe ? accentColor : p.bg,
+                      },
+                    ]}
+                  >
+                    {rememberMe ? (
+                      <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                    ) : null}
+                  </View>
+                  <Text style={[styles.rememberLabel, { color: p.text }]}>
+                    Ghi nhớ đăng nhập
                   </Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
                   onPress={() => router.push('/(auth)/forgot-password')}
                   style={styles.forgotLink}
@@ -381,6 +428,15 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              <TouchableOpacity
+                onPress={() => setShowSchoolCode((v) => !v)}
+                style={{ alignSelf: 'flex-start', paddingVertical: 2 }}
+              >
+                <Text style={{ color: p.textMuted, fontSize: 12, fontWeight: '600' }}>
+                  {showSchoolCode ? 'Ẩn mã trường' : '+ Nhập mã trường (nếu có)'}
+                </Text>
+              </TouchableOpacity>
 
               {showSchoolCode ? (
                 <View style={styles.fieldGroup}>
@@ -427,7 +483,10 @@ export default function LoginScreen() {
 
           {/* Optional API URL config */}
           <TouchableOpacity
-            onPress={() => setShowServerConfig((v) => !v)}
+            onPress={() => {
+              setServerUrl(getApiBaseUrl());
+              setShowServerConfig((v) => !v);
+            }}
             style={styles.serverToggle}
           >
             <Ionicons name="server-outline" size={15} color={p.textMuted} />
@@ -439,7 +498,7 @@ export default function LoginScreen() {
           {showServerConfig ? (
             <Card style={{ marginTop: 8, gap: 10 }}>
               <Text style={[styles.label, { color: p.text }]}>
-                Địa chỉ Backend API (dùng khi test trên điện thoại thật qua Wi-Fi)
+                Địa chỉ Backend API (mặc định: {getDefaultApiBaseUrl()})
               </Text>
               <TextInput
                 style={[
@@ -448,16 +507,31 @@ export default function LoginScreen() {
                 ]}
                 value={serverUrl}
                 onChangeText={setServerUrl}
-                placeholder="http://192.168.1.10:3001"
+                placeholder="https://ai-tutor-ladg.onrender.com"
                 placeholderTextColor={p.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <PrimaryButton
-                title="Lưu địa chỉ máy chủ"
-                icon="checkmark-circle-outline"
-                onPress={() => void handleSaveServerUrl()}
-              />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <PrimaryButton
+                    title="Lưu máy chủ"
+                    icon="checkmark-circle-outline"
+                    onPress={() => void handleSaveServerUrl()}
+                  />
+                </View>
+                <TouchableOpacity
+                  onPress={() => void handleResetServerUrl()}
+                  style={[
+                    styles.resetBtn,
+                    { backgroundColor: p.cardMuted, borderColor: p.border },
+                  ]}
+                >
+                  <Text style={{ color: p.text, fontSize: 13, fontWeight: '700' }}>
+                    Mặc định
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </Card>
           ) : null}
         </ScrollView>
@@ -553,7 +627,40 @@ const styles = StyleSheet.create({
     minHeight: 46,
     fontSize: 14,
   },
-  forgotLink: { alignSelf: 'flex-end', paddingVertical: 2 },
+  optionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rememberBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 36,
+    paddingVertical: 4,
+  },
+  checkboxBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rememberLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  resetBtn: {
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  forgotLink: { alignSelf: 'center', paddingVertical: 4 },
   schoolHint: {
     fontSize: 12,
     textAlign: 'center',
