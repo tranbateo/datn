@@ -10,22 +10,20 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage } from '@langchain/core/messages';
+import {
+  AiChatModelAdapter,
+  createChatModelAdapter,
+} from '../common/ai-provider.adapter';
 
 @Injectable()
 export class SchedulesService {
-  private model: ChatGoogleGenerativeAI;
+  private model: AiChatModelAdapter;
 
   constructor(private prisma: PrismaService) {
-    const visionModel =
-      process.env.GEMINI_VISION_MODEL ||
-      process.env.GEMINI_MODEL ||
-      'gemini-3.1-flash-lite-preview';
-    this.model = new ChatGoogleGenerativeAI({
-      model: visionModel,
+    this.model = createChatModelAdapter({
+      isVisionTask: true,
       maxOutputTokens: 2048,
-      apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
     });
   }
 

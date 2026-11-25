@@ -3,6 +3,9 @@ import {
   stripRedundantSubjectPreamble,
   sanitizeCjkLeakage,
   isSelfHostedAiEnabled,
+  isGroqAiEnabled,
+  createChatModelAdapter,
+  GroqChatModel,
   OllamaChatModel,
   OllamaEmbeddingsAdapter,
 } from './ai-provider.adapter';
@@ -179,6 +182,113 @@ Bài toán $2x^2 - 7x + 3 = 0$ thuộc dạng phương trình bậc hai một �
       );
       expect(vector).toEqual([0.12, -0.34, 0.56]);
 
+      fetchSpy.mockRestore();
+    });
+  });
+
+  describe('GroqChatModel & isGroqAiEnabled', () => {
+    it('detects GROQ provider via env, model prefix, or gsk_ BYOK key', () => {
+      process.env.AI_PROVIDER = 'GROQ';
+      expect(isGroqAiEnabled('SYSTEM')).toBe(true);
+      expect(isSelfHostedAiEnabled('qwen/qwen3-32b')).toBe(false);
+      expect(isGroqAiEnabled('qwen/qwen3-32b')).toBe(true);
+
+      process.env.AI_PROVIDER = 'GEMINI';
+      expect(isGroqAiEnabled('BYOK', 'gsk_test_123456')).toBe(true);
+      expect(isGroqAiEnabled('SYSTEM')).toBe(false);
+    });
+
+    it('creates GroqChatModel from factory when AI_PROVIDER=GROQ', () => {
+      process.env.AI_PROVIDER = 'GROQ';
+      process.env.GROQ_API_KEY = 'gsk_test_key';
+      const adapter = createChatModelAdapter({ maxOutputTokens: 2048 });
+      expect(adapter).toBeInstanceOf(GroqChatModel);
+    });
+
+    it('invokes Groq chat completions and auto-switches to vision model on image_url', async () => {
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [
+              {
+                message: {
+                  content:
+                    '<think>Đọc thời khóa biểu...</think>[{"title":"Toán"}]',
+                },
+              },
+            ],
+          }),
+      } as unknown as Response);
+
+      const model = new GroqChatModel({
+        apiKey: 'gsk_test_key',
+        model: 'llama-3.3-70b-versatile',
+        visionModel: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      });
+
+      const res = await model.invoke([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Đọc ảnh TKB' },
+            { type: 'image_url', image_url: 'data:image/png;base64,AAAA' },
+          ],
+        },
+      ]);
+
+      expect(res.content).toBe('[{"title":"Toán"}]');
+      const [, init] = fetchSpy.mock.calls[0];
+      const sentBody = JSON.parse((init as RequestInit).body as string) as {
+        model: string;
+      };
+      expect(sentBody.model).toBe('meta-llama/llama-4-scout-17b-16e-instruct');
+
+      fetchSpy.mockRestore();
+    });
+
+    it('streams Groq SSE chunks and strips <think> blocks cleanly', async () => {
+      const encoder = new TextEncoder();
+      const frames = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '<think>nháp</think>' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'Chào em! ' } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'Số nguyên tố nhỏ nhất là 2.' } }] })}\n\n`,
+        'data: [DONE]\n\n',
+      ];
+
+      let idx = 0;
+      const mockStream = {
+        getReader: () => ({
+          read: () => {
+            if (idx >= frames.length) {
+              return Promise.resolve({ done: true, value: undefined });
+            }
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode(frames[idx++]),
+            });
+          },
+          releaseLock: () => undefined,
+        }),
+      };
+
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        body: mockStream,
+      } as unknown as Response);
+
+      const model = new GroqChatModel({
+        apiKey: 'gsk_test_key',
+        model: 'qwen/qwen3-32b',
+      });
+
+      const stream = await model.stream('Số nguyên tố là gì?');
+      let combined = '';
+      for await (const chunk of stream) {
+        if (typeof chunk.content === 'string') combined += chunk.content;
+      }
+
+      expect(combined).toBe('Chào em! Số nguyên tố nhỏ nhất là 2.');
       fetchSpy.mockRestore();
     });
   });

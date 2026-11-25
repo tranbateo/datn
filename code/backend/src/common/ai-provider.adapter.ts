@@ -654,18 +654,24 @@ function extractGeminiPayload(
           item.text
         ) {
           parts.push({ text: item.text });
-        } else if (
-          item?.type === 'image_url' &&
-          typeof item.image_url?.url === 'string'
-        ) {
-          const rawUrl: string = item.image_url.url;
-          const match = rawUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
-          if (match) {
-            parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
-          } else {
-            parts.push({
-              inlineData: { mimeType: 'image/jpeg', data: rawUrl },
-            });
+        } else if (item?.type === 'image_url') {
+          const rawUrl: string =
+            typeof item.image_url === 'string'
+              ? (item.image_url as string)
+              : typeof item.image_url?.url === 'string'
+                ? (item.image_url.url as string)
+                : '';
+          if (rawUrl) {
+            const match = rawUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+            if (match) {
+              parts.push({
+                inlineData: { mimeType: match[1], data: match[2] },
+              });
+            } else {
+              parts.push({
+                inlineData: { mimeType: 'image/jpeg', data: rawUrl },
+              });
+            }
           }
         }
       }
@@ -740,17 +746,12 @@ export class GeminiRestChatModel implements AiChatModelAdapter {
   private getCandidateModels(): string[] {
     const candidates = [
       this.model,
-      'gemini-flash-lite-latest',
       'gemini-3.5-flash-lite',
-      'gemini-3.5-flash',
-      'gemini-3.6-flash',
-      'gemini-3.7-flash',
-      'gemini-3.8-flash',
-      'gemini-flash-latest',
       'gemini-3.1-flash-lite',
+      'gemini-3.6-flash',
       'gemini-3-flash-preview',
-      'gemma-4-31b-it',
-      'gemma-4-26b-a4b-it',
+      'gemini-flash-lite-latest',
+      'gemini-3.5-flash',
     ];
     return Array.from(new Set(candidates.filter(Boolean)));
   }
@@ -1114,6 +1115,856 @@ export class GeminiRestChatModel implements AiChatModelAdapter {
   }
 }
 
+export interface GroqChatModelOptions {
+  apiKey: string;
+  model?: string;
+  visionModel?: string;
+  baseUrl?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  isVisionTask?: boolean;
+}
+
+interface OpenAiMessageContentPart {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: { url: string };
+}
+
+interface OpenAiChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string | OpenAiMessageContentPart[];
+}
+
+function extractOpenAiMessages(input: unknown): {
+  messages: OpenAiChatMessage[];
+  hasImages: boolean;
+} {
+  if (typeof input === 'string') {
+    return {
+      messages: [{ role: 'user', content: input }],
+      hasImages: false,
+    };
+  }
+
+  const rawList = Array.isArray(input) ? input : [input];
+  const messages: OpenAiChatMessage[] = [];
+  let hasImages = false;
+
+  for (const msg of rawList) {
+    if (!msg) continue;
+    if (typeof msg === 'string') {
+      if (msg.trim()) {
+        messages.push({ role: 'user', content: msg });
+      }
+      continue;
+    }
+
+    const record = msg as Record<string, unknown>;
+    const role = resolveMessageRole(record);
+    const content = record.content;
+
+    if (typeof content === 'string') {
+      if (content.trim()) {
+        messages.push({ role, content });
+      }
+      continue;
+    }
+
+    if (Array.isArray(content)) {
+      const parts: OpenAiMessageContentPart[] = [];
+      let msgHasImage = false;
+
+      for (const item of content) {
+        if (
+          item?.type === 'text' &&
+          typeof item.text === 'string' &&
+          item.text
+        ) {
+          parts.push({ type: 'text', text: item.text });
+        } else if (item?.type === 'image_url') {
+          const rawUrl: string =
+            typeof item.image_url === 'string'
+              ? (item.image_url as string)
+              : typeof item.image_url?.url === 'string'
+                ? (item.image_url.url as string)
+                : '';
+          if (rawUrl) {
+            const normalizedUrl = rawUrl.startsWith('data:')
+              ? rawUrl
+              : rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+                ? rawUrl
+                : `data:image/jpeg;base64,${rawUrl}`;
+            parts.push({
+              type: 'image_url',
+              image_url: { url: normalizedUrl },
+            });
+            msgHasImage = true;
+            hasImages = true;
+          }
+        }
+      }
+
+      if (parts.length === 0) continue;
+
+      if (!msgHasImage) {
+        const mergedText = parts
+          .map((p) => p.text || '')
+          .filter(Boolean)
+          .join('\n\n')
+          .trim();
+        if (mergedText) {
+          messages.push({ role, content: mergedText });
+        }
+      } else {
+        messages.push({ role, content: parts });
+      }
+    }
+  }
+
+  if (messages.length === 0) {
+    messages.push({ role: 'user', content: '' });
+  }
+
+  return { messages, hasImages };
+}
+
+/**
+ * Adapter kết nối trực tiếp tới Groq Cloud OpenAI-compatible API
+ * (/openai/v1/chat/completions) — tốc độ phản hồi cực nhanh (~250-300 token/s),
+ * ổn định 24/7, tự động chuyển đổi model Vision khi có ảnh và hỗ trợ fallback khi gặp 429/503.
+ */
+export class GroqChatModel implements AiChatModelAdapter {
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly visionModel: string;
+  private readonly temperature: number;
+  private readonly maxOutputTokens: number;
+  private readonly isVisionTask: boolean;
+
+  constructor(options: GroqChatModelOptions) {
+    this.apiKey = options.apiKey;
+    const rawBaseUrl =
+      options.baseUrl ||
+      process.env.GROQ_BASE_URL ||
+      'https://api.groq.com/openai/v1';
+    this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
+    this.model =
+      options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    this.visionModel =
+      options.visionModel ||
+      process.env.GROQ_VISION_MODEL ||
+      'meta-llama/llama-4-scout-17b-16e-instruct';
+    this.temperature = options.temperature ?? 0.3;
+    this.maxOutputTokens = Math.max(options.maxOutputTokens ?? 4096, 2048);
+    this.isVisionTask = options.isVisionTask ?? false;
+  }
+
+  private getCandidateModels(useVision: boolean): string[] {
+    const list = useVision
+      ? [
+          this.visionModel,
+          'meta-llama/llama-4-scout-17b-16e-instruct',
+          'meta-llama/llama-4-maverick-17b-128e-instruct',
+        ]
+      : [
+          this.model,
+          'llama-3.3-70b-versatile',
+          'qwen/qwen3-32b',
+          'llama-3.1-8b-instant',
+        ];
+    return Array.from(new Set(list.filter(Boolean)));
+  }
+
+  private buildBody(
+    modelName: string,
+    messages: OpenAiChatMessage[],
+    stream: boolean,
+    disableReasoning: boolean,
+  ): string {
+    const isQwen3 = modelName.toLowerCase().includes('qwen3');
+    const payload: Record<string, unknown> = {
+      model: modelName,
+      messages,
+      temperature: this.temperature,
+      max_tokens: this.maxOutputTokens,
+      stream,
+    };
+    if (isQwen3 && disableReasoning) {
+      payload.reasoning_effort = 'none';
+    }
+    return JSON.stringify(payload);
+  }
+
+  private async fetchGroqWithFallback(
+    messages: OpenAiChatMessage[],
+    stream: boolean,
+    useVision: boolean,
+  ): Promise<{
+    response: Response;
+    modelName: string;
+    controller: AbortController;
+  }> {
+    const models = this.getCandidateModels(useVision);
+    const url = `${this.baseUrl}/chat/completions`;
+    let lastError = 'Groq API error';
+
+    for (let pass = 0; pass < 2; pass++) {
+      for (const modelName of models) {
+        const isQwen3 = modelName.toLowerCase().includes('qwen3');
+        const reasoningModes = isQwen3 ? [true, false] : [false];
+
+        for (const disableReasoning of reasoningModes) {
+          const controller = new AbortController();
+          const timeoutMs = stream ? 15_000 : 30_000;
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+          try {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${this.apiKey}`,
+                ...(stream ? { Accept: 'text/event-stream' } : {}),
+              },
+              body: this.buildBody(
+                modelName,
+                messages,
+                stream,
+                disableReasoning,
+              ),
+              signal: controller.signal,
+            });
+            clearTimeout(timer);
+
+            if (res.ok && (!stream || res.body)) {
+              return { response: res, modelName, controller };
+            }
+
+            const errText = await res.text().catch(() => '');
+            lastError = `Groq API error (${res.status}, ${modelName}): ${errText.slice(0, 300)}`;
+
+            if (
+              res.status === 400 &&
+              disableReasoning &&
+              /reasoning/i.test(errText)
+            ) {
+              continue;
+            }
+
+            if (GEMINI_RETRYABLE_STATUSES.has(res.status)) {
+              break;
+            }
+
+            throw new Error(lastError);
+          } catch (err: any) {
+            clearTimeout(timer);
+            if (err?.name === 'AbortError') {
+              lastError = `Groq API timeout (${timeoutMs}ms, ${modelName})`;
+              break;
+            }
+            const errMsg =
+              typeof err?.message === 'string' ? (err.message as string) : '';
+            if (errMsg.startsWith('Groq API error (')) {
+              throw err;
+            }
+            lastError = `Groq network error (${modelName}): ${errMsg || String(err)}`;
+            break;
+          }
+        }
+      }
+
+      if (pass === 0) {
+        await sleepMs(600);
+      }
+    }
+
+    throw new Error(lastError);
+  }
+
+  async invoke(input: unknown): Promise<AiChatResponse> {
+    const { messages, hasImages } = extractOpenAiMessages(input);
+    const { response } = await this.fetchGroqWithFallback(
+      messages,
+      false,
+      this.isVisionTask || hasImages,
+    );
+    const data: any = await response.json();
+    const rawContent: string = data?.choices?.[0]?.message?.content ?? '';
+    return { content: stripReasoningBlocks(rawContent) };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async stream(input: unknown): Promise<AsyncIterable<AiChatResponse>> {
+    const { messages, hasImages } = extractOpenAiMessages(input);
+    const useVision = this.isVisionTask || hasImages;
+    const fetchWithFallback = this.fetchGroqWithFallback.bind(this);
+
+    async function* generateStream(): AsyncIterable<AiChatResponse> {
+      const { response, controller } = await fetchWithFallback(
+        messages,
+        true,
+        useVision,
+      );
+      if (!response.body) {
+        throw new Error('Groq Stream returned empty response body');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let insideThinkBlock = false;
+      let pending = '';
+      let hasEmittedContent = false;
+
+      const formatEmitChunk = (chunk: string): string => {
+        if (!chunk) return '';
+        const sanitized = sanitizeCjkLeakage(chunk);
+        if (!sanitized) return '';
+        if (!hasEmittedContent) {
+          const trimmedStart = sanitized.replace(/^\s+/, '');
+          if (!trimmedStart) return '';
+          hasEmittedContent = true;
+          return trimmedStart;
+        }
+        return sanitized;
+      };
+
+      let idleTimer = setTimeout(() => controller.abort(), 20_000);
+      const resetIdleTimer = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => controller.abort(), 20_000);
+      };
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          clearTimeout(idleTimer);
+          if (done) break;
+          resetIdleTimer();
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? '';
+
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed?.error) {
+                throw new Error(
+                  `Groq Stream error: ${parsed.error.message || JSON.stringify(parsed.error)}`,
+                );
+              }
+              const rawToken: string =
+                parsed?.choices?.[0]?.delta?.content ?? '';
+              if (!rawToken) continue;
+
+              pending += rawToken;
+
+              while (pending.length > 0) {
+                const lower = pending.toLowerCase();
+                if (insideThinkBlock) {
+                  const closeIdx = lower.indexOf('</think>');
+                  if (closeIdx !== -1) {
+                    pending = pending.slice(closeIdx + '</think>'.length);
+                    insideThinkBlock = false;
+                  } else {
+                    const keep = getPartialThinkTagSuffixLength(pending);
+                    pending = keep > 0 ? pending.slice(-keep) : '';
+                    break;
+                  }
+                } else {
+                  const openIdx = lower.indexOf('<think>');
+                  const closeIdx = lower.indexOf('</think>');
+
+                  if (
+                    closeIdx !== -1 &&
+                    (openIdx === -1 || closeIdx < openIdx)
+                  ) {
+                    const before = formatEmitChunk(pending.slice(0, closeIdx));
+                    if (before) yield { content: before };
+                    pending = pending.slice(closeIdx + '</think>'.length);
+                    continue;
+                  }
+
+                  if (openIdx !== -1) {
+                    const before = formatEmitChunk(pending.slice(0, openIdx));
+                    if (before) yield { content: before };
+                    pending = pending.slice(openIdx + '<think>'.length);
+                    insideThinkBlock = true;
+                    continue;
+                  }
+
+                  const partialLen = getPartialThinkTagSuffixLength(pending);
+                  const safeEnd = pending.length - partialLen;
+                  if (safeEnd > 0) {
+                    const safeChunk = formatEmitChunk(
+                      pending.slice(0, safeEnd),
+                    );
+                    if (safeChunk) yield { content: safeChunk };
+                    pending = pending.slice(safeEnd);
+                  }
+                  break;
+                }
+              }
+            } catch (parseErr: any) {
+              const msg =
+                typeof parseErr?.message === 'string'
+                  ? (parseErr.message as string)
+                  : '';
+              if (msg.startsWith('Groq Stream error:')) {
+                throw parseErr;
+              }
+              // Ignore incomplete or keepalive frames
+            }
+          }
+        }
+
+        if (!insideThinkBlock && pending.length > 0) {
+          const finalChunk = formatEmitChunk(stripReasoningBlocks(pending));
+          if (finalChunk) {
+            yield { content: finalChunk };
+          }
+        }
+      } finally {
+        clearTimeout(idleTimer);
+        reader.releaseLock();
+      }
+    }
+
+    return generateStream();
+  }
+}
+
+export interface GroqChatModelOptions {
+  apiKey: string;
+  model?: string;
+  visionModel?: string;
+  baseUrl?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  isVisionTask?: boolean;
+}
+
+interface OpenAiMessageContentPart {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: { url: string };
+}
+
+interface OpenAiChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string | OpenAiMessageContentPart[];
+}
+
+function extractOpenAiMessages(input: unknown): {
+  messages: OpenAiChatMessage[];
+  hasImages: boolean;
+} {
+  if (typeof input === 'string') {
+    return {
+      messages: [{ role: 'user', content: input }],
+      hasImages: false,
+    };
+  }
+
+  const rawList = Array.isArray(input) ? input : [input];
+  const messages: OpenAiChatMessage[] = [];
+  let hasImages = false;
+
+  for (const msg of rawList) {
+    if (!msg) continue;
+    if (typeof msg === 'string') {
+      if (msg.trim()) {
+        messages.push({ role: 'user', content: msg });
+      }
+      continue;
+    }
+
+    const record = msg as Record<string, unknown>;
+    const role = resolveMessageRole(record);
+    const content = record.content;
+
+    if (typeof content === 'string') {
+      if (content.trim()) {
+        messages.push({ role, content });
+      }
+      continue;
+    }
+
+    if (Array.isArray(content)) {
+      const parts: OpenAiMessageContentPart[] = [];
+      let msgHasImage = false;
+
+      for (const item of content) {
+        if (item?.type === 'text' && typeof item.text === 'string' && item.text) {
+          parts.push({ type: 'text', text: item.text });
+        } else if (item?.type === 'image_url') {
+          const rawUrl: string =
+            typeof item.image_url === 'string'
+              ? (item.image_url as string)
+              : typeof item.image_url?.url === 'string'
+                ? (item.image_url.url as string)
+                : '';
+          if (rawUrl) {
+            const normalizedUrl = rawUrl.startsWith('data:')
+              ? rawUrl
+              : rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+                ? rawUrl
+                : `data:image/jpeg;base64,${rawUrl}`;
+            parts.push({
+              type: 'image_url',
+              image_url: { url: normalizedUrl },
+            });
+            msgHasImage = true;
+            hasImages = true;
+          }
+        }
+      }
+
+      if (parts.length === 0) continue;
+
+      if (!msgHasImage) {
+        const mergedText = parts
+          .map((p) => p.text || '')
+          .filter(Boolean)
+          .join('\n\n')
+          .trim();
+        if (mergedText) {
+          messages.push({ role, content: mergedText });
+        }
+      } else {
+        messages.push({ role, content: parts });
+      }
+    }
+  }
+
+  if (messages.length === 0) {
+    messages.push({ role: 'user', content: '' });
+  }
+
+  return { messages, hasImages };
+}
+
+/**
+ * Adapter kết nối trực tiếp tới Groq Cloud OpenAI-compatible API
+ * (/openai/v1/chat/completions) — tốc độ phản hồi cực nhanh (~250-300 token/s),
+ * ổn định 24/7, tự động chuyển đổi model Vision khi có ảnh và hỗ trợ fallback khi gặp 429/503.
+ */
+export class GroqChatModel implements AiChatModelAdapter {
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly visionModel: string;
+  private readonly temperature: number;
+  private readonly maxOutputTokens: number;
+  private readonly isVisionTask: boolean;
+
+  constructor(options: GroqChatModelOptions) {
+    this.apiKey = options.apiKey;
+    const rawBaseUrl =
+      options.baseUrl ||
+      process.env.GROQ_BASE_URL ||
+      'https://api.groq.com/openai/v1';
+    this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
+    this.model =
+      options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    this.visionModel =
+      options.visionModel ||
+      process.env.GROQ_VISION_MODEL ||
+      'meta-llama/llama-4-scout-17b-16e-instruct';
+    this.temperature = options.temperature ?? 0.3;
+    this.maxOutputTokens = Math.max(options.maxOutputTokens ?? 4096, 2048);
+    this.isVisionTask = options.isVisionTask ?? false;
+  }
+
+  private getCandidateModels(useVision: boolean): string[] {
+    const list = useVision
+      ? [
+          this.visionModel,
+          'meta-llama/llama-4-scout-17b-16e-instruct',
+          'meta-llama/llama-4-maverick-17b-128e-instruct',
+        ]
+      : [
+          this.model,
+          'llama-3.3-70b-versatile',
+          'qwen/qwen3-32b',
+          'llama-3.1-8b-instant',
+        ];
+    return Array.from(new Set(list.filter(Boolean)));
+  }
+
+  private buildBody(
+    modelName: string,
+    messages: OpenAiChatMessage[],
+    stream: boolean,
+    disableReasoning: boolean,
+  ): string {
+    const isQwen3 = modelName.toLowerCase().includes('qwen3');
+    const payload: Record<string, unknown> = {
+      model: modelName,
+      messages,
+      temperature: this.temperature,
+      max_tokens: this.maxOutputTokens,
+      stream,
+    };
+    if (isQwen3 && disableReasoning) {
+      payload.reasoning_effort = 'none';
+    }
+    return JSON.stringify(payload);
+  }
+
+  private async fetchGroqWithFallback(
+    messages: OpenAiChatMessage[],
+    stream: boolean,
+    useVision: boolean,
+  ): Promise<{
+    response: Response;
+    modelName: string;
+    controller: AbortController;
+  }> {
+    const models = this.getCandidateModels(useVision);
+    const url = `${this.baseUrl}/chat/completions`;
+    let lastError = 'Groq API error';
+
+    for (let pass = 0; pass < 2; pass++) {
+      for (const modelName of models) {
+        const isQwen3 = modelName.toLowerCase().includes('qwen3');
+        const reasoningModes = isQwen3 ? [true, false] : [false];
+
+        for (const disableReasoning of reasoningModes) {
+          const controller = new AbortController();
+          const timeoutMs = stream ? 15_000 : 30_000;
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+          try {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${this.apiKey}`,
+                ...(stream ? { Accept: 'text/event-stream' } : {}),
+              },
+              body: this.buildBody(
+                modelName,
+                messages,
+                stream,
+                disableReasoning,
+              ),
+              signal: controller.signal,
+            });
+            clearTimeout(timer);
+
+            if (res.ok && (!stream || res.body)) {
+              return { response: res, modelName, controller };
+            }
+
+            const errText = await res.text().catch(() => '');
+            lastError = `Groq API error (${res.status}, ${modelName}): ${errText.slice(0, 300)}`;
+
+            if (
+              res.status === 400 &&
+              disableReasoning &&
+              /reasoning/i.test(errText)
+            ) {
+              continue;
+            }
+
+            if (GEMINI_RETRYABLE_STATUSES.has(res.status)) {
+              break;
+            }
+
+            throw new Error(lastError);
+          } catch (err: any) {
+            clearTimeout(timer);
+            if (err?.name === 'AbortError') {
+              lastError = `Groq API timeout (${timeoutMs}ms, ${modelName})`;
+              break;
+            }
+            const errMsg =
+              typeof err?.message === 'string' ? (err.message as string) : '';
+            if (errMsg.startsWith('Groq API error (')) {
+              throw err;
+            }
+            lastError = `Groq network error (${modelName}): ${errMsg || String(err)}`;
+            break;
+          }
+        }
+      }
+
+      if (pass === 0) {
+        await sleepMs(600);
+      }
+    }
+
+    throw new Error(lastError);
+  }
+
+  async invoke(input: unknown): Promise<AiChatResponse> {
+    const { messages, hasImages } = extractOpenAiMessages(input);
+    const { response } = await this.fetchGroqWithFallback(
+      messages,
+      false,
+      this.isVisionTask || hasImages,
+    );
+    const data: any = await response.json();
+    const rawContent: string = data?.choices?.[0]?.message?.content ?? '';
+    return { content: stripReasoningBlocks(rawContent) };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async stream(input: unknown): Promise<AsyncIterable<AiChatResponse>> {
+    const { messages, hasImages } = extractOpenAiMessages(input);
+    const useVision = this.isVisionTask || hasImages;
+    const fetchWithFallback = this.fetchGroqWithFallback.bind(this);
+
+    async function* generateStream(): AsyncIterable<AiChatResponse> {
+      const { response, controller } = await fetchWithFallback(
+        messages,
+        true,
+        useVision,
+      );
+      if (!response.body) {
+        throw new Error('Groq Stream returned empty response body');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let insideThinkBlock = false;
+      let pending = '';
+      let hasEmittedContent = false;
+
+      const formatEmitChunk = (chunk: string): string => {
+        if (!chunk) return '';
+        const sanitized = sanitizeCjkLeakage(chunk);
+        if (!sanitized) return '';
+        if (!hasEmittedContent) {
+          const trimmedStart = sanitized.replace(/^\s+/, '');
+          if (!trimmedStart) return '';
+          hasEmittedContent = true;
+          return trimmedStart;
+        }
+        return sanitized;
+      };
+
+      let idleTimer = setTimeout(() => controller.abort(), 20_000);
+      const resetIdleTimer = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => controller.abort(), 20_000);
+      };
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          clearTimeout(idleTimer);
+          if (done) break;
+          resetIdleTimer();
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? '';
+
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed?.error) {
+                throw new Error(
+                  `Groq Stream error: ${parsed.error.message || JSON.stringify(parsed.error)}`,
+                );
+              }
+              const rawToken: string =
+                parsed?.choices?.[0]?.delta?.content ?? '';
+              if (!rawToken) continue;
+
+              pending += rawToken;
+
+              while (pending.length > 0) {
+                const lower = pending.toLowerCase();
+                if (insideThinkBlock) {
+                  const closeIdx = lower.indexOf('</think>');
+                  if (closeIdx !== -1) {
+                    pending = pending.slice(closeIdx + '</think>'.length);
+                    insideThinkBlock = false;
+                  } else {
+                    const keep = getPartialThinkTagSuffixLength(pending);
+                    pending = keep > 0 ? pending.slice(-keep) : '';
+                    break;
+                  }
+                } else {
+                  const openIdx = lower.indexOf('<think>');
+                  const closeIdx = lower.indexOf('</think>');
+
+                  if (
+                    closeIdx !== -1 &&
+                    (openIdx === -1 || closeIdx < openIdx)
+                  ) {
+                    const before = formatEmitChunk(pending.slice(0, closeIdx));
+                    if (before) yield { content: before };
+                    pending = pending.slice(closeIdx + '</think>'.length);
+                    continue;
+                  }
+
+                  if (openIdx !== -1) {
+                    const before = formatEmitChunk(pending.slice(0, openIdx));
+                    if (before) yield { content: before };
+                    pending = pending.slice(openIdx + '<think>'.length);
+                    insideThinkBlock = true;
+                    continue;
+                  }
+
+                  const partialLen = getPartialThinkTagSuffixLength(pending);
+                  const safeEnd = pending.length - partialLen;
+                  if (safeEnd > 0) {
+                    const safeChunk = formatEmitChunk(
+                      pending.slice(0, safeEnd),
+                    );
+                    if (safeChunk) yield { content: safeChunk };
+                    pending = pending.slice(safeEnd);
+                  }
+                  break;
+                }
+              }
+            } catch (parseErr: any) {
+              const msg =
+                typeof parseErr?.message === 'string'
+                  ? (parseErr.message as string)
+                  : '';
+              if (msg.startsWith('Groq Stream error:')) {
+                throw parseErr;
+              }
+              // Ignore incomplete or keepalive frames
+            }
+          }
+        }
+
+        if (!insideThinkBlock && pending.length > 0) {
+          const finalChunk = formatEmitChunk(stripReasoningBlocks(pending));
+          if (finalChunk) {
+            yield { content: finalChunk };
+          }
+        }
+      } finally {
+        clearTimeout(idleTimer);
+        reader.releaseLock();
+      }
+    }
+
+    return generateStream();
+  }
+}
+
 export function isSelfHostedAiEnabled(
   schoolAiProvider?: string | null,
 ): boolean {
@@ -1129,7 +1980,7 @@ export function isSelfHostedAiEnabled(
       provider === 'qwen' ||
       provider === 'colab' ||
       provider === 'local' ||
-      provider.startsWith('qwen') ||
+      (provider.startsWith('qwen') && !provider.startsWith('qwen/')) ||
       provider.startsWith('hf.co/')
     ) {
       return true;
@@ -1138,9 +1989,38 @@ export function isSelfHostedAiEnabled(
   return false;
 }
 
+export function isGroqAiEnabled(
+  schoolAiProvider?: string | null,
+  schoolCustomApiKey?: string | null,
+): boolean {
+  const envProvider = (process.env.AI_PROVIDER || 'GEMINI')
+    .trim()
+    .toLowerCase();
+  const schoolProvider = (schoolAiProvider || '').trim().toLowerCase();
+  const customKey = (schoolCustomApiKey || '').trim();
+
+  if (customKey.startsWith('gsk_')) {
+    return true;
+  }
+
+  for (const provider of [envProvider, schoolProvider]) {
+    if (
+      provider === 'groq' ||
+      provider.startsWith('groq/') ||
+      provider.startsWith('llama-') ||
+      provider.startsWith('meta-llama/') ||
+      provider.startsWith('qwen/')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Factory khởi tạo mô hình LLM theo kiến trúc Adapter (Mục 8 - GEMINI.md).
- * Hỗ trợ chuyển đổi tức thì giữa Qwen3-8B tự huấn luyện trên Colab/HuggingFace và Gemini API.
+ * Hỗ trợ chuyển đổi tức thì giữa Qwen3-8B (Ollama/Colab), Groq Cloud API và Gemini API.
  */
 export function createChatModelAdapter(options?: {
   schoolCustomApiKey?: string | null;
@@ -1173,6 +2053,7 @@ export function createChatModelAdapter(options?: {
         'system',
         'byok',
         'gemini',
+        'groq',
       ].includes(schoolProvider.toLowerCase()) &&
       !schoolProvider.toLowerCase().startsWith('gemini-');
 
@@ -1188,14 +2069,46 @@ export function createChatModelAdapter(options?: {
     });
   }
 
+  // Khi cấu hình dùng Groq API (AI_PROVIDER=GROQ hoặc trường nhập BYOK key gsk_...)
+  if (isGroqAiEnabled(schoolProvider, customKeyOrUrl)) {
+    const lowerSchool = (schoolProvider || '').toLowerCase();
+    const isGroqModelOverride =
+      Boolean(schoolProvider) &&
+      (lowerSchool.startsWith('llama-') ||
+        lowerSchool.startsWith('meta-llama/') ||
+        lowerSchool.startsWith('qwen/'));
+
+    const resolvedGroqModel = isGroqModelOverride
+      ? schoolProvider
+      : process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    const resolvedGroqVisionModel =
+      process.env.GROQ_VISION_MODEL ||
+      'meta-llama/llama-4-scout-17b-16e-instruct';
+    const resolvedGroqKey =
+      (customKeyOrUrl && customKeyOrUrl.startsWith('gsk_')
+        ? customKeyOrUrl
+        : undefined) ||
+      process.env.GROQ_API_KEY ||
+      'placeholder-groq-key';
+
+    return new GroqChatModel({
+      apiKey: resolvedGroqKey,
+      model: resolvedGroqModel,
+      visionModel: resolvedGroqVisionModel,
+      temperature: options?.temperature ?? 0.3,
+      maxOutputTokens: options?.maxOutputTokens ?? 4096,
+      isVisionTask: options?.isVisionTask ?? false,
+    });
+  }
+
   // Fallback hoặc khi cấu hình dùng Gemini API
   const isGeminiModelOverride =
     schoolProvider && schoolProvider.toLowerCase().startsWith('gemini-');
   const defaultGeminiModel = options?.isVisionTask
     ? process.env.GEMINI_VISION_MODEL ||
       process.env.GEMINI_MODEL ||
-      'gemini-flash-lite-latest'
-    : process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
+      'gemini-3.5-flash-lite'
+    : process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
   const resolvedGeminiModel = isGeminiModelOverride
     ? schoolProvider

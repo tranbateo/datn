@@ -1,8 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCalendarEventDto } from './dto/create-calendar-event.dto';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage } from '@langchain/core/messages';
+import { createChatModelAdapter } from '../common/ai-provider.adapter';
 
 @Injectable()
 export class CalendarService {
@@ -42,14 +42,9 @@ export class CalendarService {
 
   async ocrSchedule(file: Express.Multer.File) {
     try {
-      const visionModel =
-        process.env.GEMINI_VISION_MODEL ||
-        process.env.GEMINI_MODEL ||
-        'gemini-3.1-flash-lite-preview';
-      const model = new ChatGoogleGenerativeAI({
-        model: visionModel,
+      const model = createChatModelAdapter({
+        isVisionTask: true,
         maxOutputTokens: 2048,
-        apiKey: process.env.GEMINI_API_KEY || 'placeholder-key',
       });
 
       const base64Image = file.buffer.toString('base64');

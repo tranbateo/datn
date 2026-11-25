@@ -16,7 +16,10 @@ import {
   hashPasswordWithPepper,
   notifyLinkedParentsOfPasswordReset,
 } from '../common/password-reset.util';
-import { isSelfHostedAiEnabled } from '../common/ai-provider.adapter';
+import {
+  isGroqAiEnabled,
+  isSelfHostedAiEnabled,
+} from '../common/ai-provider.adapter';
 
 function parseDocumentSizeMb(raw?: string | number | null): number {
   if (typeof raw === 'number' && Number.isFinite(raw)) {
@@ -191,11 +194,15 @@ export class AdminService {
         : 0;
 
     const usingSelfHosted = isSelfHostedAiEnabled(schoolRecord?.aiProvider);
+    const usingGroq =
+      !usingSelfHosted && isGroqAiEnabled(schoolRecord?.aiProvider);
     const activeProviderLabel = usingSelfHosted
       ? `Ollama (${process.env.OLLAMA_MODEL || 'qwen3-8b-ai-tutor-vn'})`
-      : schoolRecord?.aiProvider === 'BYOK'
-        ? `Gemini BYOK (${process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview'})`
-        : `Gemini (${process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview'})`;
+      : usingGroq
+        ? `Groq (${process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'})`
+        : schoolRecord?.aiProvider === 'BYOK'
+          ? `Gemini BYOK (${process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'})`
+          : `Gemini (${process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'})`;
 
     const monthlyCost = usingSelfHosted
       ? 0
@@ -2147,17 +2154,25 @@ export class AdminService {
     if (!school) return null;
     const { customApiKey, ...rest } = school;
     const usingSelfHosted = isSelfHostedAiEnabled(school.aiProvider);
+    const usingGroq =
+      !usingSelfHosted && isGroqAiEnabled(school.aiProvider, customApiKey);
     return {
       ...rest,
       hasCustomApiKey: Boolean(customApiKey),
       activeAiProvider: usingSelfHosted
         ? 'OLLAMA (Self-hosted)'
-        : school.aiProvider === 'BYOK'
-          ? 'Gemini (BYOK)'
-          : 'Gemini (System)',
+        : usingGroq
+          ? school.aiProvider === 'BYOK'
+            ? 'Groq (BYOK)'
+            : 'Groq (System)'
+          : school.aiProvider === 'BYOK'
+            ? 'Gemini (BYOK)'
+            : 'Gemini (System)',
       aiModel: usingSelfHosted
         ? process.env.OLLAMA_MODEL || 'qwen3-8b-ai-tutor-vn'
-        : process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview',
+        : usingGroq
+          ? process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+          : process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
     };
   }
 

@@ -9,7 +9,10 @@ import {
   UpdateSchoolDto,
   UpdateByokKeyDto,
 } from './dto/schools.dto';
-import { isSelfHostedAiEnabled } from '../common/ai-provider.adapter';
+import {
+  isGroqAiEnabled,
+  isSelfHostedAiEnabled,
+} from '../common/ai-provider.adapter';
 
 @Injectable()
 export class SchoolsService {
@@ -157,14 +160,22 @@ export class SchoolsService {
         : 'ACTIVE';
 
     const usingSelfHosted = isSelfHostedAiEnabled(school.aiProvider);
+    const usingGroq =
+      !usingSelfHosted && isGroqAiEnabled(school.aiProvider, customApiKey);
     const activeProvider = usingSelfHosted
       ? 'OLLAMA (Self-hosted)'
-      : school.aiProvider === 'BYOK'
-        ? 'Gemini (BYOK)'
-        : 'Gemini (System)';
+      : usingGroq
+        ? school.aiProvider === 'BYOK'
+          ? 'Groq (BYOK)'
+          : 'Groq (System)'
+        : school.aiProvider === 'BYOK'
+          ? 'Gemini (BYOK)'
+          : 'Gemini (System)';
     const activeModel = usingSelfHosted
       ? process.env.OLLAMA_MODEL || 'qwen3-8b-ai-tutor-vn'
-      : process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview';
+      : usingGroq
+        ? process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+        : process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
     return {
       ...rest,
